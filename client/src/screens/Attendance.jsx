@@ -1,0 +1,45 @@
+import React, { useState } from "react";
+import { post, put, today } from "../api.js";
+import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
+
+export default function Attendance({ data, run }) {
+  const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1" });
+  const [dateByWeek, setDateByWeek] = useState({});
+  const [showAllWeeks, setShowAllWeeks] = useState(false);
+  const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
+  const visibleWeeks = showAllWeeks ? sortedWeeks : sortedWeeks.slice(0, 4);
+  const hiddenCount = Math.max(0, sortedWeeks.length - visibleWeeks.length);
+
+  return <div className="dashboard-grid">
+    <ActionModal title="Add Attendance Week">
+      <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/attendance/weeks", week), "Week added"); }}>
+        <Select label="Subject" value={week.subjectId} onChange={(v) => setWeek({ ...week, subjectId: v })} options={data.subjects} />
+        <Field label="Week Title" value={week.title} onChange={(v) => setWeek({ ...week, title: v })} />
+        <button>Add Week</button>
+      </form>
+    </ActionModal>
+    {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button></div>}>
+      <AttendanceTable week={w} data={data} run={run} />
+    </Panel>)}
+    {sortedWeeks.length > 4 && <section className="panel wide"><div className="button-row"><button className="soft" onClick={() => setShowAllWeeks(!showAllWeeks)}>{showAllWeeks ? "Hide old weeks" : `Show all weeks (${hiddenCount} hidden)`}</button></div></section>}
+  </div>;
+}
+
+function weekSortValue(week) {
+  return week.createdAt || "";
+}
+
+function AttendanceTable({ week, data, run }) {
+  const [search, setSearch] = useState("");
+  // data.students is already role-scoped by the server for teachers.
+  const q = search.trim().toLowerCase();
+  const students = data.students.filter((s) => (s.subjectIds || []).includes(week.subjectId) && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))));
+  const status = (studentId, date) => data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
+  return <>
+    <div className="filter-bar">
+      <Field label="Search Students" value={search} onChange={setSearch} />
+      <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
+    </div>
+    <div className="table-wrap"><table><thead><tr><th>Student</th>{week.dates.map((d) => <th key={d}>{d}<div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button></div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+  </>;
+}

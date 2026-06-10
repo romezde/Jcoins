@@ -1,0 +1,5453 @@
+{
+  "settings": {
+    "attendance": {
+      "onTimePoints": 5,
+      "latePoints": 2,
+      "weeklyBonus": 20
+    },
+    "recitation": {
+      "maxPoints": 10,
+      "weeklyBonus": 20
+    },
+    "activities": {
+      "latePenaltyPerDay": 10,
+      "submittedLabel": "Submitted?",
+      "types": [
+        {
+          "name": "Simple",
+          "points": 30
+        },
+        {
+          "name": "Moderate",
+          "points": 40
+        },
+        {
+          "name": "Complex",
+          "points": 50
+        }
+      ]
+    },
+    "ranks": [
+      {
+        "name": "Apprentice",
+        "min": 250
+      },
+      {
+        "name": "Adept",
+        "min": 500
+      },
+      {
+        "name": "Scholar",
+        "min": 1000
+      },
+      {
+        "name": "Mentor",
+        "min": 1750
+      },
+      {
+        "name": "Master Scholar",
+        "min": 2500
+      },
+      {
+        "name": "Grand Scholar",
+        "min": 3500
+      },
+      {
+        "name": "Grand Scholar+",
+        "min": 5001
+      }
+    ]
+  },
+  "users": [
+    {
+      "id": "u_admin",
+      "username": "admin",
+      "passwordHash": "$2a$10$/uRKvOHfRA/QyY4gQiefoux1hqKn8FnhqAZ9I7tkMpsfTdFhdKD6y",
+      "role": "admin",
+      "mustChangePassword": false,
+      "studentId": null,
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "sectionIds": []
+    },
+    {
+      "id": "u_teacher",
+      "username": "teacher",
+      "passwordHash": "$2a$10$o/qbYEvK6wY6D0afKh5aYORjaTwniXhXgzqhIXJK4PcUlxxNoyAHy",
+      "role": "teacher",
+      "mustChangePassword": false,
+      "studentId": null,
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "sectionIds": []
+    },
+    {
+      "id": "u_display",
+      "username": "display",
+      "passwordHash": "$2a$10$eg3WD6paYXasChDZpocTdOLhU01tT/kQoUisnFjWqxNobPxzX2W82",
+      "role": "display",
+      "mustChangePassword": false,
+      "studentId": null,
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u01",
+      "username": "student01",
+      "passwordHash": "$2a$10$iegzgG1haDS904Q7C/rb1O1gaJ.SCMmcfXDwAdwBLvyuIOZgTr.ce",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s01",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u02",
+      "username": "student02",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s02",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u03",
+      "username": "student03",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s03",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u04",
+      "username": "student04",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s04",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u05",
+      "username": "student05",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s05",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u06",
+      "username": "student06",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s06",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u07",
+      "username": "student07",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s07",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u08",
+      "username": "student08",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s08",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u09",
+      "username": "student09",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s09",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u10",
+      "username": "student10",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s10",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u11",
+      "username": "student11",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s11",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u12",
+      "username": "student12",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s12",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u13",
+      "username": "student13",
+      "passwordHash": "$2a$10$aLHGzXQ3U6ktz78S6N6n3uAD2AOZbX9TAtO29fw.d5tvTv76ocyyS",
+      "role": "student",
+      "mustChangePassword": false,
+      "studentId": "sample_s13",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u14",
+      "username": "student14",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s14",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u15",
+      "username": "student15",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s15",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u16",
+      "username": "student16",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s16",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u17",
+      "username": "student17",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s17",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u18",
+      "username": "student18",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s18",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u19",
+      "username": "student19",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s19",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u20",
+      "username": "student20",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s20",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u21",
+      "username": "student21",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s21",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u22",
+      "username": "student22",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s22",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u23",
+      "username": "student23",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s23",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "sample_u25",
+      "username": "student25",
+      "passwordHash": "$2a$10$iZUBT2VTGZddm8HebknBiOPJhH8RuncbmNrJM85LBSr1WuJMV8sCS",
+      "role": "student",
+      "mustChangePassword": true,
+      "studentId": "sample_s25",
+      "subjectIds": [],
+      "sectionIds": []
+    },
+    {
+      "id": "8d3a42e6-dcc8-4689-91a7-cec075f7320f",
+      "username": "Jerome",
+      "passwordHash": "$2a$10$8D8yTjX9ZfQ9KL89WijXPeIC.n31pyNVn1yt7TGJuo0tUuD79t5pi",
+      "role": "teacher",
+      "mustChangePassword": false,
+      "studentId": null,
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "sectionIds": []
+    }
+  ],
+  "students": [
+    {
+      "id": "sample_s01",
+      "name": "Ari Santos",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s02",
+      "name": "Bea Cruz",
+      "section": "A",
+      "subjectIds": [
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s03",
+      "name": "Carlos Reyes",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s04",
+      "name": "Dani Lim",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s05",
+      "name": "Elijah Tan",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s06",
+      "name": "Faith Ramos",
+      "section": "A",
+      "subjectIds": [
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s07",
+      "name": "Gio Mendoza",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s08",
+      "name": "Hana Villanueva",
+      "section": "A",
+      "subjectIds": [
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s09",
+      "name": "Ivan Dela Cruz",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s10",
+      "name": "Jade Navarro",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s11",
+      "name": "Kai Bautista",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s12",
+      "name": "Lia Garcia",
+      "section": "A",
+      "subjectIds": [
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s13",
+      "name": "Marco Flores",
+      "section": "A",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s14",
+      "name": "Nina Aquino",
+      "section": "B",
+      "subjectIds": [
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s15",
+      "name": "Owen Castillo",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s16",
+      "name": "Pia Morales",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s17",
+      "name": "Quinn Rivera",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s18",
+      "name": "Rafa Gonzales",
+      "section": "B",
+      "subjectIds": [
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s19",
+      "name": "Sofia Mercado",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s20",
+      "name": "Theo Angeles",
+      "section": "B",
+      "subjectIds": [
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s21",
+      "name": "Uma Valdez",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s22",
+      "name": "Vince Padilla",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_science"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s23",
+      "name": "Wyn Sy",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_science",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    },
+    {
+      "id": "sample_s25",
+      "name": "Yuri Fernandez",
+      "section": "B",
+      "subjectIds": [
+        "sub_math",
+        "sub_accounting"
+      ],
+      "createdAt": "2026-06-10T03:58:25.740Z"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "40bd5998-c9a5-4cb7-a209-95d8984f913d",
+      "studentId": "sample_s01",
+      "type": "starting",
+      "amount": 1320,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "f65e3e67-c9d4-43b2-9fdc-e1f88940ba89",
+      "studentId": "sample_s02",
+      "type": "starting",
+      "amount": 1185,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "66f76fcb-07ba-467f-ab44-f637fd88c65b",
+      "studentId": "sample_s03",
+      "type": "starting",
+      "amount": 1040,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "81d8fa4b-5dfa-4c58-b012-c66279dcf201",
+      "studentId": "sample_s04",
+      "type": "starting",
+      "amount": 960,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "c27f486f-421e-4995-9bc3-b5e5f079bad0",
+      "studentId": "sample_s05",
+      "type": "starting",
+      "amount": 875,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "4da82697-5b2e-4d73-9986-e08ebf03d9ad",
+      "studentId": "sample_s06",
+      "type": "starting",
+      "amount": 810,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "6ea86a54-89fd-4935-b1d4-916ff4a71dd2",
+      "studentId": "sample_s07",
+      "type": "starting",
+      "amount": 760,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "3cbe6e12-1ccf-4f07-91fe-121cbc79762c",
+      "studentId": "sample_s08",
+      "type": "starting",
+      "amount": 705,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "08213d2f-9109-4912-b2e0-70ae8b821872",
+      "studentId": "sample_s09",
+      "type": "starting",
+      "amount": 650,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "0b065db7-8b16-4c37-9fad-564986a96247",
+      "studentId": "sample_s10",
+      "type": "starting",
+      "amount": 610,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "aea3ea27-7e5a-4fe9-95b0-98d039b3ea3a",
+      "studentId": "sample_s11",
+      "type": "starting",
+      "amount": 565,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "54b1c07f-de6f-4fab-9898-32d0142ce45f",
+      "studentId": "sample_s12",
+      "type": "starting",
+      "amount": 520,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "b1b170e6-7d25-4566-8ad3-a1ee48ff14c2",
+      "studentId": "sample_s13",
+      "type": "starting",
+      "amount": 480,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "3e914187-735f-42cd-8c43-c73b83e17dab",
+      "studentId": "sample_s14",
+      "type": "starting",
+      "amount": 445,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "91198d19-110a-450a-a266-2b30dde91167",
+      "studentId": "sample_s15",
+      "type": "starting",
+      "amount": 405,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "a8d30fe5-3842-40a4-8cec-a81ecd9fc05d",
+      "studentId": "sample_s16",
+      "type": "starting",
+      "amount": 370,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "3ae4ad4b-9786-4f5c-87c5-cb563996338b",
+      "studentId": "sample_s17",
+      "type": "starting",
+      "amount": 330,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "e6e263bd-eb08-477c-a7e4-34ac45f26963",
+      "studentId": "sample_s18",
+      "type": "starting",
+      "amount": 295,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "b58501cd-a11f-41e3-85f3-14b7db6d1bc5",
+      "studentId": "sample_s19",
+      "type": "starting",
+      "amount": 260,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "9e9bea8b-6442-4ad3-99f1-448c9f124d29",
+      "studentId": "sample_s20",
+      "type": "starting",
+      "amount": 225,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "acca080d-9c2a-4530-a8eb-a9d3f60f30aa",
+      "studentId": "sample_s21",
+      "type": "starting",
+      "amount": 190,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "68a39f26-86f6-45b3-8df9-d5ab96105c94",
+      "studentId": "sample_s22",
+      "type": "starting",
+      "amount": 155,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "168b9ca9-2204-44c3-8129-caa56bf547a9",
+      "studentId": "sample_s23",
+      "type": "starting",
+      "amount": 120,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "38c02715-3c33-4f6f-93aa-45dd5b06612b",
+      "studentId": "sample_s25",
+      "type": "starting",
+      "amount": 45,
+      "note": "Sample starting balance",
+      "createdAt": "2026-06-10T03:58:25.740Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "sample-starting"
+      }
+    },
+    {
+      "id": "6801837b-ca32-409c-b0fd-07f36374f63a",
+      "studentId": "sample_s01",
+      "type": "recitation",
+      "amount": 10,
+      "note": "Recitation: Math",
+      "createdAt": "2026-06-10T04:17:31.859Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "recitation",
+        "recitationId": "310e7c97-4d99-4eae-b770-70ceead32fae",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "9ce94253-8957-4620-91f4-b74e619a748f",
+      "studentId": "sample_s01",
+      "type": "activity",
+      "amount": 0,
+      "note": "Activity 1",
+      "createdAt": "2026-06-10T04:18:42.515Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "activity",
+        "activityId": "9e800ad8-201a-4ef3-9df7-15bf3629c4c8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "95e0d00e-3acd-48af-9ab0-67cf7b4710a6",
+      "studentId": "sample_s01",
+      "type": "penalty",
+      "amount": -20,
+      "note": "penalty",
+      "createdAt": "2026-06-10T04:19:34.872Z",
+      "createdBy": "u_admin",
+      "meta": {}
+    },
+    {
+      "id": "a1eb68a5-6f1c-42e2-b7e5-c15f2d047cba",
+      "studentId": "sample_s01",
+      "type": "recitation_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.012Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "recitation-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "af94e7d1-d87a-4af1-92c5-e8c250bff4df",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "f5c2ecf3-af0a-443b-adb4-4a0cc83cadc7",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "5ffac0ad-61ae-498e-a7e3-ecb268ffac0a",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "8a42daf3-5b97-4a95-9104-1989889b7aa1",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "b53c6a71-2c84-4708-805d-0b1709ccb4ad",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "3a294346-1ad2-4a07-98bd-bdfcf15b2f92",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "c41d69af-a836-4fcf-a254-c5c83e8c4b97",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "4b94ad23-7736-4d33-81b7-af2dba6170c9",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "b64866a5-3f64-4898-8dcb-1dcabb0a61f7",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "848ac178-7cab-46f0-9510-46358285d360",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "daeee26f-7730-4ea4-abd1-2e4f7990f80d",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "cf912682-240d-4121-b411-fcd066594fc2",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "f019bb2a-3327-408d-a1d1-c13160a44b1d",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0398619f-5ccd-4592-b95b-a2811685f26e",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "983bc1fc-bc33-4c4b-b6cc-f852bd2472b0",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "fbeea4af-2180-46b7-b8ae-9cd73321a6d6",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "0fd32a1b-47ac-45c4-9fe6-1eaa4677f68a",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0cc4b0bc-d877-4542-bff9-efca8431be8a",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "2f23a97e-073d-4a16-a204-4ecb390b9f58",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "69dcf5c2-ddb5-4dc3-aa13-7f6e05335b7c",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "da5c4033-237c-403c-a078-4739b139f08a",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "05eec4da-c64b-4833-9ae2-6fe68f1dacd2",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "185b418e-5377-42c1-9c21-668d0aa327fb",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "9bd894d3-3c27-4ddc-9420-21cd9171027b",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "37da4c40-af42-42c9-a6e5-7e02bad6eb8b",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "11952749-bf00-492f-bb37-ad2c3f4a3f79",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "7447cd04-9d07-4d5c-829c-6ec06b75a075",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "3077a0f2-fb96-43fd-96ef-137ab69dcf05",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "512595bc-57d8-4d99-a1c4-6010345c769c",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "01e954ac-bb3a-47e1-ab1d-c627d6235140",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "2b445383-c565-47e4-9ce3-c50e61329956",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "4905e996-bc0c-4e25-b095-544fa642150d",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ea145608-4322-4099-84b9-ec8dcce32e09",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "802d8027-ab07-4d02-8881-d92c42c64c03",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "27a5461d-ed60-4e25-962b-754e22e607df",
+      "studentId": "sample_s01",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "e2656d24-c0e3-4c72-9e34-c882ccc0b7ce",
+      "studentId": "sample_s03",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "6688a8c8-66e5-4f8a-9022-bf787d33d731",
+      "studentId": "sample_s04",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "0ee7956b-af88-4020-a11c-a7b48ddf1792",
+      "studentId": "sample_s05",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "4187e558-82ac-4336-9a0b-959d0843e8e5",
+      "studentId": "sample_s07",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "6e40060c-38ce-4ca0-ad43-f8d280141696",
+      "studentId": "sample_s09",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.046Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "d56872da-e3a1-4158-890e-22e5343d6413",
+      "studentId": "sample_s10",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "5c98961a-4611-4c74-8f61-beb3d839eab3",
+      "studentId": "sample_s11",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "625f9705-909c-410b-b4d6-2260ccfb302a",
+      "studentId": "sample_s13",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "521821dc-3154-48ae-9b67-610bc2550ea3",
+      "studentId": "sample_s15",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "d308e263-bacb-4d8f-ade7-c4544c65c89c",
+      "studentId": "sample_s16",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "0925c3ac-2227-4c74-b44c-8f5ed065985b",
+      "studentId": "sample_s17",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "c50df34c-bb10-4ce6-b746-ce1c06181be5",
+      "studentId": "sample_s19",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "2e4d6d4c-1c86-4823-b1c5-ba2f6ab78c3b",
+      "studentId": "sample_s21",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "0a8c58f3-3a1f-45ac-a429-6b9794fd331a",
+      "studentId": "sample_s22",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "24f883ba-dbf1-4c90-bc72-33bdbfa42e2f",
+      "studentId": "sample_s23",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "c599c856-0cae-4e3e-a995-93dbeeee5413",
+      "studentId": "sample_s25",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Bonus Simulation 122442 bonus",
+      "createdAt": "2026-06-10T04:24:43.047Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "af023286-4ede-4dfc-b2cd-9bca7601e1fe",
+      "studentId": "sample_s01",
+      "type": "recitation",
+      "amount": 1,
+      "note": "Recitation: bonus simulation",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "recitation",
+        "recitationId": "1d3987a0-4262-45c7-be3f-8675aa4ae2c9",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "19d11ac8-3f58-4f4b-96c7-d269765ea0b9",
+      "studentId": "sample_s03",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "560440b2-648d-4969-8ce2-4e165b683671",
+      "studentId": "sample_s04",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "329fee96-2308-4d4c-a818-9ceb8f790a29",
+      "studentId": "sample_s05",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "0f667b9d-8383-4249-ab57-9f042d1d0e8e",
+      "studentId": "sample_s07",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "9b4a16e6-5b41-4293-8616-a74f9bdb853e",
+      "studentId": "sample_s09",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "aa8c66be-1ff9-48d5-9dfe-bdd2e2c47897",
+      "studentId": "sample_s10",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "211a15db-61c7-47e0-80ec-b0725c51b932",
+      "studentId": "sample_s11",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "1c64b5ed-1134-4acc-9220-52cd4830cc19",
+      "studentId": "sample_s13",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "40d4142c-66f8-4df1-b310-6e961c8c5e1c",
+      "studentId": "sample_s15",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "8a85dd82-9244-4578-ab4c-265b31d3bb69",
+      "studentId": "sample_s16",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "90a32054-4b26-4a27-905f-9856a6503668",
+      "studentId": "sample_s17",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "ed1cee45-a925-425a-b8a3-7fc68c9ee8b4",
+      "studentId": "sample_s19",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "e6abf2a2-6582-463e-bd9c-da9914600ef2",
+      "studentId": "sample_s21",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "18de7325-d386-49f4-81ed-98fbae269919",
+      "studentId": "sample_s22",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "cb89d416-f483-415b-b04c-1ad0ca0596f9",
+      "studentId": "sample_s23",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "0f71f5a4-3116-4b24-9726-a238e6b73958",
+      "studentId": "sample_s25",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Prototype Week bonus",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "294e983f-64e6-4d2e-8f04-95f4e54aca24",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.985Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "746e5146-2251-4c5c-8eef-6c6c3fdf7642",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "6fb9b58e-98a9-40d7-ac3f-ae7b2ff7b20f",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.986Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "2e5b17ea-ff85-45e4-b004-65e487289278",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "426b9baf-98a8-42ac-b131-4fd8a8ae54a4",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "93586a60-c116-466b-8d02-c0c2f186667d",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "3ef6ade2-c35c-4d05-8b29-f9477089129b",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "f006cb6a-f5aa-4b62-8911-40a37ca746d6",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "43c2d901-6e57-4e12-ab2f-740918dcfd0a",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "976f5e0f-c651-4077-9a62-f04c8843f167",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "2e4a2155-5622-47dd-859f-9d99b5a608cd",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e76866f4-3aa2-4cf3-bce9-63d07f025d27",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "056ce6f2-c199-4e7f-bc37-8f6e53c12fe2",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "7f60899a-910f-49dc-b8e7-ddf1de658ed3",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "850ced01-db2e-47a6-bc35-e07a34b57022",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "76c6171a-024c-4815-842a-b1fea2f98d2e",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "8cc0bfd7-93e6-42c8-a2c1-a66fc4fb0b02",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "15af1ee5-4cd1-42b8-9d5b-17965ba04d27",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "4df67c84-832b-4461-836d-3de28e516e3d",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "9bd55ea4-65e3-4f76-9656-1e051ad2dee9",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "d6fdfc8b-7898-4dc4-a3e5-51f0da6b326a",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6005f14b-1952-41c9-83ca-4950ce1e0a70",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "183a40ab-b991-4cf0-b861-bab59d811fde",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.987Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "bc2cf622-e3ac-4d1e-92d8-ed37226ebf90",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "2d939f96-88c5-40b5-908d-11b4e3f46245",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5d51c887-6a86-4cf0-9f2e-a228ce665ea1",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "a1003258-d015-47bd-96b5-ff347112cd44",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "a47e1d67-520a-4f59-b1c6-e5b006fe8e54",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "8f39624e-9b2b-4a75-978f-ecfabb82cc91",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "12d52905-5c58-448f-9a9c-e52a04db77f0",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "1ee5b07b-fa7e-4559-9598-dc7ef07f6268",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d1742a2f-cf9e-4faa-88cb-47c8767d9f7d",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "e385bfa8-cf6a-42fc-bf49-d9def7fe7220",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-08",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "8a38fa7c-4601-4bb8-9367-96ea016404a5",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-08"
+      }
+    },
+    {
+      "id": "b6051f67-6187-4cd6-be58-7f28167e7f18",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6ec5eaa5-2865-47f5-b884-068ae42e214b",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "cc7eefa6-ded4-40be-9d39-20dcb1997880",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "f3fdbc26-fefe-49bc-a228-9cdb8f2dc454",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "189c0abf-67e7-485f-9d90-6312b307206a",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "00979c02-5c1d-4efc-89ac-61e521eec734",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "3845239a-4a49-421d-8c35-4b31074f53b7",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "458eb46d-4f4a-4c7e-8661-9189e214b8eb",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "2a694139-b08f-40b5-a329-7c6d7e2de9bb",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "7d0efe63-dca2-4c20-8f7a-5317b534cc46",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "f4bc84ac-72f0-4611-8648-5368afac2e56",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e8af0aea-a385-4bec-8be1-36673104c512",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "6cf174b7-db9b-469a-bb15-71e08bfa2ba4",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5fd54501-0ab5-401c-ab0f-624bd445d69f",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "e82f825e-dc87-4437-be7a-44cc30508eb3",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "77c451af-d91e-48ff-adec-a797241dc25f",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "09c996be-9c18-4b4f-af69-1fffdf910e92",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "4cc2b136-c254-4937-8d1b-11c38a7375e4",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "0e2c8254-6037-4590-8c0f-0c64bb7d14f7",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "add7ee2e-c556-4586-b734-5a1c7ad808cc",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "00c7780c-b9a1-4dc8-83f5-1849daf5d294",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "58b79008-9952-4596-9cbf-41238fb694cc",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "1dff6bcc-15ec-4fca-b0df-6157085d79cc",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "76b91817-9801-483c-b1bb-38293a72eebb",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "e0cf5e84-a8d7-49c9-80b3-c09f4389a941",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "816a036c-099f-41ca-9385-1e6ae7e54dd3",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "e76f61da-aee0-4670-aa74-ad9892d7d1bc",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c24f314d-a6fa-4de9-ad95-3b6eabcadf92",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "283fdf77-5a7b-409d-8095-6d9c886a64d6",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "99155387-ef88-4bf2-b893-20b7466573a6",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "54a2a0cb-de6d-4923-8f25-f9e15751bec5",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-09",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "ce59047f-5597-4599-afbb-41fea325cf2d",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-09"
+      }
+    },
+    {
+      "id": "dc5a9f92-422f-464b-8ae3-2abf032d4b59",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "31d779c1-229c-41b8-b2c6-b1fa8593f0b8",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "fa45f4d1-c637-475e-bd85-b7aaa1c0ef98",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d56bb142-d6d1-4f43-8921-ce9082f0cd44",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "20eaac9e-292c-46c9-9d1d-b73ec7ce0a9b",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "1cf3d00c-a77b-4b8a-a38d-8a6b12942416",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "16864f8b-6ca6-4546-951b-92f1d9ee1421",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "795cdd75-0fad-41a5-b5c9-b673827972f8",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "9960461a-31f5-47d6-bc53-94a79363bb6c",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "edc598ba-11b9-4874-baed-cde80445d99e",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "9629a053-96e5-4fe7-a40b-148aab37b901",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c97f1d2b-8f07-4f89-9a9c-013a266e4543",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "6c7ce223-14f4-4bab-8e82-9234c9fa5ad7",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "668216fd-316b-4c85-9a4f-5e078a413d0a",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "a84ca377-388a-4332-a1cb-2c41f343f8be",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "2f87b4a6-ab04-4e69-ac19-0a2286e4d09a",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "02cdb801-7371-433c-859d-37ba3e650194",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e5f664a2-19cc-483c-87f9-3cfc67d2d6da",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "c6af4837-2446-4ce6-aedd-40ff50256500",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "1fb19a3f-631f-42c6-906e-a0dd5b509eb4",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "065f9879-8543-4f0b-8116-192eb51ecfb0",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "eed08248-8fd3-426e-bc5d-9fbb7806dc24",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "bc487da0-3e36-429f-ba1a-e574a2746605",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "60b81599-13a4-4ec6-adad-908f1e81c296",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "5c07f8d0-1a84-4daf-aa44-d93d727928fd",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "42db61b0-ba7c-48a6-bcba-278225993943",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "610a0f14-e5b4-4e0b-8272-5065513ed062",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "430a0b37-eb83-4aa7-a9ef-211816f7ffd2",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "69e7d78a-bfb1-4b93-97be-e59eda19fc2b",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d4c4e739-8ad9-4b24-a7e3-3b7afc18229a",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "f8856224-2983-4720-9812-643ec8607be9",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5bfd4984-3a0f-4786-80f7-eb40ba323142",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "2cd530da-b587-49dc-93a2-14599caba591",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5e4bdc79-1437-4758-8584-51ddbe2f588f",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "eb47c517-dc89-423c-8817-eddee20e1800",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "9b0f6395-1aaf-4c85-87a9-2a939bc37e9a",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "0714edab-6b9b-4759-abb9-83dfe03f58eb",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d4ba0fa1-1bba-4a93-917c-e920b3b8af05",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "4655773b-3574-47d5-89f8-b000fc46870f",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "a52f39ec-6338-4bf0-b1e2-5efeb5e288db",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "c586ac98-cd56-40b1-aefa-559858b45a82",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.988Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5d2ef3b5-3987-4248-9879-8c7853848239",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "16840997-9eb1-47fa-915b-0cec2b7ad2bd",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5ccb6a00-e7ff-4eb3-8b38-68bf5f688041",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "df520fd6-85c5-42f7-acb0-863a698e10af",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "4eb24298-9979-4dcf-babc-2d72ac129493",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "f14aed9a-f5b0-4f1f-8443-3e9882e6d0fc",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "83aab1af-e1b8-4b46-9a2c-f926cb211246",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "ff802cf2-ab5b-4429-bd5d-e71581b0cf32",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5959b90c-0570-4ffe-a219-df089756b5e4",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "c49d6da2-418c-490e-a7ec-57bfcde2b3aa",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "26dce296-2f44-4b52-a889-6e56b53bdd2d",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "f9918010-916a-4bba-a701-deaed6bba82a",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "9a1b30a8-f12b-46ed-a805-9635ea1248bf",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "bf2fcaaf-4c4c-4d43-8712-47b0d3ffb880",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "3f127a11-ae86-4628-989c-562ed6225898",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "0b17c2f6-e4fd-43a3-8287-a33bb0b70c64",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0c81be08-b3d1-4eb1-80d3-69bf7fac3285",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "0f80fc79-a523-4f90-928d-219de539d332",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "332264d0-09dc-46dc-aa8e-e08dd92459d5",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "8ff90cd7-328f-41df-8c63-de4ad10bd452",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "90acd67d-8ef7-4847-be55-e6e931576e05",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "ff804e7b-7165-416f-9fd2-384234e29d67",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "482c9f83-95d7-4ed6-a884-cc82e4ed0c1f",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "57570ab2-0f96-4cd4-bcb5-b47a03e5b890",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0b732a01-f99f-4e4a-8cf8-b380010c33fb",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "26095ab4-928e-40cf-bac1-d1d925fa42c9",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-11",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "08286e56-87ee-4791-ae60-ffad040cb566",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-11"
+      }
+    },
+    {
+      "id": "f23df292-9c4c-4165-9463-25a2e9b0c67a",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c7a45878-a964-49dc-94f5-65ea7fea78f5",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "7510caa9-4837-4152-8b87-76483f988754",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "82e7200f-fc26-4657-a3f3-b0eac6bd0c78",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "0034aae1-c22a-41fb-9927-c48ee4a1b55f",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d420766c-a483-495c-90c3-7f606ce39fce",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "5ca1facf-519f-446f-bffe-7b9d8a53b431",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "02cabb84-f218-4bdf-a18f-c4d9b60cdd4e",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "0de02dc4-39d0-41ca-b9a4-698818be3f92",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "3ab9cc52-8706-4c42-b77b-7d87f2d79f2e",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "c3d78bb4-0eee-45c9-a134-547d8d838abf",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "683d6066-9ff9-4a79-b977-9acc43f6b860",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "cafbf97d-73db-4ff8-a636-94e37b7d6c32",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "f6b8ecaa-98ab-4100-8661-753405c88723",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "3adf285c-f031-4333-95ad-59f16a16e168",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "346be944-08a1-4a51-a533-11f986b638f7",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "9e2e36c2-066b-41fc-908d-58b59a0757d9",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5ecb60b6-c6b3-41e0-ba38-1d96e5cb6967",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "a305c155-511c-4bde-8b6e-3fef8e5b5f35",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "70e9d055-1a0b-4d87-844b-97e1c419cc66",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "6e68d67e-4a48-4188-88e6-f12e2082aeab",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e63fa456-21a5-4b8e-8547-93a045930863",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "42c15220-0220-48c6-baef-ae2a4eacd79f",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "a605af50-206c-4458-9d52-91175af64e70",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "f4aec1f3-04d8-4548-9e30-617f89135291",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0469a7a1-5c77-4c91-9545-24e9451ed649",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "3fd81f91-46be-42c2-8f59-3439bf4e17eb",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "bbb47c21-f86f-4c89-beec-aeadb3706a98",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "1cfc7739-87cd-4ed4-a94e-432ada86a2ca",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "d8dc9bc4-ac49-4db1-9856-b204c328ef50",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "c6109f31-c94b-4279-bc4c-b996a5ba4ece",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-15",
+      "createdAt": "2026-06-10T04:26:00.989Z",
+      "createdBy": "system",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "8ea9a8c6-f8ec-47a9-a357-4333e3657d8f",
+        "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+        "date": "2026-06-15"
+      }
+    },
+    {
+      "id": "1af20129-df84-44ee-a47d-d622b4d558d9",
+      "studentId": "sample_s03",
+      "type": "activity",
+      "amount": 0,
+      "note": "Activity 1",
+      "createdAt": "2026-06-10T05:44:48.974Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "activity",
+        "activityId": "9e800ad8-201a-4ef3-9df7-15bf3629c4c8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "04dfc05a-6729-4c5b-ae2f-d915a5594ccb",
+      "studentId": "sample_s01",
+      "type": "recitation_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:10.668Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "recitation-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "d144c69a-ab86-44db-b5b5-78f4a8845d7f",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "198fa5fb-d92f-4b52-bc4b-e69de6b59fc5",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ac763b3b-4816-4344-940a-51a81210deda",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6671ef6c-31bb-4128-a1b0-79c25ebd5903",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "75a37983-a15f-4acc-851b-9482043dac40",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "4523d52e-3fca-44e1-8f6b-81b4ff6187d1",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ccc58ef3-f99e-4854-b762-eb74c80c4c1c",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "61066fca-471b-4794-a6b3-004cb7bd2c4d",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ff540647-e7cd-4343-bea0-1a5a3dd36d05",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "da79dbd6-7836-4c03-8966-b458f17e7512",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "fe38c850-75a7-4d03-94d0-b262c7b92b88",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "2bcb4a2f-9428-4681-a7aa-19bb31a15c7e",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "6017b847-b2e2-44a4-9473-4d5e765fc144",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "66aaf01f-0b13-4961-a584-f60d765c738a",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "a03b829c-11f1-4409-997e-e28ea416414f",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "23e0da17-51b0-417b-ab4b-05d88399f001",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ab912633-73a4-4575-95e2-7a9c4b8f8b67",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "a45a2751-ff8b-4eb5-90d2-ccbec5fec868",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "452b1f43-8182-45c5-8498-baf8ba77fab6",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "cf650187-90d2-40ac-bb46-ff88ef091a10",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "76f9cd4a-c780-42b3-8ccc-d76c0c46bb6f",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "812e2239-e6db-42bd-9058-30dd70ec7b05",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "35e4a390-b3e8-4935-9ace-d4e68f34edc2",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c1b88983-abc9-420a-bd2e-e99f15fbe58d",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "d8a4f11a-74bb-41b3-8e47-e2f754443dfb",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "800483dc-269c-4cd8-8a76-fb34bb3c217e",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "cc62245b-3ab5-4097-bca0-e8ef2503a3e2",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "9315c914-b84c-4c47-a2c9-9936e38b466b",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "820be346-f2cd-4117-b5a5-dc4c12aaf4a0",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "60c39335-a5d3-4c62-8340-af01a835889f",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "a53b8eaa-223f-4578-b297-eaad945f9dc9",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "25261244-b7ee-4ebd-8018-cca1687fe0d8",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "d620fe54-fa09-4aef-b286-c9a98f1a189c",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Math attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "bbedbd99-4bf6-485b-a6b7-a7ab4925bbec",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "4d841fca-dc7a-43e6-b015-fcb455ebf6dd",
+      "studentId": "sample_s01",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "a33e6053-941c-4e8c-a60d-82f6d537a95d",
+      "studentId": "sample_s03",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "144b87ed-11cc-42da-811f-b7d8dc0abc58",
+      "studentId": "sample_s04",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "7922cb37-3e18-4d78-bec7-7bf10d916d9f",
+      "studentId": "sample_s05",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "58420a18-5ff4-4f50-99f9-0a035b91be4d",
+      "studentId": "sample_s07",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "3a9fcf31-2ed8-4d36-a7d1-8e718fe9f6c6",
+      "studentId": "sample_s09",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "38ac7715-89f3-4641-b2cd-4e5c2e3f2f0e",
+      "studentId": "sample_s10",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "8cc813cb-0690-4fd4-84c0-08e4da75a4ea",
+      "studentId": "sample_s11",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "65f45e60-a591-4227-b366-303212aac4b7",
+      "studentId": "sample_s13",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "630dbad5-c739-438c-9a97-699420b7bc30",
+      "studentId": "sample_s15",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "1c8867fe-2be9-4c3b-a444-1834a3a2aac3",
+      "studentId": "sample_s16",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "3cf62fb5-eab3-497e-b285-2becf8cb0133",
+      "studentId": "sample_s17",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "6f83b0dc-4f7a-4025-a6c3-3d0ba1998842",
+      "studentId": "sample_s19",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "b9f1edb0-a49b-41b2-aa10-13fb4f515e9d",
+      "studentId": "sample_s21",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "e7d283c1-d3ca-4654-b034-644ce71bf298",
+      "studentId": "sample_s22",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "caada289-f38a-4951-89f5-04008ea78ed0",
+      "studentId": "sample_s23",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "e4c9029f-45c8-4637-b68e-480c9ebe3ff1",
+      "studentId": "sample_s25",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Math Week 1 bonus",
+      "createdAt": "2026-06-10T06:17:15.743Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+        "subjectId": "sub_math"
+      }
+    },
+    {
+      "id": "04e44d6a-7b9e-435b-9d9f-9a5e595094e6",
+      "studentId": "sample_s02",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "fd795e1c-f6b4-43a5-860b-4a451ba2536e",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "12b130ed-ac3a-42df-92ce-67c682bab408",
+      "studentId": "sample_s04",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5f94d3e7-3515-43f7-a804-758152bbd0fe",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "c41dc230-010b-47aa-b351-fcd8722111f2",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6f98ca9d-ad56-42cb-8b61-f76d5b24b88c",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "9bfa6af6-ae22-4303-9ced-04c54ed6fe07",
+      "studentId": "sample_s06",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "0004a49b-9dbd-43a0-91df-0d9dcab1313e",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "0da0ada6-dee8-444e-98bb-d454411ef5fb",
+      "studentId": "sample_s08",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "ccc50e4e-4b9a-4bb5-9615-ddfdd65af125",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "b0e8cbd7-3da0-44e1-a2bd-741936e2d86c",
+      "studentId": "sample_s10",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "aca29a5e-52e4-45fa-959e-e43a8ff8c6d7",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "2d753fef-1885-4518-816b-344fd7f927a6",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "975d1d5f-f4c1-483f-912f-3f65c2418163",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "cfa5ba7f-2233-494d-99b3-7905683ff277",
+      "studentId": "sample_s12",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e050f6d8-7825-4ee3-8940-b943b9f48e13",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "fc6a4767-5f6e-4d82-9337-37d11ba21b09",
+      "studentId": "sample_s16",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5c282bcc-b441-4abe-ac82-72a39ae881c4",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "bba01814-bf88-4c4a-80ac-6ca10b340a94",
+      "studentId": "sample_s14",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "35f111cc-990c-4d30-a4a7-7696c39c0ccd",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "286c046f-b969-43bd-bcd8-3fec4262dc24",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "e52c5f0b-8308-4a26-aabb-d68d746e0cb8",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "9b63c71e-2eaa-4eb8-8401-8dc0c6334371",
+      "studentId": "sample_s18",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "8d7f5d7f-a5e2-4edd-a6dc-0c1ffc46ca0e",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "ef15f9f6-632d-47a0-b146-b14afafb5429",
+      "studentId": "sample_s22",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "3284c8cd-1f87-44d2-bfbb-f7fc1b4ee5d7",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "0daa17a5-18f9-40e9-b174-2c382a8ebfb2",
+      "studentId": "sample_s20",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "85198905-1939-4185-a453-8e658431c49f",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "4cccad32-1c92-428d-8082-ed94e718109a",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Science attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:18:55.783Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "810896dc-2000-4e96-9af4-6aaab3348b77",
+        "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "9e3b2624-a22c-4501-9ecf-6ebce46fc219",
+      "studentId": "sample_s01",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "2f3956c2-2119-4ee0-82d9-3e4c08779267",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "457484ea-e2e9-4f7d-a64e-0ca613920181",
+      "studentId": "sample_s03",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "03224910-ea67-437f-b35f-fc3072c3d3f5",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "00e8e181-4405-4a56-9c14-3b54c99004de",
+      "studentId": "sample_s05",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "1846a9c6-1f57-4eb6-bc61-284bf237f8e3",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "adeee385-45c7-4ba6-80c9-1609870039d0",
+      "studentId": "sample_s07",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c5441c80-d26b-40ec-bb61-bae2cd612b4e",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "d8056c16-7771-4e41-b98d-fd9528634da0",
+      "studentId": "sample_s06",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "8df2d64e-04f2-4af7-bf04-136bbda0f075",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "b53ada65-c196-428f-9704-4b9ff8bafe57",
+      "studentId": "sample_s09",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "70c50e33-3153-42c2-8b5c-13f9a2e7b960",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "6d5daf24-8090-4a65-b9a5-7cb0da3f9457",
+      "studentId": "sample_s11",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "60a79bbb-b694-4db7-832c-5fb3af640290",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "d14bdd33-d928-4a75-822c-69ca9d7cc212",
+      "studentId": "sample_s13",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "7dc7146e-38e9-4e6d-96c7-bdb38c4a1ea2",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "202b4cab-0128-4ce3-9d0d-ac1291aa791c",
+      "studentId": "sample_s12",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "7bd805a9-c3c4-4353-923b-d5ff3d5aa524",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "b269d4a7-3a9a-4c9f-a9c6-352686063249",
+      "studentId": "sample_s15",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "74ecbbd6-c0bf-49bc-a4fb-5183f76c435d",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "8765283a-22c6-4f08-9d16-67dd66935a25",
+      "studentId": "sample_s17",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "5dcafb56-38fa-468e-a715-3728423383d7",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "92b4a8e2-2872-4f6e-a8a2-45577340ea3b",
+      "studentId": "sample_s19",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6ce311e8-4414-4992-9baa-be29cb586fce",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "f622fb2b-9c39-4f1e-a3c6-18886760da7e",
+      "studentId": "sample_s18",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "6cc4f972-9dd4-4b2a-ace0-e9767f1d0d49",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "93e8a98f-f28d-4bcb-aec3-9c3d909e3e89",
+      "studentId": "sample_s21",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "c17da2d9-2ba0-43b4-b0dc-10bd65e3e6dd",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "6d8a03f0-7583-4bf6-9251-b225fe93174d",
+      "studentId": "sample_s23",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "fb13d118-4e9a-4d7a-ac17-60f2d3d7d34f",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "78a5f1d6-4504-4835-9fe5-ca0fe69fdb07",
+      "studentId": "sample_s25",
+      "type": "attendance",
+      "amount": 5,
+      "note": "Accounting attendance 2026-06-10",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance",
+        "recordId": "a96b1d98-e5f5-4407-9a7c-a0b91c3a0307",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "date": "2026-06-10"
+      }
+    },
+    {
+      "id": "a921f6bb-8b90-4b33-b027-73c4a781f5c2",
+      "studentId": "sample_s01",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "d1af161c-436e-4a72-8b2b-e3392c4df5b1",
+      "studentId": "sample_s03",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "2f6b2a4f-e490-48a4-924a-50aa41110128",
+      "studentId": "sample_s05",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "3e6e8214-7d9f-4397-abb1-ea11aafa764c",
+      "studentId": "sample_s06",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "ba36bf9c-7f40-4498-97d9-6a757b6159fd",
+      "studentId": "sample_s07",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.702Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "72b90fe9-da1f-4a25-b4bb-7368ce067aca",
+      "studentId": "sample_s09",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "7e2ed5e6-575e-40d3-aca0-589014677367",
+      "studentId": "sample_s11",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "3912bb54-212a-477b-8810-3d94f170653b",
+      "studentId": "sample_s12",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "d517e6a7-ba08-4d05-9d29-a5143ca58b93",
+      "studentId": "sample_s13",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "3f014509-a5d2-4193-b84a-f9def8fbf7ae",
+      "studentId": "sample_s15",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "3bd19d83-cbbd-4006-85df-29b75aa69db5",
+      "studentId": "sample_s17",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "3bb56ba5-1cff-4ad2-8bf7-e6e74d8a62db",
+      "studentId": "sample_s18",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "5c1aa9e0-72b7-4aee-b8e7-56dc9946f273",
+      "studentId": "sample_s19",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "ea5d4e52-7912-4851-9092-a0b73294036b",
+      "studentId": "sample_s21",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "11bf71fd-bb8d-4e9b-a527-fe917865b04d",
+      "studentId": "sample_s23",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    },
+    {
+      "id": "8d0ba0ad-904e-4996-bdcf-d6dd8d6a904c",
+      "studentId": "sample_s25",
+      "type": "attendance_bonus",
+      "amount": 20,
+      "note": "Accounting Week 1 bonus",
+      "createdAt": "2026-06-10T06:22:48.703Z",
+      "createdBy": "u_admin",
+      "meta": {
+        "kind": "attendance-week-bonus",
+        "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+        "subjectId": "sub_accounting"
+      }
+    }
+  ],
+  "subjects": [
+    {
+      "id": "sub_math",
+      "name": "Math"
+    },
+    {
+      "id": "sub_science",
+      "name": "Science"
+    },
+    {
+      "id": "sub_accounting",
+      "name": "Accounting"
+    }
+  ],
+  "attendanceWeeks": [
+    {
+      "id": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "subjectId": "sub_math",
+      "title": "Prototype Week",
+      "dates": [
+        "2026-06-08",
+        "2026-06-09",
+        "2026-06-10",
+        "2026-06-11",
+        "2026-06-15"
+      ],
+      "createdAt": "2026-06-08"
+    },
+    {
+      "id": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "subjectId": "sub_math",
+      "title": "Week 1",
+      "dates": [
+        "2026-06-10"
+      ],
+      "createdAt": "2026-06-10"
+    },
+    {
+      "id": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "subjectId": "sub_math",
+      "title": "Bonus Simulation 122442",
+      "dates": [
+        "2026-06-10"
+      ],
+      "createdAt": "2026-06-10"
+    },
+    {
+      "id": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "subjectId": "sub_science",
+      "title": "Week 1",
+      "dates": [
+        "2026-06-10",
+        "2026-06-11"
+      ],
+      "createdAt": "2026-06-10"
+    },
+    {
+      "id": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "subjectId": "sub_accounting",
+      "title": "Week 1",
+      "dates": [
+        "2026-06-10"
+      ],
+      "createdAt": "2026-06-10T06:22:26.055Z"
+    }
+  ],
+  "attendanceRecords": [
+    {
+      "id": "746e5146-2251-4c5c-8eef-6c6c3fdf7642",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "2e5b17ea-ff85-45e4-b004-65e487289278",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "93586a60-c116-466b-8d02-c0c2f186667d",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "f006cb6a-f5aa-4b62-8911-40a37ca746d6",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "976f5e0f-c651-4077-9a62-f04c8843f167",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "e76866f4-3aa2-4cf3-bce9-63d07f025d27",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "7f60899a-910f-49dc-b8e7-ddf1de658ed3",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "76c6171a-024c-4815-842a-b1fea2f98d2e",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "15af1ee5-4cd1-42b8-9d5b-17965ba04d27",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "9bd55ea4-65e3-4f76-9656-1e051ad2dee9",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "6005f14b-1952-41c9-83ca-4950ce1e0a70",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "bc2cf622-e3ac-4d1e-92d8-ed37226ebf90",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "5d51c887-6a86-4cf0-9f2e-a228ce665ea1",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "a47e1d67-520a-4f59-b1c6-e5b006fe8e54",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "12d52905-5c58-448f-9a9c-e52a04db77f0",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "d1742a2f-cf9e-4faa-88cb-47c8767d9f7d",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "8a38fa7c-4601-4bb8-9367-96ea016404a5",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-08",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "f7e55df3-5a02-4167-b3a0-51ece78603d8",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s01",
+      "status": ""
+    },
+    {
+      "id": "6ec5eaa5-2865-47f5-b884-068ae42e214b",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "f3fdbc26-fefe-49bc-a228-9cdb8f2dc454",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "00979c02-5c1d-4efc-89ac-61e521eec734",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "458eb46d-4f4a-4c7e-8661-9189e214b8eb",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "7d0efe63-dca2-4c20-8f7a-5317b534cc46",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "e8af0aea-a385-4bec-8be1-36673104c512",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "5fd54501-0ab5-401c-ab0f-624bd445d69f",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "77c451af-d91e-48ff-adec-a797241dc25f",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "4cc2b136-c254-4937-8d1b-11c38a7375e4",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "add7ee2e-c556-4586-b734-5a1c7ad808cc",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "58b79008-9952-4596-9cbf-41238fb694cc",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "76b91817-9801-483c-b1bb-38293a72eebb",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "816a036c-099f-41ca-9385-1e6ae7e54dd3",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "c24f314d-a6fa-4de9-ad95-3b6eabcadf92",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "99155387-ef88-4bf2-b893-20b7466573a6",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "ce59047f-5597-4599-afbb-41fea325cf2d",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-09",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "31d779c1-229c-41b8-b2c6-b1fa8593f0b8",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "d56bb142-d6d1-4f43-8921-ce9082f0cd44",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "1cf3d00c-a77b-4b8a-a38d-8a6b12942416",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "795cdd75-0fad-41a5-b5c9-b673827972f8",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "edc598ba-11b9-4874-baed-cde80445d99e",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "c97f1d2b-8f07-4f89-9a9c-013a266e4543",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "668216fd-316b-4c85-9a4f-5e078a413d0a",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "2f87b4a6-ab04-4e69-ac19-0a2286e4d09a",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "e5f664a2-19cc-483c-87f9-3cfc67d2d6da",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "1fb19a3f-631f-42c6-906e-a0dd5b509eb4",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "eed08248-8fd3-426e-bc5d-9fbb7806dc24",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "60b81599-13a4-4ec6-adad-908f1e81c296",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "42db61b0-ba7c-48a6-bcba-278225993943",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "430a0b37-eb83-4aa7-a9ef-211816f7ffd2",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "d4c4e739-8ad9-4b24-a7e3-3b7afc18229a",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "5bfd4984-3a0f-4786-80f7-eb40ba323142",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "5e4bdc79-1437-4758-8584-51ddbe2f588f",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-10",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "9b0f6395-1aaf-4c85-87a9-2a939bc37e9a",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "d4ba0fa1-1bba-4a93-917c-e920b3b8af05",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "a52f39ec-6338-4bf0-b1e2-5efeb5e288db",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "5d2ef3b5-3987-4248-9879-8c7853848239",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "5ccb6a00-e7ff-4eb3-8b38-68bf5f688041",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "4eb24298-9979-4dcf-babc-2d72ac129493",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "83aab1af-e1b8-4b46-9a2c-f926cb211246",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "5959b90c-0570-4ffe-a219-df089756b5e4",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "26dce296-2f44-4b52-a889-6e56b53bdd2d",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "9a1b30a8-f12b-46ed-a805-9635ea1248bf",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "3f127a11-ae86-4628-989c-562ed6225898",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "0c81be08-b3d1-4eb1-80d3-69bf7fac3285",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "332264d0-09dc-46dc-aa8e-e08dd92459d5",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "90acd67d-8ef7-4847-be55-e6e931576e05",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "482c9f83-95d7-4ed6-a884-cc82e4ed0c1f",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "0b732a01-f99f-4e4a-8cf8-b380010c33fb",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "08286e56-87ee-4791-ae60-ffad040cb566",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-11",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "88d65c9e-477e-42e4-a197-f3b8a29897a2",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s01",
+      "status": ""
+    },
+    {
+      "id": "c7a45878-a964-49dc-94f5-65ea7fea78f5",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "82e7200f-fc26-4657-a3f3-b0eac6bd0c78",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "d420766c-a483-495c-90c3-7f606ce39fce",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "02cabb84-f218-4bdf-a18f-c4d9b60cdd4e",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "3ab9cc52-8706-4c42-b77b-7d87f2d79f2e",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "683d6066-9ff9-4a79-b977-9acc43f6b860",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "f6b8ecaa-98ab-4100-8661-753405c88723",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "346be944-08a1-4a51-a533-11f986b638f7",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "5ecb60b6-c6b3-41e0-ba38-1d96e5cb6967",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "70e9d055-1a0b-4d87-844b-97e1c419cc66",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "e63fa456-21a5-4b8e-8547-93a045930863",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "a605af50-206c-4458-9d52-91175af64e70",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "0469a7a1-5c77-4c91-9545-24e9451ed649",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "bbb47c21-f86f-4c89-beec-aeadb3706a98",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "d8dc9bc4-ac49-4db1-9856-b204c328ef50",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "8ea9a8c6-f8ec-47a9-a357-4333e3657d8f",
+      "weekId": "32d38e3f-757a-431d-80ee-acb7b2f7a966",
+      "date": "2026-06-15",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "f5c2ecf3-af0a-443b-adb4-4a0cc83cadc7",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "8a42daf3-5b97-4a95-9104-1989889b7aa1",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "3a294346-1ad2-4a07-98bd-bdfcf15b2f92",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "4b94ad23-7736-4d33-81b7-af2dba6170c9",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "848ac178-7cab-46f0-9510-46358285d360",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "cf912682-240d-4121-b411-fcd066594fc2",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "0398619f-5ccd-4592-b95b-a2811685f26e",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "fbeea4af-2180-46b7-b8ae-9cd73321a6d6",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "0cc4b0bc-d877-4542-bff9-efca8431be8a",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "69dcf5c2-ddb5-4dc3-aa13-7f6e05335b7c",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "05eec4da-c64b-4833-9ae2-6fe68f1dacd2",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "9bd894d3-3c27-4ddc-9420-21cd9171027b",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "11952749-bf00-492f-bb37-ad2c3f4a3f79",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "3077a0f2-fb96-43fd-96ef-137ab69dcf05",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "01e954ac-bb3a-47e1-ab1d-c627d6235140",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "4905e996-bc0c-4e25-b095-544fa642150d",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "802d8027-ab07-4d02-8881-d92c42c64c03",
+      "weekId": "ffcb85ad-cd7b-4292-829e-c95d852fc753",
+      "date": "2026-06-10",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "198fa5fb-d92f-4b52-bc4b-e69de6b59fc5",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "6671ef6c-31bb-4128-a1b0-79c25ebd5903",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "4523d52e-3fca-44e1-8f6b-81b4ff6187d1",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "61066fca-471b-4794-a6b3-004cb7bd2c4d",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "da79dbd6-7836-4c03-8966-b458f17e7512",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "2bcb4a2f-9428-4681-a7aa-19bb31a15c7e",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "66aaf01f-0b13-4961-a584-f60d765c738a",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "23e0da17-51b0-417b-ab4b-05d88399f001",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "a45a2751-ff8b-4eb5-90d2-ccbec5fec868",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "cf650187-90d2-40ac-bb46-ff88ef091a10",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "812e2239-e6db-42bd-9058-30dd70ec7b05",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "c1b88983-abc9-420a-bd2e-e99f15fbe58d",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "800483dc-269c-4cd8-8a76-fb34bb3c217e",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "9315c914-b84c-4c47-a2c9-9936e38b466b",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "60c39335-a5d3-4c62-8340-af01a835889f",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "25261244-b7ee-4ebd-8018-cca1687fe0d8",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "bbedbd99-4bf6-485b-a6b7-a7ab4925bbec",
+      "weekId": "f702b0c1-ce2d-4f13-acbc-6e78b52f5bf8",
+      "date": "2026-06-10",
+      "studentId": "sample_s25",
+      "status": "check"
+    },
+    {
+      "id": "fd795e1c-f6b4-43a5-860b-4a451ba2536e",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s02",
+      "status": "check"
+    },
+    {
+      "id": "5f94d3e7-3515-43f7-a804-758152bbd0fe",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s04",
+      "status": "check"
+    },
+    {
+      "id": "6f98ca9d-ad56-42cb-8b61-f76d5b24b88c",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "0004a49b-9dbd-43a0-91df-0d9dcab1313e",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s06",
+      "status": "check"
+    },
+    {
+      "id": "ccc50e4e-4b9a-4bb5-9615-ddfdd65af125",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s08",
+      "status": "check"
+    },
+    {
+      "id": "aca29a5e-52e4-45fa-959e-e43a8ff8c6d7",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s10",
+      "status": "check"
+    },
+    {
+      "id": "975d1d5f-f4c1-483f-912f-3f65c2418163",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "e050f6d8-7825-4ee3-8940-b943b9f48e13",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s12",
+      "status": "check"
+    },
+    {
+      "id": "5c282bcc-b441-4abe-ac82-72a39ae881c4",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s16",
+      "status": "check"
+    },
+    {
+      "id": "35f111cc-990c-4d30-a4a7-7696c39c0ccd",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s14",
+      "status": "check"
+    },
+    {
+      "id": "e52c5f0b-8308-4a26-aabb-d68d746e0cb8",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "8d7f5d7f-a5e2-4edd-a6dc-0c1ffc46ca0e",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s18",
+      "status": "check"
+    },
+    {
+      "id": "3284c8cd-1f87-44d2-bfbb-f7fc1b4ee5d7",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s22",
+      "status": "check"
+    },
+    {
+      "id": "85198905-1939-4185-a453-8e658431c49f",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s20",
+      "status": "check"
+    },
+    {
+      "id": "810896dc-2000-4e96-9af4-6aaab3348b77",
+      "weekId": "ce178c8a-4b3c-4660-8b81-0b54858e5d6d",
+      "date": "2026-06-10",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "2f3956c2-2119-4ee0-82d9-3e4c08779267",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s01",
+      "status": "check"
+    },
+    {
+      "id": "03224910-ea67-437f-b35f-fc3072c3d3f5",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s03",
+      "status": "check"
+    },
+    {
+      "id": "1846a9c6-1f57-4eb6-bc61-284bf237f8e3",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s05",
+      "status": "check"
+    },
+    {
+      "id": "c5441c80-d26b-40ec-bb61-bae2cd612b4e",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s07",
+      "status": "check"
+    },
+    {
+      "id": "8df2d64e-04f2-4af7-bf04-136bbda0f075",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s06",
+      "status": "check"
+    },
+    {
+      "id": "70c50e33-3153-42c2-8b5c-13f9a2e7b960",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s09",
+      "status": "check"
+    },
+    {
+      "id": "60a79bbb-b694-4db7-832c-5fb3af640290",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s11",
+      "status": "check"
+    },
+    {
+      "id": "7dc7146e-38e9-4e6d-96c7-bdb38c4a1ea2",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s13",
+      "status": "check"
+    },
+    {
+      "id": "7bd805a9-c3c4-4353-923b-d5ff3d5aa524",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s12",
+      "status": "check"
+    },
+    {
+      "id": "74ecbbd6-c0bf-49bc-a4fb-5183f76c435d",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s15",
+      "status": "check"
+    },
+    {
+      "id": "5dcafb56-38fa-468e-a715-3728423383d7",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s17",
+      "status": "check"
+    },
+    {
+      "id": "6ce311e8-4414-4992-9baa-be29cb586fce",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s19",
+      "status": "check"
+    },
+    {
+      "id": "6cc4f972-9dd4-4b2a-ace0-e9767f1d0d49",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s18",
+      "status": "check"
+    },
+    {
+      "id": "c17da2d9-2ba0-43b4-b0dc-10bd65e3e6dd",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s21",
+      "status": "check"
+    },
+    {
+      "id": "fb13d118-4e9a-4d7a-ac17-60f2d3d7d34f",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s23",
+      "status": "check"
+    },
+    {
+      "id": "a96b1d98-e5f5-4407-9a7c-a0b91c3a0307",
+      "weekId": "ce1d574d-4ff6-432b-8a3f-cf43f55a47fd",
+      "date": "2026-06-10",
+      "studentId": "sample_s25",
+      "status": "check"
+    }
+  ],
+  "recitations": [
+    {
+      "id": "310e7c97-4d99-4eae-b770-70ceead32fae",
+      "studentId": "sample_s01",
+      "subjectId": "sub_math",
+      "date": "2026-06-10",
+      "amount": 10,
+      "remarks": "",
+      "createdAt": "2026-06-10T04:17:31.859Z",
+      "createdBy": "u_admin"
+    },
+    {
+      "id": "1d3987a0-4262-45c7-be3f-8675aa4ae2c9",
+      "studentId": "sample_s01",
+      "subjectId": "sub_math",
+      "date": "2026-06-10",
+      "amount": 1,
+      "remarks": "bonus simulation",
+      "createdAt": "2026-06-10T04:24:43.080Z",
+      "createdBy": "u_admin"
+    }
+  ],
+  "activities": [
+    {
+      "id": "9e800ad8-201a-4ef3-9df7-15bf3629c4c8",
+      "title": "Activity 1",
+      "subjectId": "sub_math",
+      "dateCreated": "2026-06-10",
+      "deadline": "2026-06-10",
+      "type": "Simple",
+      "remarks": "",
+      "submissions": [
+        {
+          "studentId": "sample_s01",
+          "submitted": true,
+          "dateSubmitted": "2026-06-15",
+          "remarks": ""
+        },
+        {
+          "studentId": "sample_s03",
+          "submitted": false,
+          "dateSubmitted": "",
+          "remarks": ""
+        }
+      ],
+      "createdAt": "2026-06-10T03:33:27.960Z",
+      "createdBy": "u_admin"
+    },
+    {
+      "id": "f500907d-d5ce-4e68-a034-715ef9769b69",
+      "title": "Activity 2",
+      "subjectId": "sub_math",
+      "dateCreated": "2026-06-10",
+      "deadline": "2026-06-10",
+      "type": "Simple",
+      "remarks": "",
+      "submissions": [],
+      "createdAt": "2026-06-10T03:37:34.587Z",
+      "createdBy": "u_admin"
+    }
+  ],
+  "shopItems": [
+    {
+      "id": "item_hint",
+      "tier": "Low",
+      "name": "Hint During Quiz",
+      "cost": 50,
+      "notes": "1 per quiz"
+    },
+    {
+      "id": "item_seat_choice",
+      "tier": "Low",
+      "name": "Seat Choice (1 Day)",
+      "cost": 80,
+      "notes": ""
+    },
+    {
+      "id": "item_candy_voucher",
+      "tier": "Low",
+      "name": "Candy Voucher",
+      "cost": 100,
+      "notes": ""
+    },
+    {
+      "id": "item_homework_extension",
+      "tier": "Low",
+      "name": "Homework Extension (1 Day)",
+      "cost": 100,
+      "notes": "2 per term"
+    },
+    {
+      "id": "item_music_seatwork",
+      "tier": "Low",
+      "name": "Listen to Music During Seatwork (1 Class)",
+      "cost": 150,
+      "notes": ""
+    },
+    {
+      "id": "item_quiz_question",
+      "tier": "Low",
+      "name": "Ask One Possible Question from Upcoming Quiz",
+      "cost": 200,
+      "notes": ""
+    },
+    {
+      "id": "item_quiz_topic_reveal",
+      "tier": "Low",
+      "name": "Quiz Topic Reveal",
+      "cost": 300,
+      "notes": "1 per quiz"
+    },
+    {
+      "id": "item_plus_1_quiz",
+      "tier": "Mid",
+      "name": "+1 Quiz Point",
+      "cost": 250,
+      "notes": "3 per term"
+    },
+    {
+      "id": "item_homework_pass",
+      "tier": "Mid",
+      "name": "Homework Pass",
+      "cost": 300,
+      "notes": "2 per term"
+    },
+    {
+      "id": "item_first_group_pick",
+      "tier": "Mid",
+      "name": "First Group Pick",
+      "cost": 350,
+      "notes": ""
+    },
+    {
+      "id": "item_dj_day",
+      "tier": "Mid",
+      "name": "DJ for the Day (Choose Background Music)",
+      "cost": 350,
+      "notes": ""
+    },
+    {
+      "id": "item_retake_quiz_item",
+      "tier": "Mid",
+      "name": "Retake One Quiz Item",
+      "cost": 400,
+      "notes": "1 per quiz"
+    },
+    {
+      "id": "item_major_activity_extension",
+      "tier": "Mid",
+      "name": "Major Activity Extension (1 Day)",
+      "cost": 400,
+      "notes": "2 per term"
+    },
+    {
+      "id": "item_snack_pass",
+      "tier": "Mid",
+      "name": "Snack Pass",
+      "cost": 800,
+      "notes": ""
+    },
+    {
+      "id": "item_plus_2_quiz",
+      "tier": "High",
+      "name": "+2 Quiz Points",
+      "cost": 700,
+      "notes": ""
+    },
+    {
+      "id": "item_replace_lowest_quiz",
+      "tier": "High",
+      "name": "Replace Lowest Quiz Score",
+      "cost": 1000,
+      "notes": "1 per term"
+    },
+    {
+      "id": "item_activity_retry",
+      "tier": "High",
+      "name": "Activity Retry Pass",
+      "cost": 1200,
+      "notes": "1 per term"
+    },
+    {
+      "id": "item_quiz_correction",
+      "tier": "High",
+      "name": "Quiz Correction Pass",
+      "cost": 1500,
+      "notes": "1 per term"
+    },
+    {
+      "id": "item_replace_lowest_activity",
+      "tier": "Premium",
+      "name": "Replace Lowest Activity Score",
+      "cost": 2000,
+      "notes": "1 per term"
+    },
+    {
+      "id": "item_academic_shield",
+      "tier": "Premium",
+      "name": "Academic Shield (Wild Card Pass)",
+      "cost": 2500,
+      "notes": "Choose one high-tier reward for free; 1 per term"
+    }
+  ],
+  "sales": [],
+  "requests": [],
+  "sections": [
+    "A",
+    "B",
+    "C"
+  ]
+}
