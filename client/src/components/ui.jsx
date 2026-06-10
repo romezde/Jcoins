@@ -61,7 +61,7 @@ export function Table({ columns, rows, pageSize = 10 }) {
   }, [rows.length]);
 
   return <>
-    <div className="table-wrap"><table><thead><tr>{columns.map((c) => <th key={String(c)}>{c}</th>)}</tr></thead><tbody>{visibleRows.length ? visibleRows.map((r, i) => <tr key={start + i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>) : <tr><td colSpan={columns.length}>No records yet.</td></tr>}</tbody></table></div>
+    <div className="table-wrap"><table><thead><tr>{columns.map((c) => <th key={String(c)}>{c}</th>)}</tr></thead><tbody>{visibleRows.length ? visibleRows.map((r, i) => <tr key={start + i}>{r.map((c, j) => <td key={j} data-label={String(columns[j] || "")}>{c}</td>)}</tr>) : <tr><td className="empty-cell" colSpan={columns.length}>No records yet.</td></tr>}</tbody></table></div>
     {rows.length > pageSize && <div className="pagination-bar">
       <span>Showing {start + 1}-{Math.min(start + pageSize, rows.length)} of {rows.length}</span>
       <div className="pagination-actions">
@@ -92,7 +92,7 @@ export function DropdownChecklist({ label = "Select", items, selected, onChange,
   const toggle = (id) => onChange(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
   const names = items.filter((item) => ids.includes(item.id)).map((item) => item.name);
   const summary = names.length ? names.length <= 2 ? names.join(", ") : `${names.length} selected` : "None selected";
-  return <div className={`dropdown-checklist ${compact ? "dropdown-checklist-compact" : ""}`}>
+  return <div className={`dropdown-checklist ${compact ? "dropdown-checklist-compact" : ""} ${open ? "dropdown-checklist-open" : ""}`}>
     {!compact && <label>{label}</label>}
     <button type="button" className="soft dropdown-checklist-trigger" onClick={() => setOpen(!open)}>
       <span>{summary}</span>
