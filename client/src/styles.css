@@ -12,6 +12,11 @@
   --violet: #a78bfa;
 }
 * { box-sizing: border-box; }
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   min-height: 100vh;
@@ -21,6 +26,22 @@ body {
     radial-gradient(circle at 20% 10%, #164e63, transparent 28%),
     radial-gradient(circle at 80% 0, #713f12, transparent 25%),
     var(--bg);
+}
+.app-shell,
+.main-pane,
+.topbar,
+.admin-shell,
+.dashboard-grid,
+.panel,
+.leaderboard,
+.profile,
+.profile-card,
+.dashboard-economy,
+.metric-strip,
+.filter-bar,
+.table-wrap {
+  min-width: 0;
+  max-width: 100%;
 }
 button, input, select { font: inherit; }
 button {
@@ -394,6 +415,7 @@ input::placeholder {
   margin: 0;
   color: var(--muted);
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 .economy-side {
   position: relative;
@@ -510,7 +532,8 @@ input::placeholder {
   padding: 0 12px;
   color: #cffafe;
   font-weight: 900;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .table-wrap {
   width: 100%;
@@ -558,6 +581,9 @@ th {
 }
 td {
   color: var(--text);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 td input, td select {
   min-width: 130px;
@@ -831,6 +857,7 @@ td button {
   display: grid;
   gap: 6px;
   min-width: 210px;
+  max-width: 100%;
 }
 .dropdown-checklist > label {
   color: var(--muted);
@@ -841,6 +868,7 @@ td button {
   justify-content: space-between;
   min-height: 42px;
   text-align: left;
+  min-width: 0;
 }
 .dropdown-checklist-trigger span {
   overflow: hidden;
@@ -896,6 +924,73 @@ td button {
   padding: 5px 7px;
   font-size: 11px;
 }
+@media (max-width: 1024px) {
+  table {
+    min-width: 0;
+  }
+  .table-wrap {
+    overflow: visible;
+  }
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    display: block;
+  }
+  thead {
+    display: none;
+  }
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+  tr {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(15, 23, 42, .5);
+  }
+  td {
+    display: grid;
+    grid-template-columns: minmax(96px, 35%) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    padding: 9px 0;
+    overflow-wrap: anywhere;
+  }
+  td:last-child {
+    border-bottom: 0;
+  }
+  td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 950;
+    text-transform: uppercase;
+  }
+  td.empty-cell {
+    display: block;
+    border: 0;
+  }
+  td.empty-cell::before {
+    content: "";
+    display: none;
+  }
+  td input,
+  td select,
+  td .dropdown-checklist {
+    min-width: 0;
+    width: 100%;
+  }
+  td .inline {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 820px) {
   body {
     background:
@@ -1063,70 +1158,6 @@ td button {
   input, select {
     min-width: 0;
     font-size: 16px;
-  }
-  table {
-    min-width: 0;
-  }
-  .table-wrap {
-    overflow: visible;
-  }
-  table,
-  thead,
-  tbody,
-  tr,
-  th,
-  td {
-    display: block;
-  }
-  thead {
-    display: none;
-  }
-  tbody {
-    display: grid;
-    gap: 10px;
-  }
-  tr {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 10px;
-    background: rgba(15, 23, 42, .5);
-  }
-  td {
-    display: grid;
-    grid-template-columns: minmax(96px, 35%) minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid rgba(255,255,255,.08);
-    padding: 9px 0;
-    overflow-wrap: anywhere;
-  }
-  td:last-child {
-    border-bottom: 0;
-  }
-  td::before {
-    content: attr(data-label);
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 950;
-    text-transform: uppercase;
-  }
-  td.empty-cell {
-    display: block;
-    border: 0;
-  }
-  td.empty-cell::before {
-    content: "";
-    display: none;
-  }
-  td input,
-  td select,
-  td .dropdown-checklist {
-    min-width: 0;
-    width: 100%;
-  }
-  td .inline {
-    display: grid;
-    grid-template-columns: 1fr;
   }
   .dropdown-checklist {
     min-width: 0;
