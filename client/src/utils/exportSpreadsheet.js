@@ -14,6 +14,7 @@ export function exportSpreadsheet(filename, headers, rows, sheetName = "Export")
     .absent { background: #fecaca; color: #991b1b; }
     .present { background: #dcfce7; color: #166534; font-weight: 700; text-align: center; }
     .late { background: #fef3c7; color: #92400e; font-weight: 700; text-align: center; }
+    .summary { background: #e0f2fe; color: #075985; font-weight: 700; text-align: center; }
   </style>
 </head>
 <body>

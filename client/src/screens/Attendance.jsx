@@ -70,7 +70,7 @@ function exportAttendanceMonth(group, data, filter) {
   if (!group) return;
   const weeks = group.weeks.filter((week) => filter.subjectId === "all" || week.subjectId === filter.subjectId);
   const dates = [...new Set(weeks.flatMap((week) => week.dates || []))].sort();
-  const headers = ["Name", ...dates];
+  const headers = ["Name", ...dates, "Days Present", "Days Late", "Days Absent", "Total JCoins Earned"];
   const includeSubject = filter.subjectId === "all";
   const includeSection = filter.section === "all";
   if (includeSection) headers.splice(0, 0, "Section");
@@ -92,7 +92,14 @@ function exportAttendanceMonth(group, data, filter) {
       if (includeSubject) row.push(subjectName);
       if (includeSection) row.push(student.section || "No section");
       row.push(student.name);
-      dates.forEach((date) => row.push(attendanceExportCell(data, weeksForSubject, student.id, date)));
+      const summary = { present: 0, late: 0, absent: 0, earned: 0 };
+      dates.forEach((date) => row.push(attendanceExportCell(data, weeksForSubject, student.id, date, summary)));
+      row.push(
+        { value: summary.present, className: "summary" },
+        { value: summary.late, className: "summary" },
+        { value: summary.absent, className: "summary" },
+        { value: summary.earned, className: "summary" }
+      );
       rows.push(row);
     });
   });
@@ -101,12 +108,21 @@ function exportAttendanceMonth(group, data, filter) {
   exportSpreadsheet(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.xls`, headers, rows, group.label);
 }
 
-function attendanceExportCell(data, weeks, studentId, date) {
+function attendanceExportCell(data, weeks, studentId, date, summary) {
   const week = weeks.find((item) => (item.dates || []).includes(date));
   if (!week) return "";
   const status = data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
-  if (status === "check") return { value: "CHECK", className: "present" };
-  if (status === "late") return { value: "-", className: "late" };
+  if (status === "check") {
+    summary.present += 1;
+    summary.earned += Number(data.settings.attendance.onTimePoints || 0);
+    return { value: "✓", className: "present" };
+  }
+  if (status === "late") {
+    summary.late += 1;
+    summary.earned += Number(data.settings.attendance.latePoints || 0);
+    return { value: "-", className: "late" };
+  }
+  summary.absent += 1;
   return { value: "", className: "absent" };
 }
 
