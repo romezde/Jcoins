@@ -781,12 +781,28 @@ app.post("/api/admin/attendance/weeks/:id/dates", auth, requireRole("admin", "te
   const db = await readDb();
   const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
   if (!week) return res.status(404).json({ error: "Week not found." });
+  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
   const date = req.body.date || today();
   if (!week.dates.includes(date)) week.dates.push(date);
   week.dates.sort();
   syncWeekBonuses(db, week, req.user.id);
   await writeDb(db);
   res.json({ week });
+});
+
+app.delete("/api/admin/attendance/weeks/:id/dates/:date", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
+  if (!week) return res.status(404).json({ error: "Week not found." });
+  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  const date = decodeURIComponent(req.params.date);
+  const removedRecordIds = new Set(db.attendanceRecords.filter((r) => r.weekId === week.id && r.date === date).map((r) => r.id));
+  week.dates = (week.dates || []).filter((d) => d !== date);
+  db.attendanceRecords = db.attendanceRecords.filter((r) => !(r.weekId === week.id && r.date === date));
+  db.transactions = db.transactions.filter((t) => !(t.meta?.kind === "attendance" && removedRecordIds.has(t.meta.recordId)));
+  syncWeekBonuses(db, week, req.user.id);
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.put("/api/admin/attendance/records", auth, requireRole("admin", "teacher"), async (req, res) => {
