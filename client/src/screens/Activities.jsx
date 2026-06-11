@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { post, put, today } from "../api.js";
+import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function Activities({ data, run }) {
@@ -30,7 +30,7 @@ export default function Activities({ data, run }) {
         <Field label="Search Activities" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
         <div className="filter-count">{filteredActivities.length} activit{filteredActivities.length === 1 ? "y" : "ies"}</div>
       </div>
-      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Remarks"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, a.deadline, a.type, a.remarks])} />
+      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, a.deadline, a.type, a.remarks, <button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button>])} />
     </Panel>
     {filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} run={run} />)}
   </div>;
@@ -40,7 +40,7 @@ function ActivityCard({ activity, run }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const rows = activity.rows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.remarks, row.submitted ? "submitted" : "pending"].some((value) => String(value || "").toLowerCase().includes(q)));
-  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<strong>{activity.tracker} submitted</strong>}>
+  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{activity.tracker} submitted</strong><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
     <p className="muted-line">{activity.subjectName} | {activity.type} | deadline {activity.deadline} | base {activity.basePoints} JC</p>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
@@ -55,4 +55,9 @@ function ActivityCard({ activity, run }) {
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { ...r, remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
+}
+
+function deleteActivity(activity, run) {
+  return confirm(`Delete ${activity.title}? This removes submissions and JCoins earned from this activity.`)
+    && run(() => del(`/admin/activities/${activity.id}`), "Activity deleted");
 }

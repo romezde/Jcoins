@@ -915,6 +915,17 @@ app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (
   res.status(201).json({ activity });
 });
 
+app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  db.activities = db.activities.filter((a) => a.id !== activity.id);
+  db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id));
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
 app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const activity = db.activities.find((a) => a.id === req.params.id);
