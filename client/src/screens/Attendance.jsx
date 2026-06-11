@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
 
 export default function Attendance({ data, run }) {
   const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1" });
   const [dateByWeek, setDateByWeek] = useState({});
-  const [showAllWeeks, setShowAllWeeks] = useState(false);
+  const [activeMonth, setActiveMonth] = useState("");
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
-  const visibleWeeks = showAllWeeks ? sortedWeeks : sortedWeeks.slice(0, 4);
-  const hiddenCount = Math.max(0, sortedWeeks.length - visibleWeeks.length);
+  const monthGroups = useMemo(() => groupWeeksByMonth(sortedWeeks), [data.attendanceWeeks]);
+  const currentMonth = activeMonth && monthGroups.some((group) => group.key === activeMonth) ? activeMonth : monthGroups[0]?.key || "";
+  const visibleWeeks = monthGroups.find((group) => group.key === currentMonth)?.weeks || [];
 
   return <div className="dashboard-grid">
     <ActionModal title="Add Attendance Week">
@@ -18,15 +19,41 @@ export default function Attendance({ data, run }) {
         <button>Add Week</button>
       </form>
     </ActionModal>
+    {monthGroups.length > 0 && <section className="panel wide attendance-month-panel">
+      <div className="section-head">
+        <div className="section-title">Attendance Month</div>
+        <span className="filter-count">{visibleWeeks.length} week{visibleWeeks.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="tabs attendance-month-tabs">
+        {monthGroups.map((group) => <button type="button" key={group.key} className={currentMonth === group.key ? "active" : ""} onClick={() => setActiveMonth(group.key)}>{group.label}</button>)}
+      </div>
+    </section>}
     {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
       <AttendanceTable week={w} data={data} run={run} />
     </Panel>)}
-    {sortedWeeks.length > 4 && <section className="panel wide"><div className="button-row"><button className="soft" onClick={() => setShowAllWeeks(!showAllWeeks)}>{showAllWeeks ? "Hide old weeks" : `Show all weeks (${hiddenCount} hidden)`}</button></div></section>}
+    {!monthGroups.length && <section className="panel wide">No attendance weeks yet.</section>}
   </div>;
 }
 
 function weekSortValue(week) {
-  return week.createdAt || "";
+  return weekMonthDate(week) || week.createdAt || "";
+}
+
+function weekMonthDate(week) {
+  return [...(week.dates || [])].sort()[0] || week.createdAt || "";
+}
+
+function groupWeeksByMonth(weeks) {
+  const map = new Map();
+  weeks.forEach((week) => {
+    const raw = weekMonthDate(week);
+    const date = raw ? new Date(`${String(raw).slice(0, 10)}T00:00:00`) : new Date();
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const label = date.toLocaleString(undefined, { month: "long", year: "numeric" });
+    if (!map.has(key)) map.set(key, { key, label, weeks: [] });
+    map.get(key).weeks.push(week);
+  });
+  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
 }
 
 function AttendanceTable({ week, data, run }) {

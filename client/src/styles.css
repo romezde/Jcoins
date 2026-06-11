@@ -316,6 +316,12 @@ input::placeholder {
 .appearance-tabs {
   margin-bottom: 14px;
 }
+.attendance-month-panel {
+  padding-bottom: 10px;
+}
+.attendance-month-tabs {
+  padding-bottom: 4px;
+}
 .stacked-panel {
   display: grid;
   gap: 16px;
