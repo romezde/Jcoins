@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Shuffle } from "lucide-react";
+import { request } from "../api.js";
+import { ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { Field, Select } from "../components/ui.jsx";
 
 const colors = ["#facc15", "#22d3ee", "#fb7185", "#86efac", "#a78bfa", "#fb923c", "#38bdf8", "#f472b6"];
@@ -8,6 +10,7 @@ export default function NameWheel({ data }) {
   const [section, setSection] = useState("all");
   const [search, setSearch] = useState("");
   const [winner, setWinner] = useState(null);
+  const [winnerPhotoLoading, setWinnerPhotoLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
 
@@ -30,11 +33,18 @@ export default function NameWheel({ data }) {
     const currentMod = ((rotation % 360) + 360) % 360;
     const nextRotation = rotation + 1440 + ((target - currentMod + 360) % 360);
     setWinner(null);
+    setWinnerPhotoLoading(false);
     setSpinning(true);
     setRotation(nextRotation);
     window.setTimeout(() => {
-      setWinner(students[chosenIndex]);
+      const chosen = students[chosenIndex];
+      setWinner(chosen);
       setSpinning(false);
+      setWinnerPhotoLoading(true);
+      request(`/admin/students/${chosen.id}/profile-photo`)
+        .then((result) => setWinner((current) => current?.id === chosen.id ? { ...current, profilePhoto: result.profilePhoto || "" } : current))
+        .catch(() => {})
+        .finally(() => setWinnerPhotoLoading(false));
     }, 3300);
   }
 
@@ -68,8 +78,10 @@ export default function NameWheel({ data }) {
     {winner && <div className="modal-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card wheel-result-modal">
         <div className="section-title">Chosen Student</div>
+        <ProfilePhotoFrame student={winner} className="wheel-winner-photo" />
+        {winnerPhotoLoading && <p className="photo-loading">Loading photo...</p>}
         <div className="winner-name">{winner.name}</div>
-        <p>{winner.section ? `Section ${winner.section}` : "No section"} · {winner.currentJCoins?.toLocaleString?.() || 0} JCoins</p>
+        <p>{winner.section ? `Section ${winner.section}` : "No section"} - {winner.currentJCoins?.toLocaleString?.() || 0} JCoins</p>
         <div className="button-row">
           <button type="button" onClick={() => setWinner(null)}>Close</button>
           <button type="button" className="soft" onClick={spin}>Spin Again</button>

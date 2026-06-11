@@ -726,6 +726,15 @@ app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async 
   res.json({ student });
 });
 
+app.get("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const student = db.students.find((s) => s.id === req.params.id);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  res.json({ profilePhoto: student.profilePhoto || "" });
+});
+
 app.post("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const student = db.students.find((s) => s.id === req.params.id);
