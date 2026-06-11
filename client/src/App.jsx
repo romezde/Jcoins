@@ -70,11 +70,20 @@ function RoleApp({ session, logout }) {
   const fallback = session.user.role === "student" || session.user.role === "display" ? "Leaderboard" : "Dashboard";
   const [active, setActive] = useState(() => tabFromPath(tabs, fallback));
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
   async function load() {
-    setData(await request(session.user.role === "student" ? "/student/me" : session.user.role === "display" ? "/leaderboard" : "/admin/overview"));
+    try {
+      setLoadError("");
+      setData(await request(session.user.role === "student" ? "/student/me" : session.user.role === "display" ? "/leaderboard" : "/admin/overview"));
+    } catch (err) {
+      setLoadError(err.message);
+      if (["Invalid token", "Missing token", "Forbidden"].includes(err.message)) {
+        logout();
+      }
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -116,7 +125,7 @@ function RoleApp({ session, logout }) {
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
       <main className="admin-shell">
         {message && <div className="notice">{message}</div>}
-        {!normalized ? <section className="panel">Loading...</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
+        {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
       </main>
     </div>
   </div>;

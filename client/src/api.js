@@ -15,8 +15,11 @@ export function tabFromPath(tabs, fallback) {
 
 export function request(path, options = {}) {
   const token = localStorage.getItem("jcoins_token");
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20000);
   return fetch(`${API}${path}`, {
     ...options,
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -26,6 +29,11 @@ export function request(path, options = {}) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
+  }).catch((err) => {
+    if (err.name === "AbortError") throw new Error("Server took too long to respond. Please refresh and try again.");
+    throw err;
+  }).finally(() => {
+    window.clearTimeout(timeout);
   });
 }
 
