@@ -617,6 +617,64 @@ app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (re
   res.status(201).json({ student });
 });
 
+app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const rows = Array.isArray(req.body.students) ? req.body.students : [];
+  if (!rows.length) return res.status(400).json({ error: "Upload at least one student row." });
+  if (rows.length > 300) return res.status(400).json({ error: "Import up to 300 students at a time." });
+
+  const existingUsernames = new Set(db.users.map((user) => user.username.toLowerCase()));
+  const incomingUsernames = new Set();
+  const allowedSubjects = req.user.role === "teacher" ? new Set(req.user.subjectIds || []) : null;
+  const allowedSections = req.user.role === "teacher" ? new Set(req.user.sectionIds || []) : null;
+  const subjectLookup = new Map(db.subjects.flatMap((subject) => [
+    [subject.id.toLowerCase(), subject.id],
+    [subject.name.toLowerCase(), subject.id]
+  ]));
+
+  let prepared;
+  try {
+    prepared = rows.map((row, index) => {
+      const rowNumber = index + 2;
+      const name = String(row.name || "").trim();
+      const username = String(row.username || "").trim();
+      const tempPassword = String(row.tempPassword || "").trim();
+      const section = String(row.section || "").trim();
+      const startingJCoins = Number(row.startingJCoins || 0);
+      const requestedSubjects = Array.isArray(row.subjectIds) && row.subjectIds.length
+        ? row.subjectIds
+        : String(row.subjects || "").split(/[;,]/).map((value) => value.trim()).filter(Boolean);
+      const subjectIds = requestedSubjects.map((value) => subjectLookup.get(String(value).toLowerCase()) || "");
+
+      if (!name) throw new Error(`Row ${rowNumber}: name is required.`);
+      if (!username) throw new Error(`Row ${rowNumber}: username is required.`);
+      if (!tempPassword) throw new Error(`Row ${rowNumber}: temporary password is required.`);
+      if (existingUsernames.has(username.toLowerCase()) || incomingUsernames.has(username.toLowerCase())) throw new Error(`Row ${rowNumber}: username "${username}" is already used.`);
+      if (!Number.isFinite(startingJCoins)) throw new Error(`Row ${rowNumber}: starting JCoins must be a number.`);
+      if (!subjectIds.length || subjectIds.some((id) => !id)) throw new Error(`Row ${rowNumber}: enter valid subject names or IDs.`);
+      if (allowedSections?.size && !allowedSections.has(section)) throw new Error(`Row ${rowNumber}: section "${section}" is outside your assigned class scope.`);
+      if (allowedSubjects && subjectIds.some((id) => !allowedSubjects.has(id))) throw new Error(`Row ${rowNumber}: one or more subjects are outside your assigned class scope.`);
+      incomingUsernames.add(username.toLowerCase());
+      return { name, username, tempPassword, section, startingJCoins, subjectIds };
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  const created = [];
+  for (const item of prepared) {
+    const student = { id: randomUUID(), name: item.name, section: item.section, subjectIds: item.subjectIds, createdAt: now() };
+    if (student.section && !db.sections.includes(student.section)) db.sections.push(student.section);
+    db.students.push(student);
+    db.users.push({ id: randomUUID(), username: item.username, passwordHash: await bcrypt.hash(item.tempPassword, 10), role: "student", mustChangePassword: true, studentId: student.id, subjectIds: [], sectionIds: [] });
+    db.transactions.push(tx(student.id, "starting", item.startingJCoins, "Starting balance", now(), req.user.id));
+    created.push({ id: student.id, name: student.name, username: item.username });
+  }
+  db.sections.sort();
+  await writeDb(db);
+  res.status(201).json({ createdCount: created.length, created });
+});
+
 app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const student = db.students.find((s) => s.id === req.params.id);
