@@ -15,6 +15,7 @@ import Shop, { StudentShop } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
 import Approvals from "./screens/Approvals.jsx";
 import Settings from "./screens/Settings.jsx";
+import NameWheel from "./screens/NameWheel.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
 
 function useSession() {
@@ -33,7 +34,7 @@ function useSession() {
   return { session, save, logout };
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, onPublicLeaderboard }) {
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
   async function submit(e) {
@@ -43,7 +44,7 @@ function Login({ onLogin }) {
   }
   return <main className="login"><section className="login-panel">
     <div className="brand-mark"><JCoinLogo size={42} /> <span>JCoin</span></div><h1>JCoins Arena</h1><p>Teacher dashboard, student profiles, and a live quest board.</p>
-    <form onSubmit={submit}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button>Enter Arena</button></form>
+    <form onSubmit={submit}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button>Enter Arena</button><button type="button" className="soft" onClick={onPublicLeaderboard}>View Leaderboard</button></form>
   </section></main>;
 }
 
@@ -60,9 +61,39 @@ function ChangePassword({ onDone }) {
 
 export default function App() {
   const { session, save, logout } = useSession();
-  if (!session) return <Login onLogin={save} />;
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  function goPublicLeaderboard() {
+    window.history.pushState({}, "", "/leaderboard");
+    setPath("/leaderboard");
+  }
+  function goLogin() {
+    window.history.pushState({}, "", "/");
+    setPath("/");
+  }
+  if (!session && path.replace(/^\/+/, "").toLowerCase() === "leaderboard") return <PublicLeaderboard onLogin={goLogin} />;
+  if (!session) return <Login onLogin={save} onPublicLeaderboard={goPublicLeaderboard} />;
   if (session.user.mustChangePassword) return <ChangePassword onDone={save} />;
   return <RoleApp session={session} logout={logout} />;
+}
+
+function PublicLeaderboard({ onLogin }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    request("/leaderboard").then(setData).catch((err) => setError(err.message));
+  }, []);
+  return <main className="public-board">
+    <div className="public-board-top">
+      <div className="brand-mark"><JCoinLogo size={34} /> <span>JCoin</span></div>
+      <button type="button" onClick={onLogin}>Login</button>
+    </div>
+    {error ? <section className="panel"><div className="section-title">Could not load leaderboard</div><p className="error">{error}</p></section> : data ? <Leaderboard students={data.students || []} /> : <section className="panel">Loading leaderboard...</section>}
+  </main>;
 }
 
 function RoleApp({ session, logout }) {
@@ -183,9 +214,10 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;
+  if (tab === "Name Wheel") return <NameWheel data={data} />;
   if (tab === "History") return <StudentHistory data={data} />;
   if (tab === "Profile") return role === "student" ? <StudentProfile data={data} /> : <TeacherProfile data={data} />;
   if (tab === "Reports") return <Reports data={data} />;
-  if (tab === "Account") return <Account />;
+  if (tab === "Account") return <Account data={data} role={role} />;
   return <section className="panel">Prototype screen coming next.</section>;
 }
