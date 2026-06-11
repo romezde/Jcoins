@@ -18,7 +18,7 @@ export default function Attendance({ data, run }) {
         <button>Add Week</button>
       </form>
     </ActionModal>
-    {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button></div>}>
+    {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
       <AttendanceTable week={w} data={data} run={run} />
     </Panel>)}
     {sortedWeeks.length > 4 && <section className="panel wide"><div className="button-row"><button className="soft" onClick={() => setShowAllWeeks(!showAllWeeks)}>{showAllWeeks ? "Hide old weeks" : `Show all weeks (${hiddenCount} hidden)`}</button></div></section>}

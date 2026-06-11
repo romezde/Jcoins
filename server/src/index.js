@@ -492,6 +492,16 @@ function syncWeekBonuses(db, week, userId = "system") {
   });
 }
 
+function removeAttendanceWeek(db, weekId) {
+  const removedRecordIds = new Set(db.attendanceRecords.filter((record) => record.weekId === weekId).map((record) => record.id));
+  db.attendanceWeeks = db.attendanceWeeks.filter((week) => week.id !== weekId);
+  db.attendanceRecords = db.attendanceRecords.filter((record) => record.weekId !== weekId);
+  db.transactions = db.transactions.filter((transaction) => {
+    const meta = transaction.meta || {};
+    return meta.weekId !== weekId && !removedRecordIds.has(meta.recordId);
+  });
+}
+
 function filteredOverview(db, user) {
   const students = scopeStudents(db, user);
   const studentIds = new Set(students.map((s) => s.id));
@@ -616,8 +626,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   db.subjects = db.subjects.filter((s) => s.id !== subjectId);
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
   db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
-  db.attendanceWeeks = db.attendanceWeeks.filter((week) => week.subjectId !== subjectId);
-  db.attendanceRecords = db.attendanceRecords.filter((record) => !removedWeekIds.has(record.weekId));
+  removedWeekIds.forEach((weekId) => removeAttendanceWeek(db, weekId));
   db.recitations = db.recitations.filter((recitation) => recitation.subjectId !== subjectId);
   db.activities = db.activities.filter((activity) => activity.subjectId !== subjectId);
   db.transactions = db.transactions.filter((transaction) => {
@@ -799,10 +808,21 @@ app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), asy
 
 app.post("/api/admin/attendance/weeks", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
+  if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
   const week = { id: randomUUID(), subjectId: req.body.subjectId, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: [], createdAt: now() };
   db.attendanceWeeks.push(week);
   await writeDb(db);
   res.status(201).json({ week });
+});
+
+app.delete("/api/admin/attendance/weeks/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
+  if (!week) return res.status(404).json({ error: "Week not found." });
+  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  removeAttendanceWeek(db, week.id);
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.post("/api/admin/attendance/weeks/:id/dates", auth, requireRole("admin", "teacher"), async (req, res) => {
