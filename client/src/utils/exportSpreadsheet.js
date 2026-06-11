@@ -1,7 +1,7 @@
 export function exportSpreadsheet(filename, headers, rows, sheetName = "Export") {
   const table = [
     `<tr>${headers.map((header) => `<th>${htmlCell(header)}</th>`).join("")}</tr>`,
-    ...rows.map((row) => `<tr>${row.map((cell) => `<td>${htmlCell(cell)}</td>`).join("")}</tr>`)
+    ...rows.map((row) => `<tr>${row.map((cell) => `<td${cellClass(cell)}>${htmlCell(cellValue(cell))}</td>`).join("")}</tr>`)
   ].join("");
   const workbook = `<!doctype html>
 <html>
@@ -11,6 +11,9 @@ export function exportSpreadsheet(filename, headers, rows, sheetName = "Export")
     table { border-collapse: collapse; font-family: Arial, sans-serif; }
     th { background: #facc15; color: #111827; font-weight: 700; }
     th, td { border: 1px solid #94a3b8; padding: 6px 8px; white-space: nowrap; }
+    .absent { background: #fecaca; color: #991b1b; }
+    .present { background: #dcfce7; color: #166534; font-weight: 700; text-align: center; }
+    .late { background: #fef3c7; color: #92400e; font-weight: 700; text-align: center; }
   </style>
 </head>
 <body>
@@ -38,4 +41,13 @@ function htmlCell(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function cellValue(cell) {
+  return cell && typeof cell === "object" && "value" in cell ? cell.value : cell;
+}
+
+function cellClass(cell) {
+  if (!cell || typeof cell !== "object" || !cell.className) return "";
+  return ` class="${htmlCell(cell.className)}"`;
 }

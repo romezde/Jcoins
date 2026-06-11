@@ -69,44 +69,45 @@ function groupWeeksByMonth(weeks) {
 function exportAttendanceMonth(group, data, filter) {
   if (!group) return;
   const weeks = group.weeks.filter((week) => filter.subjectId === "all" || week.subjectId === filter.subjectId);
-  const rows = [];
+  const dates = [...new Set(weeks.flatMap((week) => week.dates || []))].sort();
+  const headers = ["Name", ...dates];
+  const includeSubject = filter.subjectId === "all";
+  const includeSection = filter.section === "all";
+  if (includeSection) headers.splice(0, 0, "Section");
+  if (includeSubject) headers.splice(0, 0, "Subject");
+  const subjectWeeks = new Map();
   weeks.forEach((week) => {
-    const students = data.students
-      .filter((student) => (student.subjectIds || []).includes(week.subjectId))
-      .filter((student) => filter.section === "all" || (filter.section === "__none" ? !student.section : student.section === filter.section));
-    const dates = week.dates?.length ? week.dates : [""];
-    students.forEach((student) => {
-      dates.forEach((date) => {
-        const record = data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === student.id && r.date === date);
-        const status = record?.status || "";
-        rows.push([
-          group.label,
-          week.subjectName,
-          student.section || "",
-          week.title,
-          student.name,
-          date,
-          statusLabel(status),
-          attendancePoints(status, data.settings)
-        ]);
-      });
+    if (!subjectWeeks.has(week.subjectId)) subjectWeeks.set(week.subjectId, []);
+    subjectWeeks.get(week.subjectId).push(week);
+  });
+  const rows = [];
+  subjectWeeks.forEach((weeksForSubject, subjectId) => {
+    const subjectName = weeksForSubject[0]?.subjectName || data.subjects.find((subject) => subject.id === subjectId)?.name || "Subject";
+    data.students
+      .filter((student) => (student.subjectIds || []).includes(subjectId))
+      .filter((student) => filter.section === "all" || (filter.section === "__none" ? !student.section : student.section === filter.section))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .forEach((student) => {
+      const row = [];
+      if (includeSubject) row.push(subjectName);
+      if (includeSection) row.push(student.section || "No section");
+      row.push(student.name);
+      dates.forEach((date) => row.push(attendanceExportCell(data, weeksForSubject, student.id, date)));
+      rows.push(row);
     });
   });
   const subjectLabel = filter.subjectId === "all" ? "all-subjects" : data.subjects.find((subject) => subject.id === filter.subjectId)?.name || "subject";
   const sectionLabel = filter.section === "all" ? "all-sections" : filter.section === "__none" ? "no-section" : `section-${filter.section}`;
-  exportSpreadsheet(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.xls`, ["Month", "Subject", "Section", "Week", "Student", "Date", "Status", "JCoins"], rows, group.label);
+  exportSpreadsheet(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.xls`, headers, rows, group.label);
 }
 
-function statusLabel(status) {
-  if (status === "check") return "On Time";
-  if (status === "late") return "Late";
-  return "Absent";
-}
-
-function attendancePoints(status, settings) {
-  if (status === "check") return settings.attendance.onTimePoints;
-  if (status === "late") return settings.attendance.latePoints;
-  return 0;
+function attendanceExportCell(data, weeks, studentId, date) {
+  const week = weeks.find((item) => (item.dates || []).includes(date));
+  if (!week) return "";
+  const status = data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
+  if (status === "check") return { value: "CHECK", className: "present" };
+  if (status === "late") return { value: "-", className: "late" };
+  return { value: "", className: "absent" };
 }
 
 function AttendanceTable({ week, data, run }) {
