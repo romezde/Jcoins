@@ -3,7 +3,7 @@ import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
 
 export default function Attendance({ data, run }) {
-  const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1" });
+  const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
@@ -16,6 +16,7 @@ export default function Attendance({ data, run }) {
       <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/attendance/weeks", week), "Week added"); }}>
         <Select label="Subject" value={week.subjectId} onChange={(v) => setWeek({ ...week, subjectId: v })} options={data.subjects} />
         <Field label="Week Title" value={week.title} onChange={(v) => setWeek({ ...week, title: v })} />
+        <Field label="First Date" type="date" value={week.firstDate} onChange={(v) => setWeek({ ...week, firstDate: v })} />
         <button>Add Week</button>
       </form>
     </ActionModal>

@@ -809,7 +809,9 @@ app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), asy
 app.post("/api/admin/attendance/weeks", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
-  const week = { id: randomUUID(), subjectId: req.body.subjectId, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: [], createdAt: now() };
+  const firstDate = String(req.body.firstDate || "").slice(0, 10);
+  const week = { id: randomUUID(), subjectId: req.body.subjectId, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: firstDate ? [firstDate] : [], createdAt: now() };
+  week.dates.sort();
   db.attendanceWeeks.push(week);
   await writeDb(db);
   res.status(201).json({ week });
