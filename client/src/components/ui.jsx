@@ -33,6 +33,12 @@ export function Panel({ title, children, wide = false, defaultOpen = true, actio
 
 export function ActionModal({ title, buttonLabel = title, children }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    window.addEventListener("jcoins:action-success", close);
+    return () => window.removeEventListener("jcoins:action-success", close);
+  }, [open]);
   return <>
     <section className="action-modal-launch">
       <button type="button" onClick={() => setOpen(true)}>{buttonLabel}</button>

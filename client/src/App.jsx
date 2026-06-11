@@ -149,6 +149,7 @@ function RoleApp({ session, logout }) {
     try {
       await fn();
       await load();
+      window.dispatchEvent(new CustomEvent("jcoins:action-success"));
       setSuccessModal(ok);
     } catch (err) {
       setMessage(err.message);
