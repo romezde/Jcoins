@@ -1,15 +1,19 @@
 import React, { useMemo, useState } from "react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
+import { exportCsv, safeFilePart } from "../utils/exportCsv.js";
 
 export default function Attendance({ data, run }) {
   const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
+  const [exportFilter, setExportFilter] = useState({ subjectId: "all", section: "all" });
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
   const monthGroups = useMemo(() => groupWeeksByMonth(sortedWeeks), [data.attendanceWeeks]);
   const currentMonth = activeMonth && monthGroups.some((group) => group.key === activeMonth) ? activeMonth : monthGroups[0]?.key || "";
-  const visibleWeeks = monthGroups.find((group) => group.key === currentMonth)?.weeks || [];
+  const currentGroup = monthGroups.find((group) => group.key === currentMonth);
+  const visibleWeeks = currentGroup?.weeks || [];
+  const sections = [...new Set((data.students || []).map((student) => student.section).filter(Boolean))].sort();
 
   return <div className="dashboard-grid">
     <ActionModal title="Add Attendance Week">
@@ -27,6 +31,11 @@ export default function Attendance({ data, run }) {
       </div>
       <div className="tabs attendance-month-tabs">
         {monthGroups.map((group) => <button type="button" key={group.key} className={currentMonth === group.key ? "active" : ""} onClick={() => setActiveMonth(group.key)}>{group.label}</button>)}
+      </div>
+      <div className="filter-bar transaction-filter-bar">
+        <Select label="Export Subject" value={exportFilter.subjectId} onChange={(subjectId) => setExportFilter({ ...exportFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
+        <Select label="Export Section" value={exportFilter.section} onChange={(section) => setExportFilter({ ...exportFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
+        <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month CSV</button>
       </div>
     </section>}
     {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
@@ -55,6 +64,49 @@ function groupWeeksByMonth(weeks) {
     map.get(key).weeks.push(week);
   });
   return [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+function exportAttendanceMonth(group, data, filter) {
+  if (!group) return;
+  const weeks = group.weeks.filter((week) => filter.subjectId === "all" || week.subjectId === filter.subjectId);
+  const rows = [];
+  weeks.forEach((week) => {
+    const students = data.students
+      .filter((student) => (student.subjectIds || []).includes(week.subjectId))
+      .filter((student) => filter.section === "all" || (filter.section === "__none" ? !student.section : student.section === filter.section));
+    const dates = week.dates?.length ? week.dates : [""];
+    students.forEach((student) => {
+      dates.forEach((date) => {
+        const record = data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === student.id && r.date === date);
+        const status = record?.status || "";
+        rows.push([
+          group.label,
+          week.subjectName,
+          student.section || "",
+          week.title,
+          student.name,
+          date,
+          statusLabel(status),
+          attendancePoints(status, data.settings)
+        ]);
+      });
+    });
+  });
+  const subjectLabel = filter.subjectId === "all" ? "all-subjects" : data.subjects.find((subject) => subject.id === filter.subjectId)?.name || "subject";
+  const sectionLabel = filter.section === "all" ? "all-sections" : filter.section === "__none" ? "no-section" : `section-${filter.section}`;
+  exportCsv(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.csv`, ["Month", "Subject", "Section", "Week", "Student", "Date", "Status", "JCoins"], rows);
+}
+
+function statusLabel(status) {
+  if (status === "check") return "On Time";
+  if (status === "late") return "Late";
+  return "Absent";
+}
+
+function attendancePoints(status, settings) {
+  if (status === "check") return settings.attendance.onTimePoints;
+  if (status === "late") return settings.attendance.latePoints;
+  return 0;
 }
 
 function AttendanceTable({ week, data, run }) {
