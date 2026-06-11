@@ -1,13 +1,19 @@
 import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
+import CosmeticFx from "../components/CosmeticFx.jsx";
 import { DataTable, Field, Panel, Stat, Table } from "../components/ui.jsx";
 
 export function StudentProfile({ data }) {
   const needed = Math.max(0, Number(data.student.nextTarget || 0) - Number(data.student.currentJCoins || 0));
+  const appearanceClasses = data.student.appearance?.classes?.join(" ") || "";
+  const badge = data.student.appearance?.items?.badge?.name;
+  const avatarIcon = data.student.appearance?.items?.avatarIcon?.icon;
   return <div className="dashboard-grid">
-    <section className={`profile-card wide ${rankClass(data.student.rank)}`}>
-      <Sparkles />
-      <h1>{data.student.name}</h1>
+    <section className={`profile-card wide appearance-card ${appearanceClasses} ${rankClass(data.student.rank)}`}>
+      <CosmeticFx classes={appearanceClasses} />
+      <div className="cosmetic-avatar profile-avatar">{avatarIcon || <Sparkles />}</div>
+      <h1 className="cosmetic-name">{data.student.name}</h1>
+      {badge && <div className="cosmetic-badge">{badge}</div>}
       <div className="big-coins">{data.student.currentJCoins.toLocaleString()} JCoins</div>
       <div className="rank-pill rank-chip">{data.student.rank}</div>
       <div className="bar"><div className="fill" style={{ width: `${data.student.progress}%` }} /></div>

@@ -50,6 +50,67 @@ const defaultShopItems = [
   { id: "item_replace_lowest_activity", tier: "Premium", name: "Replace Lowest Activity Score", cost: 2000, notes: "1 per term" },
   { id: "item_academic_shield", tier: "Premium", name: "Academic Shield (Wild Card Pass)", cost: 2500, notes: "Choose one high-tier reward for free; 1 per term" }
 ];
+const appearanceTypes = ["background", "border", "nameColor", "nameFont", "effect", "badge", "avatarFrame", "avatarIcon"];
+const appearanceTiers = ["Common", "Rare", "Epic", "Legendary"];
+const defaultAppearanceItems = [
+  { id: "ap_name_blue", name: "Sky Blue Name", type: "nameColor", price: 15, tier: "Common", preview: "Blue name color", active: true, styleClass: "ap-name-blue" },
+  { id: "ap_name_lime", name: "Lime Name", type: "nameColor", price: 15, tier: "Common", preview: "Green name color", active: true, styleClass: "ap-name-lime" },
+  { id: "ap_badge_grinder", name: "Daily Grinder", type: "badge", price: 25, tier: "Common", preview: "Daily Grinder title", active: true, styleClass: "ap-badge-grinder" },
+  { id: "ap_border_bronze", name: "Bronze Frame", type: "border", price: 35, tier: "Common", preview: "Bronze profile and leaderboard border", active: true, styleClass: "ap-border-bronze" },
+  { id: "ap_avatar_neon", name: "Neon Avatar Ring", type: "avatarFrame", price: 45, tier: "Common", preview: "Neon avatar frame", active: true, styleClass: "ap-avatar-neon" },
+  { id: "ap_icon_star", name: "Star Avatar Icon", type: "avatarIcon", price: 45, tier: "Common", preview: "Star profile icon", icon: "★", active: true, styleClass: "ap-icon-star" },
+  { id: "ap_font_pixel", name: "Pixel Name Font", type: "nameFont", price: 60, tier: "Rare", preview: "Pixel style name", active: true, styleClass: "ap-font-pixel" },
+  { id: "ap_icon_crown", name: "Crown Avatar Icon", type: "avatarIcon", price: 75, tier: "Rare", preview: "Crown profile icon", icon: "♛", active: true, styleClass: "ap-icon-crown" },
+  { id: "ap_bg_purple", name: "Purple Quest Background", type: "background", price: 70, tier: "Rare", preview: "Purple profile and row background", active: true, styleClass: "ap-bg-purple" },
+  { id: "ap_border_neon", name: "Neon Circuit Border", type: "border", price: 85, tier: "Rare", preview: "Glowing cyan border", active: true, styleClass: "ap-border-neon" },
+  { id: "ap_badge_slayer", name: "Quiz Slayer", type: "badge", price: 95, tier: "Rare", preview: "Quiz Slayer title", active: true, styleClass: "ap-badge-slayer" },
+  { id: "ap_effect_spark", name: "Spark Burst", type: "effect", price: 110, tier: "Rare", preview: "Small sparkle effect", active: true, styleClass: "ap-effect-spark" },
+  { id: "ap_border_flame", name: "Flame Border", type: "border", price: 115, tier: "Rare", preview: "Pulsing red flame border", active: true, styleClass: "ap-border-flame" },
+  { id: "ap_name_gold", name: "Gold Name", type: "nameColor", price: 125, tier: "Epic", preview: "Gold name color", active: true, styleClass: "ap-name-gold" },
+  { id: "ap_icon_bolt", name: "Bolt Avatar Icon", type: "avatarIcon", price: 130, tier: "Epic", preview: "Lightning profile icon", icon: "⚡", active: true, styleClass: "ap-icon-bolt" },
+  { id: "ap_bg_galaxy", name: "Galaxy Background", type: "background", price: 150, tier: "Epic", preview: "Animated galaxy background", active: true, styleClass: "ap-bg-galaxy" },
+  { id: "ap_border_fire", name: "Burning Flame Effect", type: "effect", price: 170, tier: "Epic", preview: "Actual burning flame effect", active: true, styleClass: "ap-border-fire" },
+  { id: "ap_effect_lightning", name: "Lightning Aura", type: "effect", price: 190, tier: "Epic", preview: "Electric aura", active: true, styleClass: "ap-effect-lightning" },
+  { id: "ap_badge_legend", name: "Legend Badge", type: "badge", price: 230, tier: "Legendary", preview: "Legend title", active: true, styleClass: "ap-badge-legend" },
+  { id: "ap_avatar_dragon", name: "Dragon Avatar Frame", type: "avatarFrame", price: 260, tier: "Legendary", preview: "Dragon frame", active: true, styleClass: "ap-avatar-dragon" },
+  { id: "ap_icon_rocket", name: "Rocket Avatar Icon", type: "avatarIcon", price: 280, tier: "Legendary", preview: "Rocket profile icon", icon: "🚀", active: true, styleClass: "ap-icon-rocket" },
+  { id: "ap_name_rainbow", name: "Rainbow Pulse Name", type: "nameColor", price: 300, tier: "Legendary", preview: "Animated rainbow name", active: true, styleClass: "ap-name-rainbow" },
+  { id: "ap_bg_aurora", name: "Aurora Background", type: "background", price: 95, tier: "Rare", preview: "Moving aurora lights", active: true, styleClass: "ap-bg-aurora" },
+  { id: "ap_bg_ocean", name: "Ocean Wave Background", type: "background", price: 105, tier: "Rare", preview: "Deep blue wave motion", active: true, styleClass: "ap-bg-ocean" },
+  { id: "ap_bg_night_city", name: "Night City Background", type: "background", price: 160, tier: "Epic", preview: "Neon city glow", active: true, styleClass: "ap-bg-night-city" },
+  { id: "ap_border_dash", name: "Dash Border", type: "border", price: 45, tier: "Common", preview: "Broken dash border", active: true, styleClass: "ap-border-dash" },
+  { id: "ap_border_spike", name: "Spike Border", type: "border", price: 90, tier: "Rare", preview: "Sharp spiky border", active: true, styleClass: "ap-border-spike" },
+  { id: "ap_border_ribbon", name: "Ribbon Border", type: "border", price: 100, tier: "Rare", preview: "Wrapped ribbon border", active: true, styleClass: "ap-border-ribbon" },
+  { id: "ap_border_string", name: "String Border", type: "border", price: 120, tier: "Epic", preview: "Threaded string border", active: true, styleClass: "ap-border-string" },
+  { id: "ap_border_royal", name: "Royal Heavy Border", type: "border", price: 200, tier: "Legendary", preview: "Thick royal gold border", active: true, styleClass: "ap-border-royal" },
+  { id: "ap_name_rose", name: "Rose Name", type: "nameColor", price: 35, tier: "Common", preview: "Rose pink name", active: true, styleClass: "ap-name-rose" },
+  { id: "ap_name_violet", name: "Violet Name", type: "nameColor", price: 45, tier: "Common", preview: "Violet name color", active: true, styleClass: "ap-name-violet" },
+  { id: "ap_name_ice", name: "Ice Name", type: "nameColor", price: 70, tier: "Rare", preview: "Frozen ice name", active: true, styleClass: "ap-name-ice" },
+  { id: "ap_name_emerald", name: "Emerald Name", type: "nameColor", price: 90, tier: "Rare", preview: "Emerald glow name", active: true, styleClass: "ap-name-emerald" },
+  { id: "ap_name_shadow", name: "Shadow Name", type: "nameColor", price: 140, tier: "Epic", preview: "Dark shadow name", active: true, styleClass: "ap-name-shadow" },
+  { id: "ap_font_serif", name: "Scholar Serif Font", type: "nameFont", price: 55, tier: "Common", preview: "Classic serif name", active: true, styleClass: "ap-font-serif" },
+  { id: "ap_font_round", name: "Bubble Round Font", type: "nameFont", price: 65, tier: "Common", preview: "Rounded name font", active: true, styleClass: "ap-font-round" },
+  { id: "ap_font_comic", name: "Comic Pop Font", type: "nameFont", price: 85, tier: "Rare", preview: "Comic style name", active: true, styleClass: "ap-font-comic" },
+  { id: "ap_font_typewriter", name: "Typewriter Font", type: "nameFont", price: 95, tier: "Rare", preview: "Typewriter name", active: true, styleClass: "ap-font-typewriter" },
+  { id: "ap_font_fantasy", name: "Fantasy Quest Font", type: "nameFont", price: 135, tier: "Epic", preview: "Fantasy adventure name", active: true, styleClass: "ap-font-fantasy" },
+  { id: "ap_font_stencil", name: "Stencil Font", type: "nameFont", price: 150, tier: "Epic", preview: "Stencil name font", active: true, styleClass: "ap-font-stencil" },
+  { id: "ap_font_marker", name: "Marker Font", type: "nameFont", price: 180, tier: "Legendary", preview: "Marker handwritten name", active: true, styleClass: "ap-font-marker" },
+  { id: "ap_effect_glitch", name: "Glitch Effect", type: "effect", price: 165, tier: "Epic", preview: "Digital glitch shimmer", active: true, styleClass: "ap-effect-glitch" },
+  { id: "ap_effect_spotlight", name: "Spotlight Effect", type: "effect", price: 210, tier: "Legendary", preview: "Moving spotlight shine", active: true, styleClass: "ap-effect-spotlight" },
+  { id: "ap_badge_math_mage", name: "Math Mage", type: "badge", price: 65, tier: "Common", preview: "Math Mage title", active: true, styleClass: "ap-badge-math-mage" },
+  { id: "ap_badge_science_hero", name: "Science Hero", type: "badge", price: 80, tier: "Rare", preview: "Science Hero title", active: true, styleClass: "ap-badge-science-hero" },
+  { id: "ap_badge_attendance_ace", name: "Attendance Ace", type: "badge", price: 100, tier: "Rare", preview: "Attendance Ace title", active: true, styleClass: "ap-badge-attendance-ace" },
+  { id: "ap_badge_top_trader", name: "Top Trader", type: "badge", price: 135, tier: "Epic", preview: "Top Trader title", active: true, styleClass: "ap-badge-top-trader" },
+  { id: "ap_badge_boss", name: "Quest Boss", type: "badge", price: 240, tier: "Legendary", preview: "Quest Boss title", active: true, styleClass: "ap-badge-boss" },
+  { id: "ap_avatar_orbit", name: "Orbit Avatar Frame", type: "avatarFrame", price: 95, tier: "Rare", preview: "Animated orbit frame", active: true, styleClass: "ap-avatar-orbit" },
+  { id: "ap_avatar_crystal", name: "Crystal Avatar Frame", type: "avatarFrame", price: 150, tier: "Epic", preview: "Crystal avatar frame", active: true, styleClass: "ap-avatar-crystal" },
+  { id: "ap_avatar_rune", name: "Rune Avatar Frame", type: "avatarFrame", price: 220, tier: "Legendary", preview: "Animated rune frame", active: true, styleClass: "ap-avatar-rune" },
+  { id: "ap_icon_heart", name: "Heart Avatar Icon", type: "avatarIcon", price: 55, tier: "Common", preview: "Heart profile icon", icon: "\u2665", active: true, styleClass: "ap-icon-heart" },
+  { id: "ap_icon_diamond", name: "Diamond Avatar Icon", type: "avatarIcon", price: 100, tier: "Rare", preview: "Diamond profile icon", icon: "\u25C6", active: true, styleClass: "ap-icon-diamond" },
+  { id: "ap_icon_gamepad", name: "Gamepad Avatar Icon", type: "avatarIcon", price: 145, tier: "Epic", preview: "Game profile icon", icon: "\u25B6", active: true, styleClass: "ap-icon-gamepad" },
+  { id: "ap_icon_moon", name: "Moon Avatar Icon", type: "avatarIcon", price: 190, tier: "Legendary", preview: "Moon profile icon", icon: "\u263E", active: true, styleClass: "ap-icon-moon" },
+  { id: "ap_effect_champion", name: "Champion Aura", type: "effect", price: 350, tier: "Legendary", preview: "Full champion glow", active: true, styleClass: "ap-effect-champion" }
+];
 
 async function ensureDb() {
   if (supabase) {
@@ -123,9 +184,13 @@ async function createInitialDb() {
     attendanceRecords: [],
     recitations: [],
     activities: [],
-    shopItems: [],
+    shopItems: defaultShopItems,
     sales: [],
-    requests: []
+    requests: [],
+    appearanceItems: defaultAppearanceItems,
+    appearanceInventory: [],
+    appearanceEquipped: {},
+    appearanceGifts: []
   };
 }
 
@@ -157,9 +222,51 @@ async function readDb() {
   db.recitations ||= [];
   db.activities ||= [];
   db.shopItems ||= [];
+  defaultShopItems.forEach((item) => {
+    if (!db.shopItems.some((existing) => existing.id === item.id)) {
+      db.shopItems.push(item);
+      changed = true;
+    }
+  });
   db.shopItems.forEach((item) => { item.tier ||= "Tier 1"; });
   db.sales ||= [];
   db.requests ||= [];
+  db.appearanceItems ||= [];
+  db.appearanceInventory ||= [];
+  if (!db.appearanceEquipped || Array.isArray(db.appearanceEquipped) || typeof db.appearanceEquipped !== "object") {
+    db.appearanceEquipped = {};
+    changed = true;
+  }
+  db.appearanceGifts ||= [];
+  defaultAppearanceItems.forEach((item) => {
+    if (!db.appearanceItems.some((existing) => existing.id === item.id)) {
+      db.appearanceItems.push(item);
+      changed = true;
+    }
+  });
+  const burningEffect = db.appearanceItems.find((item) => item.id === "ap_border_fire");
+  if (burningEffect && (burningEffect.type !== "effect" || burningEffect.name === "Fire Border")) {
+    burningEffect.name = "Burning Flame Effect";
+    burningEffect.type = "effect";
+    burningEffect.preview = "Actual burning flame effect";
+    burningEffect.styleClass = "ap-border-fire";
+    changed = true;
+  }
+  Object.values(db.appearanceEquipped).forEach((equipped) => {
+    if (equipped?.border === "ap_border_fire") {
+      equipped.effect = "ap_border_fire";
+      delete equipped.border;
+      changed = true;
+    }
+  });
+  db.appearanceItems.forEach((item) => {
+    item.type = appearanceTypes.includes(item.type) ? item.type : "badge";
+    item.tier = item.tier || "Common";
+    item.price = Number(item.price || 0);
+    item.active = item.active !== false;
+    item.styleClass ||= item.id;
+    item.icon ||= item.type === "avatarIcon" ? "★" : "";
+  });
   db.users ||= [];
   db.students ||= [];
   db.transactions ||= [];
@@ -239,6 +346,40 @@ function studentName(db, id) {
   return db.students.find((s) => s.id === id)?.name || "Unknown";
 }
 
+function appearanceItem(db, itemId) {
+  return db.appearanceItems.find((item) => item.id === itemId);
+}
+
+function ownsAppearance(db, studentId, itemId) {
+  return db.appearanceInventory.some((entry) => entry.studentId === studentId && entry.itemId === itemId);
+}
+
+function studentCoins(db, studentId) {
+  return db.transactions.filter((t) => t.studentId === studentId).reduce((sum, t) => sum + Number(t.amount || 0), 0);
+}
+
+function equippedAppearance(db, studentId) {
+  const equipped = db.appearanceEquipped?.[studentId] || {};
+  const entries = Object.fromEntries(appearanceTypes.map((type) => {
+    const item = appearanceItem(db, equipped[type]);
+    return [type, item ? { id: item.id, name: item.name, type: item.type, styleClass: item.styleClass, tier: item.tier, icon: item.icon || "" } : null];
+  }));
+  const classes = Object.values(entries).filter(Boolean).map((item) => item.styleClass);
+  return { equipped, items: entries, classes };
+}
+
+function appearanceGiftRows(db, studentId = null) {
+  return db.appearanceGifts
+    .filter((gift) => !studentId || gift.fromStudentId === studentId || gift.toStudentId === studentId)
+    .map((gift) => ({
+      ...gift,
+      itemName: appearanceItem(db, gift.itemId)?.name || "Unknown Item",
+      fromStudentName: studentName(db, gift.fromStudentId),
+      toStudentName: studentName(db, gift.toStudentId)
+    }))
+    .sort(byDateDesc);
+}
+
 function rankFor(coins, ranks) {
   const ordered = [...ranks].sort((a, b) => a.min - b.min);
   const current = [...ordered].reverse().find((rank) => coins >= rank.min);
@@ -251,9 +392,9 @@ function rankFor(coins, ranks) {
 
 function hydrateStudents(db) {
   return db.students.map((student) => {
-    const currentJCoins = db.transactions.filter((t) => t.studentId === student.id).reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const currentJCoins = studentCoins(db, student.id);
     const account = db.users.find((user) => user.role === "student" && user.studentId === student.id);
-    return { ...student, userId: account?.id || "", username: account?.username || "", currentJCoins, subjectNames: (student.subjectIds || []).map((id) => subjectName(db, id)), ...rankFor(currentJCoins, db.settings.ranks) };
+    return { ...student, userId: account?.id || "", username: account?.username || "", currentJCoins, subjectNames: (student.subjectIds || []).map((id) => subjectName(db, id)), appearance: equippedAppearance(db, student.id), ...rankFor(currentJCoins, db.settings.ranks) };
   }).sort((a, b) => b.currentJCoins - a.currentJCoins);
 }
 
@@ -357,6 +498,8 @@ function filteredOverview(db, user) {
     activities,
     shopItems: db.shopItems.map((item) => activeShopPrice(db, item.id)),
     sales: db.sales,
+    appearanceItems: db.appearanceItems,
+    appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
     requests: db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)
   };
 }
@@ -396,13 +539,18 @@ app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
   const overview = filteredOverview(db, req.user);
   const student = overview.students[0];
   const allStudents = hydrateStudents(db);
+  const inventory = db.appearanceInventory
+    .filter((entry) => entry.studentId === student.id)
+    .map((entry) => ({ ...entry, item: appearanceItem(db, entry.itemId) }))
+    .filter((entry) => entry.item);
+  const gifts = appearanceGiftRows(db, student.id);
   const weeks = db.attendanceWeeks.filter((w) => (student.subjectIds || []).includes(w.subjectId)).map((w) => ({
     ...w,
     subjectName: subjectName(db, w.subjectId),
     attendanceBonus: attendanceBonus(db, student.id, w),
     recitationBonus: recitationBonus(db, student.id, w)
   }));
-  res.json({ ...overview, students: allStudents, student, weeks });
+  res.json({ ...overview, students: allStudents, student, appearanceInventory: inventory, appearanceGifts: gifts, weeks });
 });
 
 app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req, res) => {
@@ -500,6 +648,9 @@ app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), asy
   db.transactions = db.transactions.filter((t) => t.studentId !== student.id);
   db.attendanceRecords = db.attendanceRecords.filter((r) => r.studentId !== student.id);
   db.recitations = db.recitations.filter((r) => r.studentId !== student.id);
+  db.appearanceInventory = (db.appearanceInventory || []).filter((entry) => entry.studentId !== student.id && entry.fromStudentId !== student.id);
+  db.appearanceGifts = (db.appearanceGifts || []).filter((gift) => gift.fromStudentId !== student.id && gift.toStudentId !== student.id);
+  if (db.appearanceEquipped) delete db.appearanceEquipped[student.id];
   db.activities.forEach((activity) => {
     activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== student.id);
   });
@@ -671,6 +822,126 @@ app.post("/api/admin/shop/sales", auth, requireRole("admin"), async (req, res) =
   db.sales.push(sale);
   await writeDb(db);
   res.status(201).json({ sale });
+});
+
+app.post("/api/admin/appearance/items", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  const type = appearanceTypes.includes(req.body.type) ? req.body.type : "badge";
+  const item = {
+    id: randomUUID(),
+    name: String(req.body.name || "New Cosmetic"),
+    type,
+    price: Number(req.body.price || 0),
+    tier: appearanceTiers.includes(req.body.tier) ? req.body.tier : "Common",
+    preview: String(req.body.preview || ""),
+    icon: String(req.body.icon || ""),
+    active: req.body.active !== false,
+    styleClass: String(req.body.styleClass || `ap-custom-${type}`)
+  };
+  db.appearanceItems.push(item);
+  await writeDb(db);
+  res.status(201).json({ item });
+});
+
+app.put("/api/admin/appearance/items/:id", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  const item = appearanceItem(db, req.params.id);
+  if (!item) return res.status(404).json({ error: "Appearance item not found." });
+  item.name = req.body.name ?? item.name;
+  item.type = appearanceTypes.includes(req.body.type) ? req.body.type : item.type;
+  item.price = Number(req.body.price ?? item.price);
+  item.tier = appearanceTiers.includes(req.body.tier) ? req.body.tier : item.tier;
+  item.preview = req.body.preview ?? item.preview ?? "";
+  item.icon = req.body.icon ?? item.icon ?? "";
+  item.active = typeof req.body.active === "boolean" ? req.body.active : item.active !== false;
+  item.styleClass = req.body.styleClass ?? item.styleClass;
+  await writeDb(db);
+  res.json({ item });
+});
+
+
+app.post("/api/admin/appearance/grants", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  const item = appearanceItem(db, req.body.itemId);
+  if (!item) return res.status(404).json({ error: "Appearance item not found." });
+  const targetIds = req.body.allStudents
+    ? db.students.map((student) => student.id)
+    : Array.isArray(req.body.studentIds) ? req.body.studentIds : [];
+  const uniqueTargetIds = [...new Set(targetIds)].filter((studentId) => db.students.some((student) => student.id === studentId));
+  if (!uniqueTargetIds.length) return res.status(400).json({ error: "Select at least one student." });
+  const grantedAt = now();
+  const grants = [];
+  uniqueTargetIds.forEach((studentId) => {
+    if (!ownsAppearance(db, studentId, item.id)) {
+      const grant = { id: randomUUID(), studentId, itemId: item.id, purchasedAt: grantedAt, source: "admin_grant", grantedBy: req.user.id, note: String(req.body.note || "") };
+      db.appearanceInventory.push(grant);
+      grants.push(grant);
+    }
+    if (req.body.autoEquip !== false) {
+      db.appearanceEquipped[studentId] ||= {};
+      db.appearanceEquipped[studentId][item.type] = item.id;
+    }
+  });
+  await writeDb(db);
+  res.status(201).json({ item, granted: grants.length, targeted: uniqueTargetIds.length });
+});
+
+app.post("/api/appearance/buy", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const studentId = req.user.studentId;
+  const item = appearanceItem(db, req.body.itemId);
+  if (!item || item.active === false) return res.status(404).json({ error: "Appearance item is not available." });
+  if (ownsAppearance(db, studentId, item.id)) return res.status(409).json({ error: "You already own this appearance item." });
+  const price = Number(item.price || 0);
+  if (studentCoins(db, studentId) < price) return res.status(400).json({ error: "Not enough JCoins." });
+  db.transactions.push(tx(studentId, "appearance_shop", -price, `Bought ${item.name}`, now(), req.user.id, { kind: "appearance-buy", itemId: item.id }));
+  db.appearanceInventory.push({ id: randomUUID(), studentId, itemId: item.id, purchasedAt: now(), source: "buy" });
+  db.appearanceEquipped[studentId] ||= {};
+  db.appearanceEquipped[studentId][item.type] = item.id;
+  await writeDb(db);
+  res.status(201).json({ item, equipped: db.appearanceEquipped[studentId] });
+});
+
+app.post("/api/appearance/gift", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const fromStudentId = req.user.studentId;
+  const toStudentId = req.body.toStudentId;
+  const item = appearanceItem(db, req.body.itemId);
+  if (!item || item.active === false) return res.status(404).json({ error: "Appearance item is not available." });
+  if (!db.students.some((student) => student.id === toStudentId)) return res.status(404).json({ error: "Recipient not found." });
+  if (toStudentId === fromStudentId) return res.status(400).json({ error: "Use Buy for myself instead." });
+  if (ownsAppearance(db, toStudentId, item.id)) return res.status(409).json({ error: "Recipient already owns this item." });
+  const price = Number(item.price || 0);
+  if (studentCoins(db, fromStudentId) < price) return res.status(400).json({ error: "Not enough JCoins." });
+  const gift = { id: randomUUID(), itemId: item.id, fromStudentId, toStudentId, message: String(req.body.message || ""), createdAt: now(), pricePaid: price };
+  db.transactions.push(tx(fromStudentId, "appearance_gift", -price, `Gifted ${item.name} to ${studentName(db, toStudentId)}`, gift.createdAt, req.user.id, { kind: "appearance-gift", itemId: item.id, toStudentId, giftId: gift.id }));
+  db.appearanceGifts.push(gift);
+  db.appearanceInventory.push({ id: randomUUID(), studentId: toStudentId, itemId: item.id, purchasedAt: gift.createdAt, source: "gift", fromStudentId, giftId: gift.id });
+  await writeDb(db);
+  res.status(201).json({ gift });
+});
+
+app.post("/api/appearance/equip", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const studentId = req.user.studentId;
+  const item = appearanceItem(db, req.body.itemId);
+  if (!item) return res.status(404).json({ error: "Appearance item not found." });
+  if (!ownsAppearance(db, studentId, item.id)) return res.status(403).json({ error: "You do not own this item." });
+  db.appearanceEquipped[studentId] ||= {};
+  db.appearanceEquipped[studentId][item.type] = item.id;
+  await writeDb(db);
+  res.json({ equipped: db.appearanceEquipped[studentId] });
+});
+
+app.post("/api/appearance/unequip", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const studentId = req.user.studentId;
+  const type = appearanceTypes.includes(req.body.type) ? req.body.type : "";
+  if (!type) return res.status(400).json({ error: "Valid appearance type is required." });
+  db.appearanceEquipped[studentId] ||= {};
+  delete db.appearanceEquipped[studentId][type];
+  await writeDb(db);
+  res.json({ equipped: db.appearanceEquipped[studentId] });
 });
 
 app.put("/api/admin/settings", auth, requireRole("admin"), async (req, res) => {

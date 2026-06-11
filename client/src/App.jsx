@@ -12,6 +12,7 @@ import Recitation from "./screens/Recitation.jsx";
 import Activities from "./screens/Activities.jsx";
 import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop } from "./screens/Shop.jsx";
+import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
 import Approvals from "./screens/Approvals.jsx";
 import Settings from "./screens/Settings.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
@@ -33,7 +34,7 @@ function useSession() {
 }
 
 function Login({ onLogin }) {
-  const [form, setForm] = useState({ username: "admin", password: "admin123!" });
+  const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
   async function submit(e) {
     e.preventDefault();
@@ -154,6 +155,7 @@ function buildSearchResults(tabs, data) {
   (data?.subjects || []).forEach((subject) => add(list, "Subject", subject.name, tabs.includes("Subjects") ? "Subjects" : "Leaderboard"));
   (data?.activities || []).forEach((activity) => add(list, "Activity", activity.title, "Activities", `${activity.subjectName} ${activity.type}`));
   (data?.shopItems || []).forEach((item) => add(list, "Shop Item", item.name, "Shop", `${item.tier} ${item.cost} ${item.notes}`));
+  (data?.appearanceItems || []).forEach((item) => add(list, "Appearance", item.name, "Appearance Shop", `${item.type} ${item.tier} ${item.price} ${item.preview}`));
   (data?.users || []).forEach((user) => add(list, "Account", user.username, "People", `${user.role} ${(user.sectionIds || []).join(" ")}`));
   (data?.attendanceWeeks || []).forEach((week) => add(list, "Attendance", week.title, "Attendance", week.subjectName));
   return list;
@@ -169,6 +171,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Activities") return role === "student" ? <StudentActivities data={data} /> : <Activities data={data} run={run} />;
   if (tab === "Transactions") return <Transactions data={data} run={run} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
+  if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;
   if (tab === "History") return <StudentHistory data={data} />;

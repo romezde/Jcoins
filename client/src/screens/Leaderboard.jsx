@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Trophy } from "lucide-react";
+import CosmeticFx from "../components/CosmeticFx.jsx";
 
 export default function Leaderboard({ students, currentStudentId }) {
   const [section, setSection] = useState("all");
@@ -38,18 +39,27 @@ export default function Leaderboard({ students, currentStudentId }) {
 }
 
 function Champion({ student, place }) {
-  return <article className={`champion-card place-${place} ${rankClass(student.rank)}`}>
+  const appearanceClasses = student.appearance?.classes?.join(" ") || "";
+  const badge = student.appearance?.items?.badge?.name;
+  return <article className={`champion-card appearance-card place-${place} ${appearanceClasses} ${rankClass(student.rank)}`}>
+    <CosmeticFx classes={appearanceClasses} />
     <div className="medal">#{place}</div>
-    <h3>{student.name}</h3>
+    <div className="cosmetic-avatar champion-avatar">{avatarIcon(student)}</div>
+    <h3 className="cosmetic-name">{student.name}</h3>
+    {badge && <div className="cosmetic-badge">{badge}</div>}
     <strong>{student.currentJCoins.toLocaleString()} JCoins</strong>
     <span className="rank-chip">{student.rank}</span>
   </article>;
 }
 
 function StudentRow({ student, place, active, rowRef }) {
-  return <article ref={rowRef} className={`student-row list-place-${place <= 3 ? place : "normal"} ${rankClass(student.rank)} ${active ? "self-row" : ""}`}>
+  const appearanceClasses = student.appearance?.classes?.join(" ") || "";
+  const badge = student.appearance?.items?.badge?.name;
+  return <article ref={rowRef} className={`student-row appearance-card list-place-${place <= 3 ? place : "normal"} ${appearanceClasses} ${rankClass(student.rank)} ${active ? "self-row" : ""}`}>
+    <CosmeticFx classes={appearanceClasses} />
     <div className="place">#{place}</div>
-    <div className="student-name">{student.name}</div>
+    <div className="cosmetic-avatar leaderboard-avatar">{avatarIcon(student)}</div>
+    <div className="student-name"><span className="cosmetic-name">{student.name}</span>{badge && <span className="cosmetic-badge">{badge}</span>}</div>
     <div className="coin-count">{student.currentJCoins.toLocaleString()} JC</div>
     <div className="progress-block">
       <div className="progress-label"><span className="rank-text">{student.rank}</span><span>{student.nextRank} {student.progress}%</span></div>
@@ -64,4 +74,17 @@ function rankClass(rank = "") {
 
 function podiumOrder(topThree) {
   return [topThree[1], topThree[0], topThree[2]].filter(Boolean);
+}
+
+function initials(name = "") {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "J";
+}
+
+function avatarIcon(student) {
+  return student.appearance?.items?.avatarIcon?.icon || initials(student.name);
 }

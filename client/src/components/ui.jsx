@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 
 export function Field({ label, value, onChange, type = "text", children }) {
-  return <label>{label}{children || <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />}</label>;
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const input = <input type={isPassword && showPassword ? "text" : type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
+  return <label>{label}{children || (isPassword ? <span className="password-field">
+    {input}
+    <button type="button" className="soft password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>
+      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  </span> : input)}</label>;
 }
 
 export function Select({ label, value, onChange, options }) {

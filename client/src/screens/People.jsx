@@ -42,7 +42,7 @@ export default function People({ data, run, role }) {
           <Field label="Name" value={student.name} onChange={(v) => setStudent({ ...student, name: v })} />
           <Select label="Section" value={student.section} onChange={(v) => setStudent({ ...student, section: v })} options={[{ value: "", label: "Select section" }, ...sections.map((section) => ({ value: section, label: section }))]} />
           <Field label="Username" value={student.username} onChange={(v) => setStudent({ ...student, username: v })} />
-          <Field label="Temp Password" value={student.tempPassword} onChange={(v) => setStudent({ ...student, tempPassword: v })} />
+          <Field label="Temp Password" type="password" value={student.tempPassword} onChange={(v) => setStudent({ ...student, tempPassword: v })} />
           <Field label="Starting JCoins" type="number" value={student.startingJCoins} onChange={(v) => setStudent({ ...student, startingJCoins: v })} />
           <DropdownChecklist label="Subjects" items={visibleSubjects} selected={student.subjectIds} onChange={(ids) => setStudent({ ...student, subjectIds: ids })} />
           <button>Create Student</button>
@@ -52,7 +52,7 @@ export default function People({ data, run, role }) {
       {role === "admin" && <ActionModal title="Add Teacher">
         <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/users", teacher), "Teacher created"); }}>
           <Field label="Username" value={teacher.username} onChange={(v) => setTeacher({ ...teacher, username: v })} />
-          <Field label="Temp Password" value={teacher.tempPassword} onChange={(v) => setTeacher({ ...teacher, tempPassword: v })} />
+          <Field label="Temp Password" type="password" value={teacher.tempPassword} onChange={(v) => setTeacher({ ...teacher, tempPassword: v })} />
           <DropdownChecklist label="Assigned Subjects" items={data.subjects} selected={teacher.subjectIds} onChange={(ids) => setTeacher({ ...teacher, subjectIds: ids })} />
           <DropdownChecklist label="Assigned Sections" items={sections.map((section) => ({ id: section, name: section }))} selected={teacher.sectionIds} onChange={(ids) => setTeacher({ ...teacher, sectionIds: ids })} />
           <button>Create Teacher</button>

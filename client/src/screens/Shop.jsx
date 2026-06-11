@@ -72,12 +72,32 @@ function ShopItemsTable({ items, run }) {
 export function StudentShop({ data, run }) {
   const [filter, setFilter] = useState({ tier: "all", search: "" });
   const filteredItems = filterShopItems(data.shopItems, filter);
+  const tiers = [...new Set([...tierOptions, ...filteredItems.map((item) => item.tier || "Low")])];
   return <Panel title="Shop Items" wide defaultOpen>
     <ShopFilters filter={filter} setFilter={setFilter} count={filteredItems.length} />
-    <Table columns={["Tier", "Item", "Price", "Discount", "Request"]} rows={filteredItems.map((i) => [i.tier || "Low", i.name, i.activeCost, `${i.discount}%`, <button onClick={() => run(() => post("/requests", { type: "purchase", payload: { itemId: i.id }, remarks: `Buy ${i.name}` }), "Purchase requested")}>Request Buy</button>])} />
+    <div className="shop-card-groups">
+      {tiers.map((tier) => {
+        const tierItems = filteredItems.filter((item) => (item.tier || "Low") === tier);
+        if (!tierItems.length) return null;
+        return <section key={tier} className="shop-card-group">
+          <h3>{tier} <span>{tierItems.length}</span></h3>
+          <div className="shop-card-grid">
+            {tierItems.map((item) => <article key={item.id} className="shop-card">
+              <div className="shop-card-top">
+                <strong>{item.name}</strong>
+                <span>{Number(item.activeCost || 0).toLocaleString()} JC</span>
+              </div>
+              {item.discount > 0 && <div className="sale-pill">-{item.discount}% sale</div>}
+              {item.notes && <p>{item.notes}</p>}
+              <button onClick={() => run(() => post("/requests", { type: "purchase", payload: { itemId: item.id }, remarks: `Buy ${item.name}` }), "Purchase requested")}>Request Buy</button>
+            </article>)}
+          </div>
+        </section>;
+      })}
+      {!filteredItems.length && <div className="empty-card">No shop items match this search.</div>}
+    </div>
   </Panel>;
 }
-
 function ShopFilters({ filter, setFilter, count }) {
   return <div className="filter-bar">
     <Select label="Tier" value={filter.tier} onChange={(tier) => setFilter({ ...filter, tier })} options={[{ value: "all", label: "All tiers" }, ...tierOptions.map((tier) => ({ value: tier, label: tier }))]} />
