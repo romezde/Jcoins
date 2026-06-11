@@ -2,17 +2,26 @@ import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { post } from "../api.js";
 import CosmeticFx from "../components/CosmeticFx.jsx";
+import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { DataTable, Field, Panel, Stat, Table } from "../components/ui.jsx";
 
-export function StudentProfile({ data }) {
+export function StudentProfile({ data, run }) {
   const needed = Math.max(0, Number(data.student.nextTarget || 0) - Number(data.student.currentJCoins || 0));
   const appearanceClasses = data.student.appearance?.classes?.join(" ") || "";
   const badge = data.student.appearance?.items?.badge?.name;
   const avatarIcon = data.student.appearance?.items?.avatarIcon?.icon;
+  async function uploadPhoto(file) {
+    const profilePhoto = await fileToProfilePhoto(file);
+    await run(() => post("/student/profile-photo", { profilePhoto }), "Profile picture updated");
+  }
+  async function removePhoto() {
+    await run(() => post("/student/profile-photo", { profilePhoto: "" }), "Profile picture removed");
+  }
   return <div className="dashboard-grid">
     <section className={`profile-card wide appearance-card ${appearanceClasses} ${rankClass(data.student.rank)}`}>
       <CosmeticFx classes={appearanceClasses} />
-      <div className="cosmetic-avatar profile-avatar">{avatarIcon || <Sparkles />}</div>
+      <ProfilePhotoFrame student={data.student} className="profile-picture-large" />
+      <div className="cosmetic-avatar profile-avatar profile-icon-badge">{avatarIcon || <Sparkles />}</div>
       <h1 className="cosmetic-name">{data.student.name}</h1>
       {badge && <div className="cosmetic-badge">{badge}</div>}
       <div className="big-coins">{data.student.currentJCoins.toLocaleString()} JCoins</div>
@@ -20,6 +29,10 @@ export function StudentProfile({ data }) {
       <div className="bar"><div className="fill" style={{ width: `${data.student.progress}%` }} /></div>
       <p>{data.student.progress}% to {data.student.nextRank}</p>
       <p className="needed-coins">{needed ? `${needed.toLocaleString()} JCoins needed to reach ${data.student.nextRank}` : "Max rank reached"}</p>
+      <div className="profile-photo-actions">
+        <label className="soft file-button">Upload Profile Picture<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => uploadPhoto(e.target.files?.[0])} /></label>
+        {data.student.profilePhoto && <button type="button" className="soft" onClick={removePhoto}>Remove Picture</button>}
+      </div>
     </section>
     <DataTable title="Attendance / Recitation Weekly Bonuses" defaultOpen columns={["Week", "Subject", "Attendance Bonus", "Recitation Bonus"]} rows={data.weeks.map((w) => [w.title, w.subjectName, w.attendanceBonus ? "Earned" : "Not yet", w.recitationBonus ? "Earned" : "Not yet"])} />
     <DataTable title="Recent JCoins History" columns={["Date", "Type", "Amount", "Remarks"]} rows={data.transactions.map((t) => [new Date(t.createdAt).toLocaleString(), t.type, t.amount, t.note])} />

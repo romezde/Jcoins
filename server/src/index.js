@@ -270,7 +270,10 @@ async function readDb() {
   db.users ||= [];
   db.students ||= [];
   db.transactions ||= [];
-  db.students.forEach((s) => { s.subjectIds ||= db.subjects.map((sub) => sub.id); });
+  db.students.forEach((s) => {
+    s.subjectIds ||= db.subjects.map((sub) => sub.id);
+    s.profilePhoto ||= "";
+  });
   db.users.forEach((u) => { u.subjectIds ||= []; u.sectionIds ||= []; });
   db.users.forEach((u) => {
     if (u.role === "teacher" && !u.subjectIds.length) {
@@ -396,6 +399,18 @@ function hydrateStudents(db) {
     const account = db.users.find((user) => user.role === "student" && user.studentId === student.id);
     return { ...student, userId: account?.id || "", username: account?.username || "", currentJCoins, subjectNames: (student.subjectIds || []).map((id) => subjectName(db, id)), appearance: equippedAppearance(db, student.id), ...rankFor(currentJCoins, db.settings.ranks) };
   }).sort((a, b) => b.currentJCoins - a.currentJCoins);
+}
+
+function hideProfilePhotos(students) {
+  return students.map((student) => ({ ...student, profilePhoto: "" }));
+}
+
+function cleanProfilePhoto(value) {
+  const photo = String(value || "");
+  if (!photo) return "";
+  if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(photo)) throw new Error("Upload a PNG, JPG, or WEBP image.");
+  if (photo.length > 750000) throw new Error("Image is too large. Please upload a smaller photo.");
+  return photo;
 }
 
 function userWithStudent(user, db) {
@@ -526,7 +541,7 @@ app.post("/api/auth/change-password", auth, async (req, res) => {
 
 app.get("/api/leaderboard", async (req, res) => {
   const db = await readDb();
-  res.json({ students: hydrateStudents(db), subjects: db.subjects });
+  res.json({ students: hideProfilePhotos(hydrateStudents(db)), subjects: db.subjects });
 });
 
 app.get("/api/me", auth, async (req, res) => {
@@ -538,7 +553,7 @@ app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
   const db = await readDb();
   const overview = filteredOverview(db, req.user);
   const student = overview.students[0];
-  const allStudents = hydrateStudents(db);
+  const allStudents = hideProfilePhotos(hydrateStudents(db));
   const inventory = db.appearanceInventory
     .filter((entry) => entry.studentId === student.id)
     .map((entry) => ({ ...entry, item: appearanceItem(db, entry.itemId) }))
@@ -553,9 +568,23 @@ app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
   res.json({ ...overview, students: allStudents, student, appearanceInventory: inventory, appearanceGifts: gifts, weeks });
 });
 
+app.post("/api/student/profile-photo", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const student = db.students.find((s) => s.id === req.user.studentId);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  try {
+    student.profilePhoto = cleanProfilePhoto(req.body.profilePhoto);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  await writeDb(db);
+  res.json({ profilePhoto: student.profilePhoto });
+});
+
 app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
-  res.json(filteredOverview(db, req.user));
+  const overview = filteredOverview(db, req.user);
+  res.json({ ...overview, students: hideProfilePhotos(overview.students) });
 });
 
 app.post("/api/admin/subjects", auth, requireRole("admin"), async (req, res) => {
@@ -695,6 +724,21 @@ app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async 
   student.subjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : student.subjectIds;
   await writeDb(db);
   res.json({ student });
+});
+
+app.post("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const student = db.students.find((s) => s.id === req.params.id);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  try {
+    student.profilePhoto = cleanProfilePhoto(req.body.profilePhoto);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  await writeDb(db);
+  res.json({ profilePhoto: student.profilePhoto });
 });
 
 app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async (req, res) => {

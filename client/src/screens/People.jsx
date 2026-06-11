@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { del, post, put } from "../api.js";
+import { fileToProfilePhoto } from "../components/ProfilePhoto.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function People({ data, run, role }) {
@@ -66,6 +67,11 @@ export default function People({ data, run, role }) {
       setImportRows([]);
       setImportResult(`${result.createdCount} student${result.createdCount === 1 ? "" : "s"} imported.`);
     }, "Students imported");
+  }
+  async function uploadStudentPhoto(studentId, file) {
+    if (!file) return;
+    const profilePhoto = await fileToProfilePhoto(file);
+    await run(() => post(`/admin/students/${studentId}/profile-photo`, { profilePhoto }), "Profile picture updated");
   }
 
   return <div className="dashboard-grid">
@@ -141,6 +147,7 @@ export default function People({ data, run, role }) {
           s.rank,
           <div className="inline">
             <button onClick={() => run(() => put(`/admin/students/${s.id}`, edit))}>Save</button>
+            <label className="soft file-button table-file-button">Photo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => uploadStudentPhoto(s.id, e.target.files?.[0])} /></label>
             <button disabled={!s.userId} onClick={() => setConfirmReset({ userId: s.userId, username: s.username || s.name })}>Reset Pass</button>
             <button className="danger" onClick={() => confirm(`Remove ${s.name}?`) && run(() => del(`/admin/students/${s.id}`), "Student removed")}>Remove</button>
           </div>

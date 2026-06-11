@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { post, put } from "../api.js";
 import CosmeticFx from "../components/CosmeticFx.jsx";
+import { ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { ActionModal, DataTable, Field, Panel, Select, Table } from "../components/ui.jsx";
 
 const appearanceTypes = ["background", "border", "nameColor", "nameFont", "effect", "badge", "avatarFrame", "avatarIcon"];
@@ -277,7 +278,8 @@ function AppearanceProfilePreview({ student }) {
   const icon = student?.appearance?.items?.avatarIcon?.icon || "J";
   return <section className={`appearance-profile-preview appearance-card ${appearanceClasses}`}>
     <CosmeticFx classes={appearanceClasses} />
-    <div className="cosmetic-avatar profile-avatar">{icon}</div>
+    <ProfilePhotoFrame student={{ ...student, profilePhoto: "" }} />
+    <div className="cosmetic-avatar profile-avatar profile-icon-badge">{icon}</div>
     <div>
       <h2 className="cosmetic-name">{student?.name || "Student"}</h2>
       {badge && <div className="cosmetic-badge">{badge}</div>}
@@ -317,11 +319,13 @@ function AppearanceFilters({ filter, setFilter, count }) {
 }
 
 function AppearancePreview({ item, compact = false }) {
-  const isAvatar = item.type === "avatarFrame" || item.type === "avatarIcon";
+  const isAvatarIcon = item.type === "avatarIcon";
+  const isAvatarFrame = item.type === "avatarFrame";
   return <div className={`appearance-preview ${compact ? "appearance-preview-compact" : ""} ${item.styleClass || ""}`}>
     <CosmeticFx classes={item.styleClass || ""} />
     <span>{badgeText(item)}</span>
-    {isAvatar && <div className="appearance-avatar-demo cosmetic-avatar">{item.type === "avatarIcon" ? item.icon || "★" : "J"}</div>}
+    {isAvatarIcon && <div className="appearance-avatar-demo cosmetic-avatar">{item.icon || "★"}</div>}
+    {isAvatarFrame && <ProfilePhotoFrame student={{ name: item.name, appearance: { classes: [item.styleClass || ""] } }} className="appearance-picture-demo" />}
     <strong>{item.name || "Cosmetic"}</strong>
   </div>;
 }

@@ -236,7 +236,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Settings") return <Settings data={data} run={run} />;
   if (tab === "Name Wheel") return <NameWheel data={data} />;
   if (tab === "History") return <StudentHistory data={data} />;
-  if (tab === "Profile") return role === "student" ? <StudentProfile data={data} /> : <TeacherProfile data={data} />;
+  if (tab === "Profile") return role === "student" ? <StudentProfile data={data} run={run} /> : <TeacherProfile data={data} />;
   if (tab === "Reports") return <Reports data={data} />;
   if (tab === "Account") return <Account data={data} role={role} />;
   return <section className="panel">Prototype screen coming next.</section>;
