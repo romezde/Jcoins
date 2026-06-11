@@ -38,7 +38,7 @@ export default function Attendance({ data, run }) {
         <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
       </div>
     </section>}
-    {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
+    {visibleWeeks.map((w, index) => <Panel title={attendanceWeekTitle(w)} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
       <AttendanceTable week={w} data={data} run={run} />
     </Panel>)}
     {!monthGroups.length && <section className="panel wide">No attendance weeks yet.</section>}
@@ -47,6 +47,24 @@ export default function Attendance({ data, run }) {
 
 function weekSortValue(week) {
   return weekMonthDate(week) || week.createdAt || "";
+}
+
+function attendanceWeekTitle(week) {
+  const range = attendanceWeekRange(week);
+  return `${week.subjectName}: ${week.title}${range ? ` ${range}` : ""}`;
+}
+
+function attendanceWeekRange(week) {
+  const dates = [...(week.dates || [])].sort();
+  if (!dates.length) return "";
+  const start = formatShortDate(dates[0]);
+  const end = formatShortDate(dates[dates.length - 1]);
+  return start === end ? start : `${start} - ${end}`;
+}
+
+function formatShortDate(value) {
+  const [year, month, day] = String(value || "").slice(0, 10).split("-");
+  return month && day ? `${month}/${day}` : value;
 }
 
 function weekMonthDate(week) {
