@@ -103,9 +103,15 @@ function exportAttendanceMonth(group, data, filter) {
       rows.push(row);
     });
   });
+  const nameIndex = (includeSubject ? 1 : 0) + (includeSection ? 1 : 0);
+  rows.sort((a, b) => String(exportCellValue(a[nameIndex])).localeCompare(String(exportCellValue(b[nameIndex]))) || String(exportCellValue(a[0])).localeCompare(String(exportCellValue(b[0]))));
   const subjectLabel = filter.subjectId === "all" ? "all-subjects" : data.subjects.find((subject) => subject.id === filter.subjectId)?.name || "subject";
   const sectionLabel = filter.section === "all" ? "all-sections" : filter.section === "__none" ? "no-section" : `section-${filter.section}`;
   exportSpreadsheet(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.xls`, headers, rows, group.label);
+}
+
+function exportCellValue(cell) {
+  return cell && typeof cell === "object" && "value" in cell ? cell.value : cell;
 }
 
 function attendanceExportCell(data, weeks, studentId, date, summary) {
@@ -115,7 +121,7 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
   if (status === "check") {
     summary.present += 1;
     summary.earned += Number(data.settings.attendance.onTimePoints || 0);
-    return { value: "✓", className: "present" };
+    return { value: "\u2713", className: "present" };
   }
   if (status === "late") {
     summary.late += 1;

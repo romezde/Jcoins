@@ -65,30 +65,30 @@ function deleteActivity(activity, run) {
 
 function exportActivity(activity) {
   exportSpreadsheet(`activity-${safeFilePart(activity.title)}-${safeFilePart(activity.subjectName)}.xls`, [
+    "Student",
     "Activity",
     "Subject",
     "Date Created",
     "Deadline",
     "Type",
     "Base JCoins",
-    "Student",
     "Submitted",
     "Date Submitted",
     "Days Late",
-    "Earned JCoins",
-    "Remarks"
-  ], activity.rows.map((row) => [
+    "Remarks",
+    "Score"
+  ], [...activity.rows].sort((a, b) => String(a.studentName).localeCompare(String(b.studentName))).map((row) => [
+    row.studentName,
     activity.title,
     activity.subjectName,
     activity.dateCreated,
     activity.deadline,
     activity.type,
     activity.basePoints,
-    row.studentName,
     row.submitted ? "Submitted" : "Pending",
     row.dateSubmitted || "",
     row.daysLate,
-    row.earned,
-    row.remarks || ""
+    row.remarks || "",
+    row.earned
   ]), activity.title);
 }
