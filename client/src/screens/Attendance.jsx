@@ -124,6 +124,7 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
     return { value: "\u2713", className: "present" };
   }
   if (status === "late") {
+    summary.present += 1;
     summary.late += 1;
     summary.earned += Number(data.settings.attendance.latePoints || 0);
     return { value: "-", className: "late" };
