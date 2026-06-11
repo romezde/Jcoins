@@ -1513,20 +1513,39 @@ td button {
   font-weight: 950;
   text-shadow: 0 0 10px rgba(250,204,21,.36);
 }
+.has-equipped-avatar-icon {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+.champion-avatar.has-equipped-avatar-icon {
+  font-size: 34px;
+}
+.leaderboard-avatar.has-equipped-avatar-icon {
+  font-size: 24px;
+}
 .student-row.list-place-1 .leaderboard-avatar {
   width: 56px;
   height: 56px;
   font-size: 18px;
+}
+.student-row.list-place-1 .leaderboard-avatar.has-equipped-avatar-icon {
+  font-size: 30px;
 }
 .student-row.list-place-2 .leaderboard-avatar {
   width: 50px;
   height: 50px;
   font-size: 17px;
 }
+.student-row.list-place-2 .leaderboard-avatar.has-equipped-avatar-icon {
+  font-size: 27px;
+}
 .student-row.list-place-3 .leaderboard-avatar {
   width: 46px;
   height: 46px;
   font-size: 16px;
+}
+.student-row.list-place-3 .leaderboard-avatar.has-equipped-avatar-icon {
+  font-size: 25px;
 }
 .ap-name-blue .cosmetic-name,
 .appearance-preview.ap-name-blue strong { color: #67e8f9 !important; text-shadow: 0 0 12px rgba(34,211,238,.35); }

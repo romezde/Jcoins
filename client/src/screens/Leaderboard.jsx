@@ -44,7 +44,7 @@ function Champion({ student, place }) {
   return <article className={`champion-card appearance-card place-${place} ${appearanceClasses} ${rankClass(student.rank)}`}>
     <CosmeticFx classes={appearanceClasses} />
     <div className="medal">#{place}</div>
-    <div className="cosmetic-avatar champion-avatar">{avatarIcon(student)}</div>
+    <LeaderboardAvatar student={student} className="champion-avatar" />
     <h3 className="cosmetic-name">{student.name}</h3>
     {badge && <div className="cosmetic-badge">{badge}</div>}
     <strong>{student.currentJCoins.toLocaleString()} JCoins</strong>
@@ -58,7 +58,7 @@ function StudentRow({ student, place, active, rowRef }) {
   return <article ref={rowRef} className={`student-row appearance-card list-place-${place <= 3 ? place : "normal"} ${appearanceClasses} ${rankClass(student.rank)} ${active ? "self-row" : ""}`}>
     <CosmeticFx classes={appearanceClasses} />
     <div className="place">#{place}</div>
-    <div className="cosmetic-avatar leaderboard-avatar">{avatarIcon(student)}</div>
+    <LeaderboardAvatar student={student} className="leaderboard-avatar" />
     <div className="student-name"><span className="cosmetic-name">{student.name}</span>{badge && <span className="cosmetic-badge">{badge}</span>}</div>
     <div className="coin-count">{student.currentJCoins.toLocaleString()} JC</div>
     <div className="progress-block">
@@ -76,6 +76,13 @@ function podiumOrder(topThree) {
   return [topThree[1], topThree[0], topThree[2]].filter(Boolean);
 }
 
+function LeaderboardAvatar({ student, className = "" }) {
+  const icon = student.appearance?.items?.avatarIcon?.icon;
+  return <div className={`cosmetic-avatar ${className} ${icon ? "has-equipped-avatar-icon" : ""}`} title={icon ? `${student.name}'s avatar icon` : `${student.name}'s initials`}>
+    {icon || initials(student.name)}
+  </div>;
+}
+
 function initials(name = "") {
   return name
     .split(/\s+/)
@@ -83,8 +90,4 @@ function initials(name = "") {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "J";
-}
-
-function avatarIcon(student) {
-  return student.appearance?.items?.avatarIcon?.icon || initials(student.name);
 }
