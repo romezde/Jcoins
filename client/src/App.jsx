@@ -37,6 +37,11 @@ function useSession() {
 function Login({ onLogin, onPublicLeaderboard }) {
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(() => localStorage.getItem("jcoins_login_notice") || "");
+  useEffect(() => {
+    if (!notice) return;
+    localStorage.removeItem("jcoins_login_notice");
+  }, [notice]);
   async function submit(e) {
     e.preventDefault();
     setError("");
@@ -44,6 +49,7 @@ function Login({ onLogin, onPublicLeaderboard }) {
   }
   return <main className="login"><section className="login-panel">
     <div className="brand-mark"><JCoinLogo size={42} /> <span>JCoin</span></div><h1>JCoins Arena</h1><p>Teacher dashboard, student profiles, and a live quest board.</p>
+    {notice && <div className="notice">{notice}</div>}
     <form onSubmit={submit}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button>Enter Arena</button><button type="button" className="soft" onClick={onPublicLeaderboard}>View Leaderboard</button></form>
   </section></main>;
 }
@@ -111,7 +117,8 @@ function RoleApp({ session, logout }) {
       setData(await request(session.user.role === "student" ? "/student/me" : session.user.role === "display" ? "/leaderboard" : "/admin/overview"));
     } catch (err) {
       setLoadError(err.message);
-      if (["Invalid token", "Missing token", "Forbidden"].includes(err.message)) {
+      if (shouldClearSession(err.message)) {
+        localStorage.setItem("jcoins_login_notice", sessionResetMessage(err.message));
         logout();
       }
     }
@@ -160,6 +167,19 @@ function RoleApp({ session, logout }) {
       </main>
     </div>
   </div>;
+}
+
+function shouldClearSession(message = "") {
+  return ["Invalid token", "Missing token", "Forbidden"].includes(message)
+    || message.includes("Server took too long")
+    || message.includes("Failed to fetch")
+    || message.includes("NetworkError")
+    || message.includes("Load failed");
+}
+
+function sessionResetMessage(message = "") {
+  if (["Invalid token", "Missing token", "Forbidden"].includes(message)) return "Your session expired. Please log in again.";
+  return "The backend was offline or still waking up, so the app cleared the stuck session. Refresh after a few seconds, then log in again.";
 }
 
 function GlobalSearch({ tabs, data, navigate }) {
