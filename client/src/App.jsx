@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LogOut, Menu, Search, Shield, X } from "lucide-react";
+import { CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
 import { adminTabs, post, request, slug, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { Field } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
@@ -109,6 +109,7 @@ function RoleApp({ session, logout }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
+  const [successModal, setSuccessModal] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
   async function load() {
@@ -144,7 +145,14 @@ function RoleApp({ session, logout }) {
 
   async function run(fn, ok = "Saved") {
     setMessage("");
-    try { await fn(); await load(); setMessage(ok); } catch (err) { setMessage(err.message); }
+    setSuccessModal("");
+    try {
+      await fn();
+      await load();
+      setSuccessModal(ok);
+    } catch (err) {
+      setMessage(err.message);
+    }
   }
 
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
@@ -163,6 +171,14 @@ function RoleApp({ session, logout }) {
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
       <main className="admin-shell">
         {message && <div className="notice">{message}</div>}
+        {successModal && <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal-card success-modal">
+            <CheckCircle2 size={54} />
+            <div className="section-title">Success</div>
+            <p>{successModal}</p>
+            <button type="button" onClick={() => setSuccessModal("")}>OK</button>
+          </section>
+        </div>}
         {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
       </main>
     </div>
