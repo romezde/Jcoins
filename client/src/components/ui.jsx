@@ -108,16 +108,24 @@ export function DropdownChecklist({ label = "Select", items, selected, onChange,
   const summary = names.length ? names.length <= 2 ? names.join(", ") : `${names.length} selected` : "None selected";
   return <div className={`dropdown-checklist ${compact ? "dropdown-checklist-compact" : ""} ${open ? "dropdown-checklist-open" : ""}`}>
     {!compact && <label>{label}</label>}
-    <button type="button" className="soft dropdown-checklist-trigger" onClick={() => setOpen(!open)}>
+    <button type="button" className="soft dropdown-checklist-trigger" onClick={() => setOpen(true)}>
       <span>{summary}</span>
-      {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      <ChevronRight size={16} />
     </button>
-    {open && <div className="dropdown-checklist-menu">
-      <div className="button-row">
-        <button type="button" className="soft" onClick={() => onChange(items.map((i) => i.id))}>Check All</button>
-        <button type="button" className="soft" onClick={() => onChange([])}>Uncheck</button>
-      </div>
-      {items.map((i) => <label key={i.id} className="check"><input type="checkbox" checked={ids.includes(i.id)} onChange={() => toggle(i.id)} />{i.name}</label>)}
+    {open && <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <section className="modal-card checklist-modal">
+        <div className="section-head">
+          <div className="section-title">{label}</div>
+          <button type="button" className="soft" onClick={() => setOpen(false)}>Close</button>
+        </div>
+        <div className="button-row">
+          <button type="button" className="soft" onClick={() => onChange(items.map((i) => i.id))}>Check All</button>
+          <button type="button" className="soft" onClick={() => onChange([])}>Uncheck</button>
+        </div>
+        <div className="dropdown-checklist-menu">
+          {items.map((i) => <label key={i.id} className="check"><input type="checkbox" checked={ids.includes(i.id)} onChange={() => toggle(i.id)} />{i.name}</label>)}
+        </div>
+      </section>
     </div>}
   </div>;
 }

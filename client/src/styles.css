@@ -1996,24 +1996,19 @@ td button {
   padding: 8px 10px;
   font-size: 13px;
 }
-.dropdown-checklist-compact .dropdown-checklist-menu {
-  width: min(260px, 78vw);
+.checklist-modal {
+  width: min(520px, 100%);
 }
 .dropdown-checklist-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  width: min(320px, 80vw);
-  max-height: 280px;
+  max-height: min(420px, 56vh);
   overflow: auto;
   display: grid;
   gap: 8px;
-  padding: 12px;
+  margin-top: 14px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(15, 23, 42, .98);
-  box-shadow: 0 18px 45px rgba(0,0,0,.4);
+  background: rgba(15, 23, 42, .62);
 }
 .check {
   display: flex;
@@ -2293,24 +2288,6 @@ td button {
   }
   .dropdown-checklist {
     min-width: 0;
-  }
-  .dropdown-checklist-menu,
-  .dropdown-checklist-compact .dropdown-checklist-menu {
-    position: fixed;
-    left: 10px;
-    right: 10px;
-    top: auto;
-    bottom: 10px;
-    z-index: 45;
-    width: auto;
-    max-height: min(420px, 70vh);
-  }
-  .dropdown-checklist-open::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 44;
-    background: rgba(2, 6, 23, .55);
   }
   .dropdown-checklist-trigger {
     min-width: 0;
