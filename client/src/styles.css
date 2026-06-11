@@ -1902,26 +1902,12 @@ td button {
 .ap-avatar-dragon .profile-icon-badge,
 .ap-avatar-orbit .profile-icon-badge,
 .ap-avatar-crystal .profile-icon-badge,
-.ap-avatar-rune .profile-icon-badge,
-.ap-avatar-neon .leaderboard-avatar,
-.ap-avatar-dragon .leaderboard-avatar,
-.ap-avatar-orbit .leaderboard-avatar,
-.ap-avatar-crystal .leaderboard-avatar,
-.ap-avatar-rune .leaderboard-avatar,
-.ap-avatar-neon .champion-avatar,
-.ap-avatar-dragon .champion-avatar,
-.ap-avatar-orbit .champion-avatar,
-.ap-avatar-crystal .champion-avatar,
-.ap-avatar-rune .champion-avatar {
+.ap-avatar-rune .profile-icon-badge {
   border-color: rgba(255,255,255,.2);
   box-shadow: none;
 }
 .profile-icon-badge::before,
-.profile-icon-badge::after,
-.leaderboard-avatar::before,
-.leaderboard-avatar::after,
-.champion-avatar::before,
-.champion-avatar::after {
+.profile-icon-badge::after {
   display: none;
 }
 .ap-icon-heart .cosmetic-avatar { color: #fb7185; text-shadow: 0 0 14px rgba(251,113,133,.72); }
