@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
-import { exportCsv, safeFilePart } from "../utils/exportCsv.js";
+import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Activities({ data, run }) {
   const [form, setForm] = useState({ title: "Activity 1", subjectId: data.subjects[0]?.id || "", dateCreated: today(), deadline: today(), type: data.settings.activities.types[0]?.name || "Simple", remarks: "" });
@@ -31,7 +31,7 @@ export default function Activities({ data, run }) {
         <Field label="Search Activities" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
         <div className="filter-count">{filteredActivities.length} activit{filteredActivities.length === 1 ? "y" : "ies"}</div>
       </div>
-      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, a.deadline, a.type, a.remarks, <div className="inline"><button type="button" className="soft" onClick={() => exportActivity(a)}>Export</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>])} />
+      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, a.deadline, a.type, a.remarks, <div className="inline"><button type="button" className="soft" onClick={() => exportActivity(a)}>Export Spreadsheet</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>])} />
     </Panel>
     {filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} run={run} />)}
   </div>;
@@ -64,7 +64,7 @@ function deleteActivity(activity, run) {
 }
 
 function exportActivity(activity) {
-  exportCsv(`activity-${safeFilePart(activity.title)}-${safeFilePart(activity.subjectName)}.csv`, [
+  exportSpreadsheet(`activity-${safeFilePart(activity.title)}-${safeFilePart(activity.subjectName)}.xls`, [
     "Activity",
     "Subject",
     "Date Created",
@@ -90,5 +90,5 @@ function exportActivity(activity) {
     row.daysLate,
     row.earned,
     row.remarks || ""
-  ]));
+  ]), activity.title);
 }

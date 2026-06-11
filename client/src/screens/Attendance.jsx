@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
-import { exportCsv, safeFilePart } from "../utils/exportCsv.js";
+import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Attendance({ data, run }) {
   const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
@@ -35,7 +35,7 @@ export default function Attendance({ data, run }) {
       <div className="filter-bar transaction-filter-bar">
         <Select label="Export Subject" value={exportFilter.subjectId} onChange={(subjectId) => setExportFilter({ ...exportFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
         <Select label="Export Section" value={exportFilter.section} onChange={(section) => setExportFilter({ ...exportFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
-        <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month CSV</button>
+        <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
       </div>
     </section>}
     {visibleWeeks.map((w, index) => <Panel title={`${w.subjectName}: ${w.title}`} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
@@ -94,7 +94,7 @@ function exportAttendanceMonth(group, data, filter) {
   });
   const subjectLabel = filter.subjectId === "all" ? "all-subjects" : data.subjects.find((subject) => subject.id === filter.subjectId)?.name || "subject";
   const sectionLabel = filter.section === "all" ? "all-sections" : filter.section === "__none" ? "no-section" : `section-${filter.section}`;
-  exportCsv(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.csv`, ["Month", "Subject", "Section", "Week", "Student", "Date", "Status", "JCoins"], rows);
+  exportSpreadsheet(`attendance-${safeFilePart(group.label)}-${safeFilePart(subjectLabel)}-${safeFilePart(sectionLabel)}.xls`, ["Month", "Subject", "Section", "Week", "Student", "Date", "Status", "JCoins"], rows, group.label);
 }
 
 function statusLabel(status) {
