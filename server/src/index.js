@@ -604,6 +604,34 @@ app.put("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, res) 
   res.json({ subject });
 });
 
+app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  const subject = db.subjects.find((s) => s.id === req.params.id);
+  if (!subject) return res.status(404).json({ error: "Subject not found." });
+  const subjectId = subject.id;
+  const removedWeekIds = new Set(db.attendanceWeeks.filter((week) => week.subjectId === subjectId).map((week) => week.id));
+  const removedRecordIds = new Set(db.attendanceRecords.filter((record) => removedWeekIds.has(record.weekId)).map((record) => record.id));
+  const removedRecitationIds = new Set(db.recitations.filter((recitation) => recitation.subjectId === subjectId).map((recitation) => recitation.id));
+  const removedActivityIds = new Set(db.activities.filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
+  db.subjects = db.subjects.filter((s) => s.id !== subjectId);
+  db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
+  db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
+  db.attendanceWeeks = db.attendanceWeeks.filter((week) => week.subjectId !== subjectId);
+  db.attendanceRecords = db.attendanceRecords.filter((record) => !removedWeekIds.has(record.weekId));
+  db.recitations = db.recitations.filter((recitation) => recitation.subjectId !== subjectId);
+  db.activities = db.activities.filter((activity) => activity.subjectId !== subjectId);
+  db.transactions = db.transactions.filter((transaction) => {
+    const meta = transaction.meta || {};
+    return meta.subjectId !== subjectId
+      && !removedWeekIds.has(meta.weekId)
+      && !removedRecordIds.has(meta.recordId)
+      && !removedRecitationIds.has(meta.recitationId)
+      && !removedActivityIds.has(meta.activityId);
+  });
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
 app.post("/api/admin/sections", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const name = String(req.body.name || "").trim();
