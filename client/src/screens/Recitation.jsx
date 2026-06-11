@@ -15,7 +15,7 @@ export default function Recitation({ data, run }) {
     const q = filter.search.trim().toLowerCase();
     const searchMatch = !q || [recitation.date, recitation.studentName, recitation.subjectName, recitation.amount, recitation.remarks].some((value) => String(value || "").toLowerCase().includes(q));
     return subjectMatch && studentMatch && weekMatch && searchMatch;
-  });
+  }).sort((a, b) => String(a.studentName).localeCompare(String(b.studentName)) || String(a.date).localeCompare(String(b.date)));
 
   return <div className="dashboard-grid">
     <ActionModal title="Add Recitation">
@@ -44,14 +44,26 @@ export default function Recitation({ data, run }) {
 
 function exportRecitations(recitations, filter) {
   const weekLabel = filter.week === "all" ? "all-weeks" : filter.week;
-  exportSpreadsheet(`recitations-${safeFilePart(weekLabel)}.xls`, ["Week", "Date", "Student", "Subject", "Amount", "Remarks"], recitations.map((recitation) => [
-    weekDisplay(recitation.date),
-    recitation.date,
-    recitation.studentName,
-    recitation.subjectName,
-    recitation.amount,
-    recitation.remarks
-  ]), "Recitations");
+  const summary = new Map();
+  recitations.forEach((recitation) => {
+    const key = recitation.studentId;
+    if (!summary.has(key)) summary.set(key, { studentName: recitation.studentName, subjects: new Set(), dates: new Set(), count: 0, earned: 0 });
+    const row = summary.get(key);
+    row.subjects.add(recitation.subjectName);
+    row.dates.add(recitation.date);
+    row.count += 1;
+    row.earned += Number(recitation.amount || 0);
+  });
+  const rows = [...summary.values()]
+    .sort((a, b) => String(a.studentName).localeCompare(String(b.studentName)))
+    .map((row) => [
+      row.studentName,
+      [...row.subjects].sort().join(", "),
+      row.count,
+      [...row.dates].sort().join(", "),
+      row.earned
+    ]);
+  exportSpreadsheet(`recitations-summary-${safeFilePart(weekLabel)}.xls`, ["Student", "Subject(s)", "Times Recited", "Dates Recited", "JCoins Earned"], rows, "Recitation Summary");
 }
 
 function buildRecitationWeeks(recitations) {
