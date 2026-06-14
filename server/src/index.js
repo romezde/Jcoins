@@ -429,6 +429,19 @@ function appearanceGiftRows(db, studentId = null) {
     .sort(byDateDesc);
 }
 
+function requestRows(db, requests) {
+  return requests.map((request) => {
+    const payload = request.payload || {};
+    return {
+      ...request,
+      studentName: studentName(db, request.studentId),
+      fromStudentName: studentName(db, request.studentId),
+      itemName: payload.itemId ? activeShopPrice(db, payload.itemId)?.name || "Unknown Item" : "",
+      toStudentName: payload.toStudentId ? studentName(db, payload.toStudentId) : ""
+    };
+  });
+}
+
 function rankFor(coins, ranks) {
   const ordered = [...ranks].sort((a, b) => a.min - b.min);
   const current = [...ordered].reverse().find((rank) => coins >= rank.min);
@@ -571,7 +584,7 @@ function filteredOverview(db, user) {
     sales: db.sales,
     appearanceItems: db.appearanceItems,
     appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
-    requests: db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)
+    requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc))
   };
 }
 
@@ -1235,10 +1248,38 @@ app.delete("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) 
 
 app.post("/api/requests", auth, async (req, res) => {
   const db = await readDb();
-  const request = { id: randomUUID(), type: req.body.type, status: "pending", studentId: req.user.studentId || req.body.studentId, payload: req.body.payload || {}, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
+  const type = String(req.body.type || "").trim();
+  const studentId = req.user.studentId || req.body.studentId;
+  if (!type) return res.status(400).json({ error: "Request type is required." });
+  if (!studentId || !db.students.some((student) => student.id === studentId)) return res.status(400).json({ error: "Valid student is required." });
+  if (req.user.role === "student" && db.requests.some((request) => request.studentId === studentId && request.type === type && request.status === "pending")) {
+    return res.status(409).json({ error: `You already have a pending ${type} request. Cancel it first before making another.` });
+  }
+  if (type === "trade") {
+    const toStudentId = req.body.payload?.toStudentId;
+    const amount = Number(req.body.payload?.amount || 0);
+    if (!toStudentId || !db.students.some((student) => student.id === toStudentId)) return res.status(400).json({ error: "Choose a student to trade with." });
+    if (toStudentId === studentId) return res.status(400).json({ error: "You cannot trade with yourself." });
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Trade amount must be greater than 0." });
+  }
+  const request = { id: randomUUID(), type, status: "pending", studentId, payload: req.body.payload || {}, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
   db.requests.push(request);
   await writeDb(db);
   res.status(201).json({ request });
+});
+
+app.post("/api/requests/:id/cancel", auth, async (req, res) => {
+  const db = await readDb();
+  const request = db.requests.find((r) => r.id === req.params.id);
+  if (!request) return res.status(404).json({ error: "Request not found." });
+  const ownsRequest = req.user.role === "student" && request.studentId === req.user.studentId;
+  if (!ownsRequest && req.user.role !== "admin") return res.status(403).json({ error: "You can only cancel your own request." });
+  if (request.status !== "pending") return res.status(400).json({ error: "Only pending requests can be cancelled." });
+  request.status = "cancelled";
+  request.resolvedAt = now();
+  request.resolvedBy = req.user.id;
+  await writeDb(db);
+  res.json({ request });
 });
 
 app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"), async (req, res) => {

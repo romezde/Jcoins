@@ -11,7 +11,7 @@ import Attendance from "./screens/Attendance.jsx";
 import Recitation from "./screens/Recitation.jsx";
 import Activities from "./screens/Activities.jsx";
 import Transactions from "./screens/Transactions.jsx";
-import Shop, { StudentShop } from "./screens/Shop.jsx";
+import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
 import Approvals from "./screens/Approvals.jsx";
 import Settings from "./screens/Settings.jsx";
@@ -271,6 +271,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Activities") return role === "student" ? <StudentActivities data={data} /> : <Activities data={data} run={run} />;
   if (tab === "Transactions") return <Transactions data={data} run={run} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
+  if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;

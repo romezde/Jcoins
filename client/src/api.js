@@ -2,7 +2,7 @@ export const API = import.meta.env.VITE_API_URL || `${window.location.protocol}/
 
 export const adminTabs = ["Dashboard", "Leaderboard", "People", "Subjects", "Attendance", "Recitation", "Activities", "Transactions", "Shop", "Appearance Shop", "Approvals", "Settings", "Name Wheel", "Profile", "Account"];
 export const teacherTabs = ["Dashboard", "Leaderboard", "People", "Attendance", "Recitation", "Activities", "Transactions", "Approvals", "Reports", "Name Wheel", "Profile", "Account"];
-export const studentTabs = ["Leaderboard", "Profile", "Activities", "Shop", "Appearance Shop", "History", "Account"];
+export const studentTabs = ["Leaderboard", "Profile", "Activities", "Shop", "Trade Requests", "Appearance Shop", "History", "Account"];
 
 export function slug(tab) {
   return tab.toLowerCase().replaceAll(" ", "-");

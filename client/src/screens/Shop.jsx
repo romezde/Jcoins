@@ -73,30 +73,101 @@ export function StudentShop({ data, run }) {
   const [filter, setFilter] = useState({ tier: "all", search: "" });
   const filteredItems = filterShopItems(data.shopItems, filter);
   const tiers = [...new Set([...tierOptions, ...filteredItems.map((item) => item.tier || "Low")])];
-  return <Panel title="Shop Items" wide defaultOpen>
-    <ShopFilters filter={filter} setFilter={setFilter} count={filteredItems.length} />
-    <div className="shop-card-groups">
-      {tiers.map((tier) => {
-        const tierItems = filteredItems.filter((item) => (item.tier || "Low") === tier);
-        if (!tierItems.length) return null;
-        return <section key={tier} className="shop-card-group">
-          <h3>{tier} <span>{tierItems.length}</span></h3>
-          <div className="shop-card-grid">
-            {tierItems.map((item) => <article key={item.id} className="shop-card">
-              <div className="shop-card-top">
-                <strong>{item.name}</strong>
-                <span>{Number(item.activeCost || 0).toLocaleString()} JC</span>
-              </div>
-              {item.discount > 0 && <div className="sale-pill">-{item.discount}% sale</div>}
-              {item.notes && <p>{item.notes}</p>}
-              <button onClick={() => run(() => post("/requests", { type: "purchase", payload: { itemId: item.id }, remarks: `Buy ${item.name}` }), "Purchase requested")}>Request Buy</button>
-            </article>)}
-          </div>
-        </section>;
-      })}
-      {!filteredItems.length && <div className="empty-card">No shop items match this search.</div>}
+  const purchaseRequests = requestList(data, "purchase");
+  const pendingPurchase = purchaseRequests.find((request) => request.status === "pending");
+  const latestPurchase = purchaseRequests[0];
+  return <div className="dashboard-grid">
+    <section className="panel wide request-summary-panel">
+      <div className="section-title">Latest Shop Request</div>
+      {pendingPurchase ? <RequestCard request={pendingPurchase} run={run} actionLabel="Cancel Request" /> : latestPurchase ? <RequestCard request={latestPurchase} run={run} /> : <div className="empty-card">No shop request yet. Choose an item below when you are ready.</div>}
+    </section>
+    <Panel title="Shop Items" wide defaultOpen>
+      <ShopFilters filter={filter} setFilter={setFilter} count={filteredItems.length} />
+      {pendingPurchase && <p className="muted-line">You already have one pending shop request. Cancel it before requesting another item.</p>}
+      <div className="shop-card-groups">
+        {tiers.map((tier) => {
+          const tierItems = filteredItems.filter((item) => (item.tier || "Low") === tier);
+          if (!tierItems.length) return null;
+          return <section key={tier} className="shop-card-group">
+            <h3>{tier} <span>{tierItems.length}</span></h3>
+            <div className="shop-card-grid">
+              {tierItems.map((item) => <article key={item.id} className="shop-card">
+                <div className="shop-card-top">
+                  <strong>{item.name}</strong>
+                  <span>{Number(item.activeCost || 0).toLocaleString()} JC</span>
+                </div>
+                {item.discount > 0 && <div className="sale-pill">-{item.discount}% sale</div>}
+                {item.notes && <p>{item.notes}</p>}
+                <button disabled={!!pendingPurchase} onClick={() => run(() => post("/requests", { type: "purchase", payload: { itemId: item.id }, remarks: `Buy ${item.name}` }), "Purchase requested")}>Request Buy</button>
+              </article>)}
+            </div>
+          </section>;
+        })}
+        {!filteredItems.length && <div className="empty-card">No shop items match this search.</div>}
+      </div>
+    </Panel>
+  </div>;
+}
+
+export function StudentTradeRequests({ data, run }) {
+  const recipients = (data.students || []).filter((student) => student.id !== data.student?.id);
+  const [form, setForm] = useState({ toStudentId: recipients[0]?.id || "", amount: 1, remarks: "" });
+  const tradeRequests = requestList(data, "trade");
+  const pendingTrade = tradeRequests.find((request) => request.status === "pending");
+  const recentDone = tradeRequests.filter((request) => request.status !== "pending").slice(0, 10);
+  const selectedRecipient = recipients.some((student) => student.id === form.toStudentId) ? form.toStudentId : recipients[0]?.id || "";
+
+  return <div className="dashboard-grid">
+    <section className="panel wide request-summary-panel">
+      <div className="section-title">Current Trade Request</div>
+      {pendingTrade ? <RequestCard request={pendingTrade} run={run} actionLabel="Cancel Request" /> : <div className="empty-card">No active trade request.</div>}
+    </section>
+    <section className="panel">
+      <div className="section-title">Request Trade</div>
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        run(() => post("/requests", {
+          type: "trade",
+          payload: { toStudentId: selectedRecipient, amount: Number(form.amount || 0) },
+          remarks: form.remarks || `Trade ${form.amount} JCoins`
+        }), "Trade requested");
+      }}>
+        <Select label="Trade With" value={selectedRecipient} onChange={(toStudentId) => setForm({ ...form, toStudentId })} options={recipients.map((student) => ({ value: student.id, label: `${student.name}${student.section ? ` - ${student.section}` : ""}` }))} />
+        <Field label="Amount" type="number" value={form.amount} onChange={(amount) => setForm({ ...form, amount })} />
+        <Field label="Remarks" value={form.remarks} onChange={(remarks) => setForm({ ...form, remarks })} />
+        {pendingTrade && <p className="muted-line">You already have one pending trade request. Cancel it before making another.</p>}
+        <button disabled={!!pendingTrade || !selectedRecipient}>Send Trade Request</button>
+      </form>
+    </section>
+    <Panel title="Recent Trade Requests Done" wide defaultOpen>
+      <Table columns={["Date", "To Student", "Amount", "Status", "Remarks"]} rows={recentDone.map((request) => [
+        new Date(request.createdAt).toLocaleString(),
+        request.toStudentName || "Unknown",
+        request.payload?.amount || "",
+        request.status,
+        request.remarks || ""
+      ])} />
+    </Panel>
+  </div>;
+}
+
+function RequestCard({ request, run, actionLabel = "" }) {
+  const item = request.type === "purchase" ? request.itemName || "Unknown item" : request.toStudentName ? `Trade with ${request.toStudentName}` : request.type;
+  const amount = request.type === "trade" ? `${Number(request.payload?.amount || 0).toLocaleString()} JC` : "";
+  return <article className={`request-card request-${request.status}`}>
+    <div>
+      <span className="request-status">{request.status}</span>
+      <strong>{item}</strong>
+      {amount && <p>{amount}</p>}
+      {request.remarks && <p>{request.remarks}</p>}
+      <small>{new Date(request.createdAt).toLocaleString()}</small>
     </div>
-  </Panel>;
+    {request.status === "pending" && actionLabel && <button className="danger" onClick={() => run(() => post(`/requests/${request.id}/cancel`, {}), "Request cancelled")}>{actionLabel}</button>}
+  </article>;
+}
+
+function requestList(data, type) {
+  return (data.requests || []).filter((request) => request.type === type).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 function ShopFilters({ filter, setFilter, count }) {
   return <div className="filter-bar">

@@ -415,6 +415,57 @@ input::placeholder {
   min-height: 36px;
   padding: 8px 10px;
 }
+.request-summary-panel {
+  align-self: start;
+}
+.request-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(34,211,238,.24);
+  border-radius: 12px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(15,23,42,.78), rgba(30,41,59,.66));
+}
+.request-card > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.request-card strong {
+  color: var(--text);
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.request-card p,
+.request-card small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.request-status {
+  width: fit-content;
+  border: 1px solid rgba(250,204,21,.42);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: #fef08a;
+  background: rgba(250,204,21,.12);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+.request-approved .request-status {
+  border-color: rgba(52,211,153,.42);
+  color: #bbf7d0;
+  background: rgba(52,211,153,.12);
+}
+.request-cancelled .request-status,
+.request-rejected .request-status {
+  border-color: rgba(251,113,133,.42);
+  color: #fecdd3;
+  background: rgba(251,113,133,.12);
+}
 @media (max-width: 900px) {
   .shop-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -429,6 +480,13 @@ input::placeholder {
   .shop-card p,
   .sale-pill { font-size: 11px; }
   .shop-card button { min-height: 34px; padding: 7px 8px; }
+  .request-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .request-card button {
+    width: 100%;
+  }
 }
 
 .appearance-type-groups {
