@@ -27,6 +27,7 @@ export default function Settings({ data, run }) {
     <Panel title="Wheel Settings" defaultOpen={false}>
       <Field label="Spin Duration Seconds" type="number" value={settings.wheel?.spinSeconds ?? 3.3} onChange={(v) => set("wheel", "spinSeconds", v)} />
       <p className="muted-line">Example: 3.3 is quick, 5 is dramatic, 8 is very suspenseful.</p>
+      <button onClick={() => run(() => put("/admin/settings", { settings }), "Wheel settings saved")}>Save Wheel Settings</button>
     </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [

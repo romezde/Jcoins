@@ -74,8 +74,8 @@ export default function NameWheel({ data }) {
       </div>
     </div>
     {winner && <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <ConfettiBurst />
       <section className="modal-card wheel-result-modal">
-        <ConfettiBurst />
         <div className="section-title">Chosen Student</div>
         <ProfilePhotoFrame student={winner} className="wheel-winner-photo" />
         {winnerPhotoLoading && <p className="photo-loading">Loading photo...</p>}
@@ -118,11 +118,12 @@ function WheelLabels({ students, total }) {
 
 function ConfettiBurst() {
   return <div className="confetti-burst" aria-hidden="true">
-    {Array.from({ length: 34 }, (_, index) => (
+    {Array.from({ length: 96 }, (_, index) => (
       <span key={index} style={{
-        "--angle": `${index * 10.6}deg`,
-        "--distance": `${70 + (index % 7) * 10}px`,
-        "--delay": `${(index % 6) * .025}s`,
+        "--angle": `${index * 13.7}deg`,
+        "--x": `${((index * 37) % 100) - 50}vw`,
+        "--distance": `${48 + (index % 9) * 6}vh`,
+        "--delay": `${(index % 12) * .018}s`,
         "--color": colors[index % colors.length]
       }} />
     ))}

@@ -621,30 +621,33 @@ input::placeholder {
 }
 .wheel-result-modal {
   position: relative;
-  overflow: hidden;
+  z-index: 2;
+  overflow: visible;
   text-align: center;
 }
 .confetti-burst {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
 }
 .confetti-burst span {
   position: absolute;
   left: 50%;
-  top: 35%;
-  width: 9px;
-  height: 15px;
-  border-radius: 3px;
+  top: 50%;
+  width: 10px;
+  height: 18px;
+  border-radius: 4px;
   background: var(--color);
   transform: translate(-50%, -50%) rotate(var(--angle));
-  animation: confetti-pop 1.15s ease-out var(--delay) both;
+  box-shadow: 0 0 12px rgba(255,255,255,.22);
+  animation: confetti-pop 1.65s ease-out var(--delay) both;
 }
 @keyframes confetti-pop {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(var(--angle)) scale(.25);
+    transform: translate(-50%, -50%) rotate(var(--angle)) scale(.2);
   }
   18% { opacity: 1; }
   100% {
@@ -652,8 +655,8 @@ input::placeholder {
     transform:
       translate(-50%, -50%)
       rotate(var(--angle))
-      translateY(calc(-1 * var(--distance)))
-      rotate(260deg)
+      translate(var(--x), calc(-1 * var(--distance)))
+      rotate(520deg)
       scale(.9);
   }
 }
