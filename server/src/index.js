@@ -156,6 +156,7 @@ function defaults() {
           { name: "Complex", points: 50 }
         ]
       },
+      wheel: { spinSeconds: 3.3 },
       ranks: [
         { name: "Apprentice", min: 250 },
         { name: "Adept", min: 500 },
@@ -207,6 +208,7 @@ async function readDb() {
   db.settings.attendance = { ...d.settings.attendance, ...(db.settings.attendance || {}) };
   db.settings.recitation = { ...d.settings.recitation, ...(db.settings.recitation || {}) };
   db.settings.activities = { ...d.settings.activities, ...(db.settings.activities || {}) };
+  db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.activities.types ||= d.settings.activities.types;
   db.settings.ranks ||= d.settings.ranks;
   db.subjects ||= [];

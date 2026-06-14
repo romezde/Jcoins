@@ -14,6 +14,7 @@ export default function NameWheel({ data }) {
   const [winnerPhotoLoading, setWinnerPhotoLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
+  const spinSeconds = clamp(Number(data.settings?.wheel?.spinSeconds || 3.3), 1, 12);
 
   const sections = useMemo(() => [...new Set((data.students || []).map((student) => student.section).filter(Boolean))].sort(), [data.students]);
   const q = search.trim().toLowerCase();
@@ -46,7 +47,7 @@ export default function NameWheel({ data }) {
         .then((result) => setWinner((current) => current?.id === chosen.id ? { ...current, profilePhoto: result.profilePhoto || "" } : current))
         .catch(() => {})
         .finally(() => setWinnerPhotoLoading(false));
-    }, 3300);
+    }, spinSeconds * 1000);
   }
 
   return <section className="panel wide wheel-panel">
@@ -65,20 +66,8 @@ export default function NameWheel({ data }) {
     </div>
     <div className="wheel-stage">
       <div className="wheel-pointer" />
-      <div className="name-wheel" style={{ background: wheelGradient, transform: `rotate(${rotation}deg)` }}>
-        <div className="wheel-labels">
-          {students.slice(0, labelLimit).map((student, index) => {
-            const angle = (index + .5) * (360 / students.length);
-            return <span
-              key={student.id}
-              className="wheel-slice-name"
-              style={{ "--angle": `${angle}deg`, "--text-rotate": `${angle > 90 && angle < 270 ? 180 : 0}deg` }}
-              title={student.name}
-            >
-              {shortName(student.name)}
-            </span>;
-          })}
-        </div>
+      <div className="name-wheel" style={{ background: wheelGradient, transform: `rotate(${rotation}deg)`, transitionDuration: `${spinSeconds}s` }}>
+        <WheelLabels students={students.slice(0, labelLimit)} total={students.length} />
         <div className="wheel-core">
           <strong>{spinning ? "..." : students.length || 0}</strong>
           <span>{students.length > labelLimit ? `top ${labelLimit} shown` : spinning ? "choosing" : "names"}</span>
@@ -87,6 +76,7 @@ export default function NameWheel({ data }) {
     </div>
     {winner && <div className="modal-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card wheel-result-modal">
+        <ConfettiBurst />
         <div className="section-title">Chosen Student</div>
         <ProfilePhotoFrame student={winner} className="wheel-winner-photo" />
         {winnerPhotoLoading && <p className="photo-loading">Loading photo...</p>}
@@ -101,10 +91,54 @@ export default function NameWheel({ data }) {
   </section>;
 }
 
+function WheelLabels({ students, total }) {
+  if (!students.length) return null;
+  const radius = total > 34 ? 33 : total > 22 ? 34.5 : 36;
+  const fontSize = total > 36 ? 2.35 : total > 24 ? 2.75 : total > 14 ? 3.25 : 4;
+  return <svg className="wheel-svg-labels" viewBox="0 0 100 100" aria-hidden="true">
+    {students.map((student, index) => {
+      const angle = (index + .5) * (360 / total);
+      const rad = angle * Math.PI / 180;
+      const x = 50 + Math.sin(rad) * radius;
+      const y = 50 - Math.cos(rad) * radius;
+      const flip = angle > 90 && angle < 270;
+      return <text
+        key={student.id}
+        x={x}
+        y={y}
+        fontSize={fontSize}
+        textAnchor="middle"
+        dominantBaseline="central"
+        transform={`rotate(${angle + (flip ? 270 : 90)} ${x} ${y})`}
+      >
+        {shortName(student.name, total)}
+      </text>;
+    })}
+  </svg>;
+}
+
+function ConfettiBurst() {
+  return <div className="confetti-burst" aria-hidden="true">
+    {Array.from({ length: 34 }, (_, index) => (
+      <span key={index} style={{
+        "--angle": `${index * 10.6}deg`,
+        "--distance": `${70 + (index % 7) * 10}px`,
+        "--delay": `${(index % 6) * .025}s`,
+        "--color": colors[index % colors.length]
+      }} />
+    ))}
+  </div>;
+}
+
 function shortName(name = "") {
   const clean = String(name).trim();
-  if (clean.length <= 16) return clean;
+  const max = arguments[1] > 34 ? 12 : arguments[1] > 22 ? 14 : 16;
+  if (clean.length <= max) return clean;
   const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length > 1) return `${parts[0]} ${parts.at(-1)?.[0] || ""}.`.slice(0, 16);
-  return `${clean.slice(0, 14)}..`;
+  if (parts.length > 1) return `${parts[0]} ${parts.at(-1)?.[0] || ""}.`.slice(0, max);
+  return `${clean.slice(0, Math.max(5, max - 2))}..`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 }

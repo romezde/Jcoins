@@ -24,6 +24,10 @@ export default function Settings({ data, run }) {
       ])} />
       <button type="button" className="soft" onClick={() => setSettings({ ...settings, activities: { ...settings.activities, types: [...settings.activities.types, { name: "New Type", points: 10 }] } })}>Add Type</button>
     </Panel>
+    <Panel title="Wheel Settings" defaultOpen={false}>
+      <Field label="Spin Duration Seconds" type="number" value={settings.wheel?.spinSeconds ?? 3.3} onChange={(v) => set("wheel", "spinSeconds", v)} />
+      <p className="muted-line">Example: 3.3 is quick, 5 is dramatic, 8 is very suspenseful.</p>
+    </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [
         <input value={r.name} onChange={(e) => setSettings({ ...settings, ranks: settings.ranks.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />,

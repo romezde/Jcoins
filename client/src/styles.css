@@ -620,7 +620,42 @@ input::placeholder {
   to { transform: rotate(360deg); }
 }
 .wheel-result-modal {
+  position: relative;
+  overflow: hidden;
   text-align: center;
+}
+.confetti-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti-burst span {
+  position: absolute;
+  left: 50%;
+  top: 35%;
+  width: 9px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--color);
+  transform: translate(-50%, -50%) rotate(var(--angle));
+  animation: confetti-pop 1.15s ease-out var(--delay) both;
+}
+@keyframes confetti-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--angle)) scale(.25);
+  }
+  18% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--angle))
+      translateY(calc(-1 * var(--distance)))
+      rotate(260deg)
+      scale(.9);
+  }
 }
 .wheel-winner-photo {
   width: 148px;
@@ -918,28 +953,23 @@ input::placeholder {
   border: 2px dashed rgba(255,255,255,.38);
   border-radius: inherit;
 }
-.wheel-labels {
+.wheel-svg-labels {
   position: absolute;
   inset: 0;
-  border-radius: inherit;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
   pointer-events: none;
 }
-.wheel-slice-name {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 28%;
-  transform-origin: 0 50%;
-  transform: rotate(var(--angle)) translate(72%, -50%) rotate(var(--text-rotate));
-  color: #fff;
-  font-size: clamp(7px, 1.2vw, 11px);
+.wheel-svg-labels text {
+  fill: #fff;
+  font-family: Arial, system-ui, sans-serif;
   font-weight: 950;
-  line-height: 1.05;
-  text-align: center;
+  paint-order: stroke fill;
+  stroke: rgba(2, 6, 23, .82);
+  stroke-width: .72px;
+  stroke-linejoin: round;
   text-shadow: 0 2px 4px rgba(0,0,0,.75), 0 0 8px rgba(15,23,42,.65);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .wheel-core {
   position: absolute;
@@ -954,6 +984,7 @@ input::placeholder {
   background: rgba(15,23,42,.94);
   color: var(--text);
   box-shadow: inset 0 0 22px rgba(250,204,21,.18), 0 0 24px rgba(0,0,0,.34);
+  z-index: 2;
 }
 .wheel-core strong {
   color: var(--gold);
@@ -2249,10 +2280,6 @@ td button {
   }
   .wheel-pointer {
     left: 50%;
-  }
-  .wheel-slice-name {
-    width: 29%;
-    font-size: clamp(7px, 2.2vw, 10px);
   }
   .podium { grid-template-columns: 1fr; }
   .student-row { grid-template-columns: 54px 44px 1fr; }
