@@ -938,6 +938,7 @@ input::placeholder {
   grid-template-columns: minmax(260px, 520px);
   margin-top: 34px;
   padding: 18px;
+  justify-content: space-around;
 }
 .name-wheel {
   position: relative;
