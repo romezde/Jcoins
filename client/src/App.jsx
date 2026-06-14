@@ -17,6 +17,7 @@ import Approvals from "./screens/Approvals.jsx";
 import Settings from "./screens/Settings.jsx";
 import NameWheel from "./screens/NameWheel.jsx";
 import { StaffFeedback, StudentFeedback } from "./screens/Feedback.jsx";
+import Schedule from "./screens/Schedule.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
 
 function useSession() {
@@ -111,7 +112,7 @@ function PublicLeaderboard({ onLogin }) {
 
 function RoleApp({ session, logout }) {
   const tabs = session.user.role === "student" ? studentTabs : session.user.role === "teacher" ? teacherTabs : session.user.role === "display" ? ["Leaderboard"] : adminTabs;
-  const fallback = session.user.role === "student" || session.user.role === "display" ? "Leaderboard" : "Dashboard";
+  const fallback = session.user.role === "teacher" ? "Schedule" : session.user.role === "student" || session.user.role === "display" ? "Leaderboard" : "Dashboard";
   const [active, setActive] = useState(() => tabFromPath(tabs, fallback));
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -163,8 +164,10 @@ function RoleApp({ session, logout }) {
       await load();
       window.dispatchEvent(new CustomEvent("jcoins:action-success"));
       setSuccessModal(ok);
+      return true;
     } catch (err) {
       setMessage(err.message);
+      return false;
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -219,7 +222,7 @@ function RoleApp({ session, logout }) {
 }
 
 function shouldClearSession(message = "") {
-  return ["Invalid token", "Missing token", "Forbidden"].includes(message)
+  return ["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message)
     || message.includes("Server took too long")
     || message.includes("Failed to fetch")
     || message.includes("NetworkError")
@@ -227,7 +230,7 @@ function shouldClearSession(message = "") {
 }
 
 function sessionResetMessage(message = "") {
-  if (["Invalid token", "Missing token", "Forbidden"].includes(message)) return "Your session expired. Please log in again.";
+  if (["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message)) return "Your session expired. Please log in again.";
   return "The backend was offline or still waking up, so the app cleared the stuck session. Refresh after a few seconds, then log in again.";
 }
 
@@ -367,12 +370,14 @@ function buildSearchResults(tabs, data) {
   (data?.users || []).forEach((user) => add(list, "Account", user.username, "People", `${user.role} ${(user.sectionIds || []).join(" ")}`));
   (data?.attendanceWeeks || []).forEach((week) => add(list, "Attendance", week.title, "Attendance", week.subjectName));
   (data?.feedback || []).forEach((entry) => add(list, "Feedback", entry.title, "Feedback", `${entry.studentName} ${entry.category} ${entry.status} ${entry.feature}`));
+  (data?.schedules || []).forEach((schedule) => add(list, "Schedule", `${schedule.subjectName} ${schedule.day}`, "Schedule", `${schedule.section} ${schedule.startTime} ${schedule.endTime} ${schedule.room} ${schedule.type}`));
   return list;
 }
 
 function Screen({ role, tab, data, run }) {
   if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} />;
   if (tab === "Dashboard") return <Dashboard data={data} />;
+  if (tab === "Schedule") return <Schedule data={data} run={run} role={role} />;
   if (tab === "People") return <People data={data} run={run} role={role} />;
   if (tab === "Subjects") return <Subjects data={data} run={run} />;
   if (tab === "Attendance") return <Attendance data={data} run={run} />;

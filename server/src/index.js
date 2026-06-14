@@ -28,6 +28,8 @@ app.use(express.json({ limit: "1mb" }));
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
 const byDateDesc = (a, b) => String(b.createdAt || b.date || "").localeCompare(String(a.createdAt || a.date || ""));
+const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const reminderOptions = [0, 5, 10, 15, 30, 60];
 const defaultShopItems = [
   { id: "item_hint", tier: "Low", name: "Hint During Quiz", cost: 50, notes: "1 per quiz" },
   { id: "item_seat_choice", tier: "Low", name: "Seat Choice (1 Day)", cost: 80, notes: "" },
@@ -189,6 +191,7 @@ async function createInitialDb() {
     sales: [],
     requests: [],
     feedback: [],
+    schedules: [],
     appearanceItems: defaultAppearanceItems,
     appearanceInventory: [],
     appearanceEquipped: {},
@@ -235,6 +238,7 @@ async function readDb() {
   db.sales ||= [];
   db.requests ||= [];
   db.feedback ||= [];
+  db.schedules ||= [];
   db.appearanceItems ||= [];
   db.appearanceInventory ||= [];
   if (!db.appearanceEquipped || Array.isArray(db.appearanceEquipped) || typeof db.appearanceEquipped !== "object") {
@@ -394,8 +398,19 @@ function subjectName(db, id) {
   return db.subjects.find((s) => s.id === id)?.name || "Unknown";
 }
 
+function subjectByNameOrId(db, value) {
+  const key = String(value || "").trim().toLowerCase();
+  return db.subjects.find((subject) => subject.id.toLowerCase() === key || subject.name.toLowerCase() === key);
+}
+
 function studentName(db, id) {
   return db.students.find((s) => s.id === id)?.name || "Unknown";
+}
+
+function canUseSection(user, section = "") {
+  if (user.role === "admin") return true;
+  const sectionIds = new Set(user.sectionIds || []);
+  return !sectionIds.size || sectionIds.has(section || "");
 }
 
 function appearanceItem(db, itemId) {
@@ -451,6 +466,51 @@ function feedbackRows(db, feedback) {
     studentName: studentName(db, entry.studentId),
     section: db.students.find((student) => student.id === entry.studentId)?.section || ""
   })).sort(byDateDesc);
+}
+
+function normalizeDay(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return dayOrder.find((day) => day.toLowerCase().startsWith(key)) || "";
+}
+
+function cleanTime(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : "";
+}
+
+function scheduleFromBody(db, body, user, existing = {}) {
+  const subjectId = body.subjectId || subjectByNameOrId(db, body.subject || existing.subjectId)?.id || existing.subjectId || "";
+  const section = String(body.section ?? existing.section ?? "").trim();
+  const day = normalizeDay(body.day || existing.day);
+  const startTime = cleanTime(body.startTime || existing.startTime);
+  const endTime = cleanTime(body.endTime || existing.endTime);
+  const reminderMinutes = reminderOptions.includes(Number(body.reminderMinutes ?? existing.reminderMinutes))
+    ? Number(body.reminderMinutes ?? existing.reminderMinutes)
+    : 10;
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId)) throw new Error("Valid subject is required.");
+  if (!section) throw new Error("Section is required.");
+  if (!day) throw new Error("Valid day is required.");
+  if (!startTime || !endTime) throw new Error("Start and end time must use HH:MM format.");
+  if (startTime >= endTime) throw new Error("End time must be after start time.");
+  if (!canUseSubject(user, subjectId) || !canUseSection(user, section)) throw new Error("This schedule is outside your assigned scope.");
+  return {
+    subjectId,
+    section,
+    day,
+    startTime,
+    endTime,
+    reminderMinutes,
+    room: String(body.room ?? existing.room ?? "").trim().slice(0, 80),
+    type: String(body.type ?? existing.type ?? "Class").trim().slice(0, 40) || "Class",
+    note: String(body.note ?? existing.note ?? "").trim().slice(0, 240)
+  };
+}
+
+function scheduleRows(db, schedules) {
+  return schedules
+    .map((schedule) => ({ ...schedule, subjectName: subjectName(db, schedule.subjectId) }))
+    .sort((a, b) => (dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day)) || String(a.startTime).localeCompare(String(b.startTime)));
 }
 
 function rankFor(coins, ranks) {
@@ -577,6 +637,17 @@ function filteredOverview(db, user) {
   const studentIds = new Set(students.map((s) => s.id));
   const subjectIds = user.role === "teacher" ? new Set(user.subjectIds || []) : null;
   const sectionIds = user.role === "teacher" ? new Set(user.sectionIds || []) : null;
+  const visibleScheduleRows = db.schedules.filter((schedule) => {
+    if (user.role === "admin") return true;
+    if (user.role === "teacher") {
+      return (!subjectIds || subjectIds.has(schedule.subjectId)) && (!sectionIds?.size || sectionIds.has(schedule.section));
+    }
+    if (user.role === "student") {
+      const student = db.students.find((s) => s.id === user.studentId);
+      return !!student && student.section === schedule.section && (student.subjectIds || []).includes(schedule.subjectId);
+    }
+    return false;
+  });
   const activities = hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity);
   const transactions = db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc);
   return {
@@ -596,7 +667,8 @@ function filteredOverview(db, user) {
     appearanceItems: db.appearanceItems,
     appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
     requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)),
-    feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId)))
+    feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))),
+    schedules: scheduleRows(db, visibleScheduleRows)
   };
 }
 
@@ -698,6 +770,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
   db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
   removedWeekIds.forEach((weekId) => removeAttendanceWeek(db, weekId));
+  db.schedules = (db.schedules || []).filter((schedule) => schedule.subjectId !== subjectId);
   db.recitations = db.recitations.filter((recitation) => recitation.subjectId !== subjectId);
   db.activities = db.activities.filter((activity) => activity.subjectId !== subjectId);
   db.transactions = db.transactions.filter((transaction) => {
@@ -727,11 +800,75 @@ app.delete("/api/admin/sections/:name", auth, requireRole("admin", "teacher"), a
   const name = decodeURIComponent(req.params.name);
   if (!db.sections.includes(name)) return res.status(404).json({ error: "Section not found." });
   db.sections = db.sections.filter((section) => section !== name);
+  db.schedules = (db.schedules || []).filter((schedule) => schedule.section !== name);
   db.students.forEach((student) => {
     if (student.section === name) student.section = "";
   });
   await writeDb(db);
   res.json({ sections: db.sections });
+});
+
+app.post("/api/admin/schedules", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = scheduleFromBody(db, req.body, req.user);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const schedule = { id: randomUUID(), ...input, createdAt: now(), createdBy: req.user.id, updatedAt: now() };
+  db.schedules.push(schedule);
+  await writeDb(db);
+  res.status(201).json({ schedule });
+});
+
+app.post("/api/admin/schedules/bulk", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const rows = Array.isArray(req.body.schedules) ? req.body.schedules : [];
+  if (!rows.length) return res.status(400).json({ error: "Upload at least one schedule row." });
+  if (rows.length > 300) return res.status(400).json({ error: "Import up to 300 schedules at a time." });
+  let prepared;
+  try {
+    prepared = rows.map((row, index) => {
+      try {
+        return { rowNumber: index + 2, data: scheduleFromBody(db, row, req.user) };
+      } catch (err) {
+        throw new Error(`Row ${index + 2}: ${err.message}`);
+      }
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const createdAt = now();
+  const created = prepared.map((item) => ({ id: randomUUID(), ...item.data, createdAt, createdBy: req.user.id, updatedAt: createdAt }));
+  db.schedules.push(...created);
+  await writeDb(db);
+  res.status(201).json({ createdCount: created.length, schedules: created });
+});
+
+app.put("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const schedule = db.schedules.find((item) => item.id === req.params.id);
+  if (!schedule) return res.status(404).json({ error: "Schedule not found." });
+  let input;
+  try {
+    input = scheduleFromBody(db, req.body, req.user, schedule);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  Object.assign(schedule, input, { updatedAt: now() });
+  await writeDb(db);
+  res.json({ schedule });
+});
+
+app.delete("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const schedule = db.schedules.find((item) => item.id === req.params.id);
+  if (!schedule) return res.status(404).json({ error: "Schedule not found." });
+  if (!canUseSubject(req.user, schedule.subjectId) || !canUseSection(req.user, schedule.section)) return res.status(403).json({ error: "This schedule is outside your assigned scope." });
+  db.schedules = db.schedules.filter((item) => item.id !== schedule.id);
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (req, res) => {
