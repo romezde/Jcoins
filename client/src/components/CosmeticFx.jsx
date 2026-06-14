@@ -2,11 +2,28 @@ import React from "react";
 
 export default function CosmeticFx({ classes = "" }) {
   const fire = classes.includes("ap-border-fire");
+  const spark = classes.includes("ap-effect-spark");
   const lightning = classes.includes("ap-effect-lightning");
   const champion = classes.includes("ap-effect-champion");
-  if (!fire && !lightning && !champion) return null;
+  if (!fire && !spark && !lightning && !champion) return null;
 
   return <div className="cosmetic-fx" aria-hidden="true">
+    {spark && <div className="fx-spark-field">
+      {Array.from({ length: 18 }, (_, index) => (
+        <b
+          key={index}
+          className={`fx-spark spark-${index + 1}`}
+          style={{
+            "--spark-angle": `${index * 21}deg`,
+            "--spark-delay": `${(index % 9) * -.13}s`,
+            "--spark-size": `${5 + (index % 4) * 2}px`
+          }}
+        />
+      ))}
+      <i className="fx-shine shine-a" />
+      <i className="fx-shine shine-b" />
+      <i className="fx-shine shine-c" />
+    </div>}
     {fire && <div className="fx-fire-field">
       <b className="fx-flame-real flame-a" />
       <b className="fx-flame-real flame-b" />

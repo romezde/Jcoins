@@ -1389,12 +1389,62 @@ td button {
   border-radius: inherit;
   pointer-events: none;
 }
+.fx-spark-field,
 .fx-fire-field,
 .fx-electric-field,
 .fx-champion-field {
   position: absolute;
   inset: 0;
 }
+.fx-spark-field {
+  inset: -8%;
+  opacity: .98;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(254,240,138,.42), transparent 5%),
+    radial-gradient(circle at 82% 18%, rgba(255,255,255,.52), transparent 4%),
+    radial-gradient(circle at 72% 78%, rgba(34,211,238,.28), transparent 6%),
+    radial-gradient(circle at 25% 84%, rgba(250,204,21,.35), transparent 5%);
+  filter: drop-shadow(0 0 10px rgba(250,204,21,.45));
+  animation: sparkFieldPulse 1.6s ease-in-out infinite;
+}
+.fx-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--spark-size);
+  height: var(--spark-size);
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--spark-angle))
+    translateY(-42%)
+    rotate(45deg);
+  opacity: 0;
+  background: #fef08a;
+  clip-path: polygon(50% 0, 62% 36%, 100% 50%, 62% 64%, 50% 100%, 38% 64%, 0 50%, 38% 36%);
+  box-shadow: 0 0 10px rgba(250,204,21,.95), 0 0 22px rgba(255,255,255,.58);
+  animation: sparkOrbit 1.45s ease-in-out infinite;
+  animation-delay: var(--spark-delay);
+}
+.fx-spark:nth-child(3n) {
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255,255,255,.96), 0 0 24px rgba(34,211,238,.46);
+}
+.fx-spark:nth-child(4n) {
+  background: #bae6fd;
+}
+.fx-shine {
+  position: absolute;
+  width: 84px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.9), rgba(254,240,138,.95), transparent);
+  opacity: 0;
+  filter: drop-shadow(0 0 10px rgba(250,204,21,.72));
+  animation: sparkShine 2.1s ease-in-out infinite;
+}
+.shine-a { left: 2%; top: 22%; transform: rotate(-18deg); }
+.shine-b { right: -4%; top: 54%; transform: rotate(28deg); animation-delay: -.7s; }
+.shine-c { left: 24%; bottom: 14%; transform: rotate(12deg); animation-delay: -1.3s; }
 .fx-fire-field {
   inset: auto -8% -16px -8%;
   height: 72%;
@@ -1748,13 +1798,16 @@ td button {
 }
 .ap-effect-spark::after,
 .appearance-preview.ap-effect-spark::after {
-  content: "✦";
+  content: "";
   position: absolute;
-  right: 14px;
-  top: 12px;
+  inset: 0;
   z-index: 0;
-  color: #fef08a;
-  animation: blinkStar 1.2s ease-in-out infinite;
+  background:
+    linear-gradient(110deg, transparent 16%, rgba(255,255,255,.2) 36%, rgba(254,240,138,.34) 44%, transparent 62%),
+    radial-gradient(circle at 72% 18%, rgba(254,240,138,.48), transparent 8%);
+  opacity: .72;
+  mix-blend-mode: screen;
+  animation: sparkPanelSweep 1.9s ease-in-out infinite;
 }
 .ap-effect-lightning,
 .appearance-preview.ap-effect-lightning {
@@ -2466,6 +2519,39 @@ td button {
   50% { opacity: 1; transform: scale(1.35); }
 }
 
+@keyframes sparkFieldPulse {
+  0%, 100% { opacity: .72; filter: drop-shadow(0 0 8px rgba(250,204,21,.32)); }
+  45% { opacity: 1; filter: drop-shadow(0 0 18px rgba(250,204,21,.72)); }
+}
+
+@keyframes sparkOrbit {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--spark-angle)) translateY(-34%) rotate(45deg) scale(.3);
+  }
+  24% { opacity: 1; }
+  62% {
+    opacity: .95;
+    transform: translate(-50%, -50%) rotate(calc(var(--spark-angle) + 16deg)) translateY(-53%) rotate(135deg) scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(calc(var(--spark-angle) + 32deg)) translateY(-63%) rotate(225deg) scale(.55);
+  }
+}
+
+@keyframes sparkShine {
+  0%, 100% { opacity: 0; translate: -18px 0; }
+  35% { opacity: .95; }
+  58% { opacity: .25; translate: 22px 0; }
+}
+
+@keyframes sparkPanelSweep {
+  0%, 100% { opacity: .18; transform: translateX(-42%); }
+  40% { opacity: .82; }
+  65% { opacity: .32; transform: translateX(42%); }
+}
+
 @keyframes lightningSweep {
   from { transform: translateX(-120%); opacity: .2; }
   50% { opacity: .85; }
@@ -2675,3 +2761,4 @@ td button {
     justify-items: start;
   }
 }
+
