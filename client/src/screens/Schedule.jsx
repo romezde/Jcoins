@@ -36,7 +36,7 @@ export default function Schedule({ data, run, role }) {
     setImportRows([]);
     if (!file) return;
     try {
-      const rows = (await readImportFile(file, scheduleHeaderMap())).map(cleanImportRow).filter((row) => row.subject || row.subjectId);
+      const rows = (await readImportFile(file, scheduleHeaderMap())).flatMap(expandImportRow).filter((row) => row.subject || row.subjectId);
       if (!rows.length) throw new Error("No schedule rows found.");
       setImportRows(rows);
     } catch (err) {
@@ -218,6 +218,19 @@ function cleanImportRow(row) {
   };
 }
 
+function expandImportRow(row) {
+  const base = cleanImportRow(row);
+  if (base.day) return [base];
+  const selectedDays = days.filter((day) => isChecked(row[day.toLowerCase()] || row[day]));
+  if (!selectedDays.length) return [base];
+  return selectedDays.map((day) => ({ ...base, day }));
+}
+
+function isChecked(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return ["yes", "true", "1", "x", "check", "checked", "✓", "✔"].includes(text);
+}
+
 function scheduleHeaderMap() {
   return {
     subject: "subject",
@@ -225,6 +238,13 @@ function scheduleHeaderMap() {
     subjectid: "subjectId",
     section: "section",
     day: "day",
+    monday: "monday",
+    tuesday: "tuesday",
+    wednesday: "wednesday",
+    thursday: "thursday",
+    friday: "friday",
+    saturday: "saturday",
+    sunday: "sunday",
     start: "startTime",
     starttime: "startTime",
     end: "endTime",
@@ -239,23 +259,25 @@ function scheduleHeaderMap() {
 }
 
 async function downloadScheduleTemplate(subjects, sections) {
+  const dayDropdowns = Object.fromEntries(days.map((day) => [day, ["Yes", "No"]]));
   await downloadXlsxTemplate({
     filename: "jcoins-schedule-template.xlsx",
     sheetName: "Schedule",
-    columns: ["subject", "section", "day", "startTime", "endTime", "reminderMinutes", "type", "room", "note"],
+    columns: ["subject", "section", ...days, "startTime", "endTime", "reminderMinutes", "type", "room", "note"],
     sampleRows: [
-      [subjects[0]?.name || "", sections[0] || "", "Monday", "08:00", "09:00", "10", "Class", "Room 101", "Bring notebook"],
-      [subjects[1]?.name || subjects[0]?.name || "", sections[0] || "", "Wednesday", "10:00", "11:00", "5", "Quiz", "Room 101", "Short quiz"]
+      [subjects[0]?.name || "", sections[0] || "", "Yes", "No", "No", "No", "No", "No", "No", "08:00", "09:00", "10", "Class", "Room 101", "Bring notebook"],
+      [subjects[1]?.name || subjects[0]?.name || "", sections[0] || "", "No", "No", "Yes", "No", "No", "No", "No", "10:00", "11:00", "5", "Quiz", "Room 101", "Short quiz"]
     ],
     dropdowns: {
       subject: subjects.map((subject) => subject.name),
       section: sections,
-      day: days,
+      ...dayDropdowns,
       reminderMinutes: reminderOptions.map((option) => String(option.value)),
       type: scheduleTypes
     },
     notes: [
       "Use the dropdowns for subject and section to avoid spelling mistakes.",
+      "Choose Yes under every day this schedule should happen. One row can create multiple schedules.",
       "Time must use 24-hour HH:MM format, for example 08:00 or 13:30.",
       "You may still upload a CSV file, but the Excel template is safer because it has dropdowns."
     ]
