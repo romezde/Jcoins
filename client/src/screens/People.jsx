@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { del, post, put } from "../api.js";
 import { fileToProfilePhoto } from "../components/ProfilePhoto.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
+import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
 
 export default function People({ data, run, role }) {
   const [student, setStudent] = useState({ name: "", section: "", username: "", tempPassword: "temp123", startingJCoins: 0, subjectIds: role === "teacher" ? data.user.subjectIds || [] : [] });
@@ -35,23 +36,38 @@ export default function People({ data, run, role }) {
     setImportRows([]);
     if (!file) return;
     try {
-      const text = await file.text();
-      const rows = csvToObjects(text).map(cleanStudentImportRow).filter((row) => row.name || row.username);
+      const rows = (await readImportFile(file, studentHeaderMap())).map(cleanStudentImportRow).filter((row) => row.name || row.username);
       if (!rows.length) throw new Error("No student rows found in the file.");
       setImportRows(rows);
     } catch (err) {
       setImportError(err.message);
     }
   }
-  function downloadTemplate() {
-    const sampleSubjects = visibleSubjects.slice(0, Math.min(2, visibleSubjects.length)).map((subject) => subject.name).join("; ");
+  async function downloadTemplate() {
+    const sampleSubjects = subjectTemplateCells(visibleSubjects);
     const sampleSection = sections[0] || "";
-    const rows = [
-      ["name", "username", "tempPassword", "section", "subjects", "startingJCoins"],
-      ["Juan Dela Cruz", "juan.delacruz", "temp123", sampleSection, sampleSubjects, "0"],
-      ["Maria Santos", "maria.santos", "temp123", sampleSection, sampleSubjects, "0"]
-    ];
-    downloadCsv("jcoins-student-import-template.csv", rows);
+    await downloadXlsxTemplate({
+      filename: "jcoins-student-import-template.xlsx",
+      sheetName: "Students",
+      columns: ["name", "username", "tempPassword", "section", "subject1", "subject2", "subject3", "subject4", "subject5", "startingJCoins"],
+      sampleRows: [
+        ["Juan Dela Cruz", "juan.delacruz", "temp123", sampleSection, ...sampleSubjects, "0"],
+        ["Maria Santos", "maria.santos", "temp123", sampleSection, ...sampleSubjects, "0"]
+      ],
+      dropdowns: {
+        section: sections,
+        subject1: visibleSubjects.map((subject) => subject.name),
+        subject2: visibleSubjects.map((subject) => subject.name),
+        subject3: visibleSubjects.map((subject) => subject.name),
+        subject4: visibleSubjects.map((subject) => subject.name),
+        subject5: visibleSubjects.map((subject) => subject.name)
+      },
+      notes: [
+        "Use the dropdowns for section and subject columns to avoid spelling mistakes.",
+        "If a student has more than one subject, put one subject per subject column. Leave unused subject columns blank.",
+        "You may still upload a CSV file, but the Excel template is safer because it has dropdowns."
+      ]
+    });
   }
   async function importStudents(e) {
     e.preventDefault();
@@ -99,11 +115,11 @@ export default function People({ data, run, role }) {
 
       <ActionModal title="Import Students">
         <form onSubmit={importStudents}>
-          <p className="muted-line">Download the template, fill it in Excel or Google Sheets, save as CSV, then upload it here.</p>
+          <p className="muted-line">Download the Excel template, use the dropdowns, then upload the completed .xlsx file. CSV still works too.</p>
           <div className="button-row">
             <button type="button" className="soft" onClick={downloadTemplate}>Download Template</button>
           </div>
-          <label>Upload Filled CSV<input type="file" accept=".csv,text/csv" onChange={(e) => readStudentImportFile(e.target.files?.[0])} /></label>
+          <label>Upload Filled Template<input type="file" accept=".xlsx,.csv,text/csv" onChange={(e) => readStudentImportFile(e.target.files?.[0])} /></label>
           {importError && <div className="error">{importError}</div>}
           {importResult && <div className="notice">{importResult}</div>}
           {!!importRows.length && <Table columns={["Name", "Username", "Section", "Subjects", "Starting JC"]} rows={importRows.slice(0, 20).map((row) => [row.name, row.username, row.section || "No section", row.subjects, row.startingJCoins])} pageSize={5} />}
@@ -212,56 +228,24 @@ function generateTempPassword() {
 }
 
 function cleanStudentImportRow(row) {
+  const subjectColumns = [row.subjects, row.subject, row.subject1, row.subject2, row.subject3, row.subject4, row.subject5]
+    .filter(Boolean)
+    .join("; ");
   return {
     name: String(row.name || row.student || row.studentName || "").trim(),
     username: String(row.username || row.user || "").trim(),
     tempPassword: String(row.tempPassword || row.password || "temp123").trim(),
     section: String(row.section || "").trim(),
-    subjects: String(row.subjects || row.subject || "").trim(),
+    subjects: subjectColumns,
     startingJCoins: Number(row.startingJCoins || row.jcoins || row.currentJCoins || 0)
   };
 }
 
-function csvToObjects(text) {
-  const rows = parseCsv(text);
-  if (!rows.length) return [];
-  const headers = rows[0].map((header) => normalizeHeader(header));
-  return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""])));
+function subjectTemplateCells(subjects) {
+  return Array.from({ length: 5 }, (_, index) => subjects[index]?.name || "");
 }
 
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      cell += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      row.push(cell);
-      cell = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell);
-      if (row.some((value) => String(value).trim())) rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-  row.push(cell);
-  if (row.some((value) => String(value).trim())) rows.push(row);
-  return rows;
-}
-
-function normalizeHeader(header) {
-  const key = String(header || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+function studentHeaderMap() {
   return {
     studentname: "name",
     name: "name",
@@ -273,22 +257,14 @@ function normalizeHeader(header) {
     section: "section",
     subject: "subjects",
     subjects: "subjects",
+    subject1: "subject1",
+    subject2: "subject2",
+    subject3: "subject3",
+    subject4: "subject4",
+    subject5: "subject5",
     startingjcoins: "startingJCoins",
     startjcoins: "startingJCoins",
     currentjcoins: "currentJCoins",
     jcoins: "jcoins"
-  }[key] || key;
-}
-
-function downloadCsv(filename, rows) {
-  const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  };
 }

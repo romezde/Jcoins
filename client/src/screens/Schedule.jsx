@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
 import { del, post, put } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
-import { csvToObjects, downloadCsv } from "../utils/csv.js";
+import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const reminderOptions = [0, 5, 10, 15, 30, 60].map((value) => ({ value, label: value ? `${value} min before` : "At start" }));
@@ -36,7 +36,7 @@ export default function Schedule({ data, run, role }) {
     setImportRows([]);
     if (!file) return;
     try {
-      const rows = csvToObjects(await file.text(), scheduleHeaderMap()).map(cleanImportRow).filter((row) => row.subject || row.subjectId);
+      const rows = (await readImportFile(file, scheduleHeaderMap())).map(cleanImportRow).filter((row) => row.subject || row.subjectId);
       if (!rows.length) throw new Error("No schedule rows found.");
       setImportRows(rows);
     } catch (err) {
@@ -73,9 +73,9 @@ export default function Schedule({ data, run, role }) {
           e.preventDefault();
           if (await run(() => post("/admin/schedules/bulk", { schedules: importRows }), "Schedules imported")) setImportRows([]);
         }}>
-          <p className="muted-line">Download the template, fill it in Excel or Google Sheets, save as CSV, then upload here.</p>
+          <p className="muted-line">Download the Excel template, use the dropdowns, then upload the completed .xlsx file. CSV still works too.</p>
           <button type="button" className="soft" onClick={() => downloadScheduleTemplate(subjects, sections)}>Download Template</button>
-          <label>Upload Filled CSV<input type="file" accept=".csv,text/csv" onChange={(e) => readScheduleImport(e.target.files?.[0])} /></label>
+          <label>Upload Filled Template<input type="file" accept=".xlsx,.csv,text/csv" onChange={(e) => readScheduleImport(e.target.files?.[0])} /></label>
           {importError && <div className="error">{importError}</div>}
           {!!importRows.length && <Table columns={["Subject", "Section", "Day", "Start", "End", "Reminder"]} rows={importRows.slice(0, 20).map((row) => [row.subject || row.subjectId, row.section, row.day, row.startTime, row.endTime, row.reminderMinutes])} pageSize={5} />}
           <button disabled={!importRows.length}>Import Schedule</button>
@@ -238,13 +238,28 @@ function scheduleHeaderMap() {
   };
 }
 
-function downloadScheduleTemplate(subjects, sections) {
-  const rows = [
-    ["subject", "section", "day", "startTime", "endTime", "reminderMinutes", "type", "room", "note"],
-    [subjects[0]?.name || "Math", sections[0] || "A", "Monday", "08:00", "09:00", "10", "Class", "Room 101", "Bring notebook"],
-    [subjects[1]?.name || subjects[0]?.name || "Science", sections[0] || "A", "Wednesday", "10:00", "11:00", "5", "Quiz", "Room 101", "Short quiz"]
-  ];
-  downloadCsv("jcoins-schedule-template.csv", rows);
+async function downloadScheduleTemplate(subjects, sections) {
+  await downloadXlsxTemplate({
+    filename: "jcoins-schedule-template.xlsx",
+    sheetName: "Schedule",
+    columns: ["subject", "section", "day", "startTime", "endTime", "reminderMinutes", "type", "room", "note"],
+    sampleRows: [
+      [subjects[0]?.name || "", sections[0] || "", "Monday", "08:00", "09:00", "10", "Class", "Room 101", "Bring notebook"],
+      [subjects[1]?.name || subjects[0]?.name || "", sections[0] || "", "Wednesday", "10:00", "11:00", "5", "Quiz", "Room 101", "Short quiz"]
+    ],
+    dropdowns: {
+      subject: subjects.map((subject) => subject.name),
+      section: sections,
+      day: days,
+      reminderMinutes: reminderOptions.map((option) => String(option.value)),
+      type: scheduleTypes
+    },
+    notes: [
+      "Use the dropdowns for subject and section to avoid spelling mistakes.",
+      "Time must use 24-hour HH:MM format, for example 08:00 or 13:30.",
+      "You may still upload a CSV file, but the Excel template is safer because it has dropdowns."
+    ]
+  });
 }
 
 function unique(values) {
