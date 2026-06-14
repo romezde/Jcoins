@@ -188,6 +188,7 @@ async function createInitialDb() {
     shopItems: defaultShopItems,
     sales: [],
     requests: [],
+    feedback: [],
     appearanceItems: defaultAppearanceItems,
     appearanceInventory: [],
     appearanceEquipped: {},
@@ -233,6 +234,7 @@ async function readDb() {
   db.shopItems.forEach((item) => { item.tier ||= "Tier 1"; });
   db.sales ||= [];
   db.requests ||= [];
+  db.feedback ||= [];
   db.appearanceItems ||= [];
   db.appearanceInventory ||= [];
   if (!db.appearanceEquipped || Array.isArray(db.appearanceEquipped) || typeof db.appearanceEquipped !== "object") {
@@ -332,6 +334,7 @@ function purgeStudentData(db, studentId) {
   );
   db.attendanceRecords = (db.attendanceRecords || []).filter((record) => record.studentId !== studentId);
   db.recitations = (db.recitations || []).filter((recitation) => recitation.studentId !== studentId);
+  db.feedback = (db.feedback || []).filter((entry) => entry.studentId !== studentId);
   db.requests = (db.requests || []).filter((request) =>
     request.studentId !== studentId
     && !studentUserIds.has(request.createdBy)
@@ -440,6 +443,14 @@ function requestRows(db, requests) {
       toStudentName: payload.toStudentId ? studentName(db, payload.toStudentId) : ""
     };
   });
+}
+
+function feedbackRows(db, feedback) {
+  return feedback.map((entry) => ({
+    ...entry,
+    studentName: studentName(db, entry.studentId),
+    section: db.students.find((student) => student.id === entry.studentId)?.section || ""
+  })).sort(byDateDesc);
 }
 
 function rankFor(coins, ranks) {
@@ -584,7 +595,8 @@ function filteredOverview(db, user) {
     sales: db.sales,
     appearanceItems: db.appearanceItems,
     appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
-    requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc))
+    requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)),
+    feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId)))
   };
 }
 
@@ -1280,6 +1292,97 @@ app.post("/api/requests/:id/cancel", auth, async (req, res) => {
   request.resolvedBy = req.user.id;
   await writeDb(db);
   res.json({ request });
+});
+
+const feedbackCategories = ["Bug Report", "Suggestion", "Question / Need Help"];
+const feedbackStatuses = ["New", "Reviewing", "Planned", "Fixed", "Rejected", "Duplicate", "Cancelled"];
+const openFeedbackStatuses = ["New", "Reviewing"];
+
+function cleanScreenshot(value = "") {
+  const screenshot = String(value || "");
+  if (!screenshot) return "";
+  if (!screenshot.startsWith("data:image/")) throw new Error("Screenshot must be an image.");
+  if (screenshot.length > 680000) throw new Error("Screenshot is too large. Please upload a smaller image.");
+  return screenshot;
+}
+
+function feedbackFromBody(body, existing = {}) {
+  const category = feedbackCategories.includes(body.category) ? body.category : "Suggestion";
+  const title = String(body.title || existing.title || "").trim();
+  const details = String(body.details || existing.details || "").trim();
+  const feature = String(body.feature || existing.feature || "").trim();
+  if (!title) throw new Error("Title is required.");
+  if (!details) throw new Error("Details are required.");
+  return {
+    category,
+    title: title.slice(0, 120),
+    details: details.slice(0, 1400),
+    feature: feature.slice(0, 80),
+    screenshot: cleanScreenshot(body.screenshot ?? existing.screenshot ?? "")
+  };
+}
+
+app.post("/api/feedback", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const studentId = req.user.studentId;
+  if ((db.feedback || []).some((entry) => entry.studentId === studentId && openFeedbackStatuses.includes(entry.status))) {
+    return res.status(409).json({ error: "You already have open feedback. Edit or delete it before sending another." });
+  }
+  let input;
+  try {
+    input = feedbackFromBody(req.body);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const entry = { id: randomUUID(), studentId, ...input, status: "New", createdAt: now(), updatedAt: now(), statusChangedAt: now(), statusChangedBy: req.user.id };
+  db.feedback.push(entry);
+  await writeDb(db);
+  res.status(201).json({ feedback: entry });
+});
+
+app.put("/api/feedback/:id", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const entry = (db.feedback || []).find((item) => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: "Feedback not found." });
+  if (entry.studentId !== req.user.studentId) return res.status(403).json({ error: "You can only edit your own feedback." });
+  if (entry.status !== "New") return res.status(400).json({ error: "Only new feedback can be edited." });
+  let input;
+  try {
+    input = feedbackFromBody(req.body, entry);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  Object.assign(entry, input, { updatedAt: now() });
+  await writeDb(db);
+  res.json({ feedback: entry });
+});
+
+app.delete("/api/feedback/:id", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const entry = (db.feedback || []).find((item) => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: "Feedback not found." });
+  if (entry.studentId !== req.user.studentId) return res.status(403).json({ error: "You can only delete your own feedback." });
+  if (entry.status !== "New") return res.status(400).json({ error: "Only new feedback can be deleted." });
+  db.feedback = db.feedback.filter((item) => item.id !== entry.id);
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/feedback/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const entry = (db.feedback || []).find((item) => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: "Feedback not found." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(entry.studentId)) return res.status(403).json({ error: "This feedback is outside your assigned class scope." });
+  const status = feedbackStatuses.includes(req.body.status) ? req.body.status : "";
+  if (!status) return res.status(400).json({ error: "Valid status is required." });
+  entry.status = status;
+  entry.adminNote = String(req.body.adminNote ?? entry.adminNote ?? "").slice(0, 500);
+  entry.updatedAt = now();
+  entry.statusChangedAt = now();
+  entry.statusChangedBy = req.user.id;
+  await writeDb(db);
+  res.json({ feedback: entry });
 });
 
 app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"), async (req, res) => {

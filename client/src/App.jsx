@@ -16,6 +16,7 @@ import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.
 import Approvals from "./screens/Approvals.jsx";
 import Settings from "./screens/Settings.jsx";
 import NameWheel from "./screens/NameWheel.jsx";
+import { StaffFeedback, StudentFeedback } from "./screens/Feedback.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
 
 function useSession() {
@@ -176,7 +177,8 @@ function RoleApp({ session, logout }) {
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <button className="nav-brand brand-button" onClick={() => navigate(home)}><JCoinLogo size={32} /> <span>JCoins</span></button>
       <nav className="module-nav">{tabs.map((tab) => {
-        const showDot = tab === "Approvals" && pendingApprovalCount(normalized, session.user.role) > 0;
+        const showDot = (tab === "Approvals" && pendingApprovalCount(normalized, session.user.role) > 0)
+          || (tab === "Feedback" && pendingFeedbackCount(normalized, session.user.role) > 0);
         return <button key={tab} className={active === tab ? "active" : ""} onClick={() => navigate(tab)}>
           <span>{tab}</span>
           {showDot && <i className="nav-dot" aria-label="Pending requests" />}
@@ -187,7 +189,7 @@ function RoleApp({ session, logout }) {
       <header className="topbar">
         <button className="hamburger" onClick={() => setNavOpen(!navOpen)}>{navOpen ? <X /> : <Menu />}</button>
         <GlobalSearch tabs={tabs} data={normalized} navigate={navigate} />
-        <NotificationBell role={session.user.role} data={normalized} navigate={navigate} />
+        <NotificationBell role={session.user.role} userId={session.user.id} data={normalized} navigate={navigate} />
         <div className="nav-user"><span>{session.user.role}</span><button onClick={logout}><LogOut size={16} /> Logout</button></div>
       </header>
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
@@ -251,10 +253,23 @@ function GlobalSearch({ tabs, data, navigate }) {
   </div>;
 }
 
-function NotificationBell({ role, data, navigate }) {
+function NotificationBell({ role, userId, data, navigate }) {
   const [open, setOpen] = useState(false);
+  const readKey = `jcoins_notifications_read_${userId || role}`;
+  const [readIds, setReadIds] = useState(() => JSON.parse(localStorage.getItem(readKey) || "[]"));
   const items = notificationItems(role, data);
-  const hasDot = items.length > 0;
+  const unreadItems = items.filter((item) => !readIds.includes(item.id));
+  const hasDot = unreadItems.length > 0;
+
+  function toggleOpen() {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && unreadItems.length) {
+      const nextReadIds = [...new Set([...readIds, ...items.map((item) => item.id)])].slice(-120);
+      setReadIds(nextReadIds);
+      localStorage.setItem(readKey, JSON.stringify(nextReadIds));
+    }
+  }
 
   function openTarget(item) {
     if (item.tab) navigate(item.tab);
@@ -262,7 +277,7 @@ function NotificationBell({ role, data, navigate }) {
   }
 
   return <div className="notification-wrap">
-    <button type="button" className="notification-button soft" onClick={() => setOpen(!open)} aria-label="Notifications">
+    <button type="button" className="notification-button soft" onClick={toggleOpen} aria-label="Notifications">
       <Bell size={18} />
       {hasDot && <i className="notification-dot" />}
     </button>
@@ -283,7 +298,7 @@ function NotificationBell({ role, data, navigate }) {
 function notificationItems(role, data) {
   const requests = data?.requests || [];
   if (role === "admin" || role === "teacher") {
-    return requests
+    const requestItems = requests
       .filter((request) => request.status === "pending")
       .map((request) => ({
         id: request.id,
@@ -292,9 +307,19 @@ function notificationItems(role, data) {
         detail: `${request.studentName || "Student"}${request.itemName ? ` - ${request.itemName}` : request.toStudentName ? ` - Trade with ${request.toStudentName}` : ""}`,
         date: new Date(request.createdAt).toLocaleString()
       }));
+    const feedbackItems = (data?.feedback || [])
+      .filter((entry) => entry.status === "New")
+      .map((entry) => ({
+        id: `feedback-${entry.id}`,
+        tab: "Feedback",
+        title: `${entry.category}`,
+        detail: `${entry.studentName || "Student"} - ${entry.title}`,
+        date: new Date(entry.createdAt).toLocaleString()
+      }));
+    return [...requestItems, ...feedbackItems].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
   if (role === "student") {
-    return requests
+    const requestItems = requests
       .filter((request) => ["approved", "rejected"].includes(request.status))
       .map((request) => ({
         id: request.id,
@@ -303,6 +328,16 @@ function notificationItems(role, data) {
         detail: request.itemName || (request.toStudentName ? `Trade with ${request.toStudentName}` : request.remarks || "Request result"),
         date: new Date(request.resolvedAt || request.createdAt).toLocaleString()
       }));
+    const feedbackItems = (data?.feedback || [])
+      .filter((entry) => ["Planned", "Fixed", "Rejected", "Duplicate"].includes(entry.status))
+      .map((entry) => ({
+        id: `feedback-${entry.id}`,
+        tab: "Feedback",
+        title: `FEEDBACK ${entry.status.toUpperCase()}`,
+        detail: entry.title,
+        date: new Date(entry.statusChangedAt || entry.updatedAt || entry.createdAt).toLocaleString()
+      }));
+    return [...requestItems, ...feedbackItems].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
   return [];
 }
@@ -310,6 +345,11 @@ function notificationItems(role, data) {
 function pendingApprovalCount(data, role) {
   if (role !== "admin" && role !== "teacher") return 0;
   return (data?.requests || []).filter((request) => request.status === "pending").length;
+}
+
+function pendingFeedbackCount(data, role) {
+  if (role !== "admin" && role !== "teacher") return 0;
+  return (data?.feedback || []).filter((entry) => entry.status === "New").length;
 }
 
 function buildSearchResults(tabs, data) {
@@ -326,6 +366,7 @@ function buildSearchResults(tabs, data) {
   (data?.appearanceItems || []).forEach((item) => add(list, "Appearance", item.name, "Appearance Shop", `${item.type} ${item.tier} ${item.price} ${item.preview}`));
   (data?.users || []).forEach((user) => add(list, "Account", user.username, "People", `${user.role} ${(user.sectionIds || []).join(" ")}`));
   (data?.attendanceWeeks || []).forEach((week) => add(list, "Attendance", week.title, "Attendance", week.subjectName));
+  (data?.feedback || []).forEach((entry) => add(list, "Feedback", entry.title, "Feedback", `${entry.studentName} ${entry.category} ${entry.status} ${entry.feature}`));
   return list;
 }
 
@@ -342,6 +383,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
+  if (tab === "Feedback") return role === "student" ? <StudentFeedback data={data} run={run} /> : <StaffFeedback data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;
   if (tab === "Name Wheel") return <NameWheel data={data} />;
   if (tab === "History") return <StudentHistory data={data} />;

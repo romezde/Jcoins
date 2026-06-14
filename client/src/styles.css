@@ -43,7 +43,7 @@ body {
   min-width: 0;
   max-width: 100%;
 }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button {
   display: inline-flex;
   align-items: center;
@@ -78,13 +78,17 @@ button.ghost {
   border: 0;
   background: transparent;
 }
-input, select {
+input, select, textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px 12px;
   background: rgba(15, 23, 42, .72);
   color: var(--text);
+}
+textarea {
+  min-height: 120px;
+  resize: vertical;
 }
 label { display: grid; gap: 6px; color: var(--muted); font-weight: 800; }
 .password-field {
@@ -551,6 +555,61 @@ input::placeholder {
   border-color: rgba(251,113,133,.42);
   color: #fecdd3;
   background: rgba(251,113,133,.12);
+}
+.feedback-current form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.feedback-file-button {
+  width: fit-content;
+}
+.feedback-shot-preview {
+  display: grid;
+  gap: 10px;
+  width: min(360px, 100%);
+}
+.feedback-shot-preview img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+}
+.feedback-details {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.feedback-details strong,
+.feedback-details span,
+.feedback-details p,
+.feedback-details small {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.feedback-details span,
+.feedback-details small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.feedback-shot-link {
+  color: var(--cyan);
+  font-weight: 950;
+}
+.feedback-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+.feedback-actions .inline {
+  flex-wrap: wrap;
+}
+.feedback-actions button {
+  min-height: 34px;
+  padding: 7px 9px;
+  font-size: 12px;
 }
 @media (max-width: 900px) {
   .shop-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
