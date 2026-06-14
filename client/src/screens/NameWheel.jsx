@@ -5,7 +5,6 @@ import { ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { Field, Select } from "../components/ui.jsx";
 
 const colors = ["#facc15", "#22d3ee", "#fb7185", "#86efac", "#a78bfa", "#fb923c", "#38bdf8", "#f472b6"];
-const labelLimit = 40;
 
 export default function NameWheel({ data }) {
   const [section, setSection] = useState("all");
@@ -67,10 +66,10 @@ export default function NameWheel({ data }) {
     <div className="wheel-stage">
       <div className="wheel-pointer" />
       <div className="name-wheel" style={{ background: wheelGradient, transform: `rotate(${rotation}deg)`, transitionDuration: `${spinSeconds}s` }}>
-        <WheelLabels students={students.slice(0, labelLimit)} total={students.length} />
+        <WheelLabels students={students} total={students.length} />
         <div className="wheel-core">
           <strong>{spinning ? "..." : students.length || 0}</strong>
-          <span>{students.length > labelLimit ? `top ${labelLimit} shown` : spinning ? "choosing" : "names"}</span>
+          <span>{spinning ? "choosing" : "names"}</span>
         </div>
       </div>
     </div>
@@ -93,8 +92,8 @@ export default function NameWheel({ data }) {
 
 function WheelLabels({ students, total }) {
   if (!students.length) return null;
-  const radius = total > 34 ? 33 : total > 22 ? 34.5 : 36;
-  const fontSize = total > 36 ? 2.35 : total > 24 ? 2.75 : total > 14 ? 3.25 : 4;
+  const radius = total > 60 ? 32 : total > 34 ? 33 : total > 22 ? 34.5 : 36;
+  const fontSize = total > 60 ? 1.75 : total > 45 ? 2.05 : total > 36 ? 2.35 : total > 24 ? 2.75 : total > 14 ? 3.25 : 4;
   return <svg className="wheel-svg-labels" viewBox="0 0 100 100" aria-hidden="true">
     {students.map((student, index) => {
       const angle = (index + .5) * (360 / total);
@@ -132,7 +131,7 @@ function ConfettiBurst() {
 
 function shortName(name = "") {
   const clean = String(name).trim();
-  const max = arguments[1] > 34 ? 12 : arguments[1] > 22 ? 14 : 16;
+  const max = arguments[1] > 60 ? 9 : arguments[1] > 45 ? 10 : arguments[1] > 34 ? 12 : arguments[1] > 22 ? 14 : 16;
   if (clean.length <= max) return clean;
   const parts = clean.split(/\s+/).filter(Boolean);
   if (parts.length > 1) return `${parts[0]} ${parts.at(-1)?.[0] || ""}.`.slice(0, max);

@@ -999,8 +999,8 @@ input::placeholder {
 }
 .wheel-pointer {
   position: absolute;
-  top: -6px;
-  left: min(210px, 50%);
+  top: 8px;
+  left: 50%;
   z-index: 2;
   width: 0;
   height: 0;
