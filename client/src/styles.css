@@ -196,10 +196,27 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   gap: 8px;
 }
 .module-nav button {
+  position: relative;
   justify-content: flex-start;
+  justify-content: space-between;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
+}
+.module-nav button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-dot,
+.notification-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(15,23,42,.98);
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239,68,68,.78);
 }
 .module-nav button.active {
   border-color: rgba(34,211,238,.42);
@@ -284,6 +301,75 @@ input::placeholder {
   padding: 7px 10px;
   color: #cffafe;
   text-transform: uppercase;
+  font-size: 12px;
+}
+.notification-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+.notification-button {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 999px;
+}
+.notification-button .notification-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+.notification-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 45;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(460px, 72vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(15, 23, 42, .98);
+  box-shadow: 0 18px 45px rgba(0,0,0,.42);
+}
+.notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 4px 8px;
+}
+.notification-head span {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #fee2e2;
+  background: rgba(239,68,68,.22);
+  font-size: 12px;
+  font-weight: 950;
+}
+.notification-menu button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(30, 41, 59, .78);
+  color: var(--text);
+  text-align: left;
+}
+.notification-menu button strong,
+.notification-menu button span,
+.notification-menu button small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.notification-menu button span,
+.notification-menu button small,
+.notification-menu p {
+  margin: 0;
+  color: var(--muted);
   font-size: 12px;
 }
 .dashboard-grid {

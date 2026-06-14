@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
+import { Bell, CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
 import { adminTabs, post, request, slug, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { Field } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
@@ -175,12 +175,19 @@ function RoleApp({ session, logout }) {
   return <div className={`app-shell ${busy ? "is-busy" : ""}`} aria-busy={busy}>
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <button className="nav-brand brand-button" onClick={() => navigate(home)}><JCoinLogo size={32} /> <span>JCoins</span></button>
-      <nav className="module-nav">{tabs.map((tab) => <button key={tab} className={active === tab ? "active" : ""} onClick={() => navigate(tab)}>{tab}</button>)}</nav>
+      <nav className="module-nav">{tabs.map((tab) => {
+        const showDot = tab === "Approvals" && pendingApprovalCount(normalized, session.user.role) > 0;
+        return <button key={tab} className={active === tab ? "active" : ""} onClick={() => navigate(tab)}>
+          <span>{tab}</span>
+          {showDot && <i className="nav-dot" aria-label="Pending requests" />}
+        </button>;
+      })}</nav>
     </aside>
     <div className="main-pane">
       <header className="topbar">
         <button className="hamburger" onClick={() => setNavOpen(!navOpen)}>{navOpen ? <X /> : <Menu />}</button>
         <GlobalSearch tabs={tabs} data={normalized} navigate={navigate} />
+        <NotificationBell role={session.user.role} data={normalized} navigate={navigate} />
         <div className="nav-user"><span>{session.user.role}</span><button onClick={logout}><LogOut size={16} /> Logout</button></div>
       </header>
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
@@ -242,6 +249,67 @@ function GlobalSearch({ tabs, data, navigate }) {
       </button>)}
     </div>}
   </div>;
+}
+
+function NotificationBell({ role, data, navigate }) {
+  const [open, setOpen] = useState(false);
+  const items = notificationItems(role, data);
+  const hasDot = items.length > 0;
+
+  function openTarget(item) {
+    if (item.tab) navigate(item.tab);
+    setOpen(false);
+  }
+
+  return <div className="notification-wrap">
+    <button type="button" className="notification-button soft" onClick={() => setOpen(!open)} aria-label="Notifications">
+      <Bell size={18} />
+      {hasDot && <i className="notification-dot" />}
+    </button>
+    {open && <div className="notification-menu">
+      <div className="notification-head">
+        <strong>Notifications</strong>
+        {hasDot && <span>{items.length}</span>}
+      </div>
+      {items.length ? items.slice(0, 8).map((item) => <button type="button" key={item.id} onClick={() => openTarget(item)}>
+        <strong>{item.title}</strong>
+        <span>{item.detail}</span>
+        <small>{item.date}</small>
+      </button>) : <p>No notifications right now.</p>}
+    </div>}
+  </div>;
+}
+
+function notificationItems(role, data) {
+  const requests = data?.requests || [];
+  if (role === "admin" || role === "teacher") {
+    return requests
+      .filter((request) => request.status === "pending")
+      .map((request) => ({
+        id: request.id,
+        tab: "Approvals",
+        title: `${request.type} request`,
+        detail: `${request.studentName || "Student"}${request.itemName ? ` - ${request.itemName}` : request.toStudentName ? ` - Trade with ${request.toStudentName}` : ""}`,
+        date: new Date(request.createdAt).toLocaleString()
+      }));
+  }
+  if (role === "student") {
+    return requests
+      .filter((request) => ["approved", "rejected"].includes(request.status))
+      .map((request) => ({
+        id: request.id,
+        tab: request.type === "trade" ? "Trade Requests" : "Shop",
+        title: `${request.status.toUpperCase()} ${request.type}`,
+        detail: request.itemName || (request.toStudentName ? `Trade with ${request.toStudentName}` : request.remarks || "Request result"),
+        date: new Date(request.resolvedAt || request.createdAt).toLocaleString()
+      }));
+  }
+  return [];
+}
+
+function pendingApprovalCount(data, role) {
+  if (role !== "admin" && role !== "teacher") return 0;
+  return (data?.requests || []).filter((request) => request.status === "pending").length;
 }
 
 function buildSearchResults(tabs, data) {
