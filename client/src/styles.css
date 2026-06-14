@@ -927,11 +927,11 @@ input::placeholder {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 34%;
+  width: 26%;
   transform-origin: 0 50%;
-  transform: rotate(var(--angle)) translate(52%, -50%) rotate(var(--text-rotate));
+  transform: rotate(var(--angle)) translate(148%, -50%) rotate(var(--text-rotate));
   color: #fff;
-  font-size: clamp(8px, 1.6vw, 13px);
+  font-size: clamp(7px, 1.35vw, 12px);
   font-weight: 950;
   line-height: 1.05;
   text-align: center;
@@ -2250,7 +2250,7 @@ td button {
     left: 50%;
   }
   .wheel-slice-name {
-    width: 36%;
+    width: 25%;
     font-size: clamp(7px, 2.2vw, 10px);
   }
   .podium { grid-template-columns: 1fr; }
