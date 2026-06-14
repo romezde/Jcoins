@@ -80,6 +80,7 @@ export function Account({ data, role }) {
   const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const user = data?.user || {};
   const student = data?.student;
   const subjectNames = (user.subjectIds || []).map((id) => data.subjects?.find((subject) => subject.id === id)?.name).filter(Boolean);
@@ -90,12 +91,14 @@ export function Account({ data, role }) {
 
   async function changePassword(e) {
     e.preventDefault();
+    if (loading) return;
     setMessage("");
     setError("");
     if (form.newPassword !== form.confirmPassword) {
       setError("New passwords do not match.");
       return;
     }
+    setLoading(true);
     try {
       const next = await post("/auth/change-password", { currentPassword: form.currentPassword, newPassword: form.newPassword });
       localStorage.setItem("jcoins_token", next.token);
@@ -104,6 +107,8 @@ export function Account({ data, role }) {
       setMessage("Password changed.");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -119,13 +124,13 @@ export function Account({ data, role }) {
       </div>
     </Panel>
     <Panel title="Change Password" defaultOpen>
-      <form className="account-form" onSubmit={changePassword}>
+      <form className="account-form" onSubmit={changePassword} aria-busy={loading}>
         <Field label="Current Password" type="password" value={form.currentPassword} onChange={(currentPassword) => setForm({ ...form, currentPassword })} />
         <Field label="New Password" type="password" value={form.newPassword} onChange={(newPassword) => setForm({ ...form, newPassword })} />
         <Field label="Confirm New Password" type="password" value={form.confirmPassword} onChange={(confirmPassword) => setForm({ ...form, confirmPassword })} />
         {error && <div className="error">{error}</div>}
         {message && <div className="notice">{message}</div>}
-        <button>Save Password</button>
+        <button disabled={loading}>{loading ? "Saving..." : "Save Password"}</button>
       </form>
     </Panel>
     {student && <Panel title="Equipped Appearance" defaultOpen>

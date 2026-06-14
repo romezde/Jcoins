@@ -5,6 +5,7 @@ import { ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { Field, Select } from "../components/ui.jsx";
 
 const colors = ["#facc15", "#22d3ee", "#fb7185", "#86efac", "#a78bfa", "#fb923c", "#38bdf8", "#f472b6"];
+const labelLimit = 40;
 
 export default function NameWheel({ data }) {
   const [section, setSection] = useState("all");
@@ -65,14 +66,23 @@ export default function NameWheel({ data }) {
     <div className="wheel-stage">
       <div className="wheel-pointer" />
       <div className="name-wheel" style={{ background: wheelGradient, transform: `rotate(${rotation}deg)` }}>
+        <div className="wheel-labels">
+          {students.slice(0, labelLimit).map((student, index) => {
+            const angle = (index + .5) * (360 / students.length);
+            return <span
+              key={student.id}
+              className="wheel-slice-name"
+              style={{ "--angle": `${angle}deg`, "--text-rotate": `${angle > 90 && angle < 270 ? 180 : 0}deg` }}
+              title={student.name}
+            >
+              {shortName(student.name)}
+            </span>;
+          })}
+        </div>
         <div className="wheel-core">
           <strong>{spinning ? "..." : students.length || 0}</strong>
-          <span>{spinning ? "choosing" : "names"}</span>
+          <span>{students.length > labelLimit ? `top ${labelLimit} shown` : spinning ? "choosing" : "names"}</span>
         </div>
-      </div>
-      <div className="wheel-list">
-        {students.slice(0, 18).map((student, index) => <span key={student.id}><i style={{ background: colors[index % colors.length] }} />{student.name}</span>)}
-        {students.length > 18 && <span>+ {students.length - 18} more</span>}
       </div>
     </div>
     {winner && <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -89,4 +99,12 @@ export default function NameWheel({ data }) {
       </section>
     </div>}
   </section>;
+}
+
+function shortName(name = "") {
+  const clean = String(name).trim();
+  if (clean.length <= 16) return clean;
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0]} ${parts.at(-1)?.[0] || ""}.`.slice(0, 16);
+  return `${clean.slice(0, 14)}..`;
 }

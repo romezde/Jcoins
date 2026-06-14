@@ -270,6 +270,7 @@ async function readDb() {
   db.users ||= [];
   db.students ||= [];
   db.transactions ||= [];
+  if (purgeOrphanStudentUsers(db)) changed = true;
   db.students.forEach((s) => {
     s.subjectIds ||= db.subjects.map((sub) => sub.id);
     s.profilePhoto ||= "";
@@ -304,6 +305,49 @@ async function readSupabaseDb() {
 
 function publicUser(user) {
   return { id: user.id, username: user.username, role: user.role, mustChangePassword: user.mustChangePassword, studentId: user.studentId, subjectIds: user.subjectIds || [], sectionIds: user.sectionIds || [] };
+}
+
+function objectMentionsStudent(value, studentId) {
+  if (value == null) return false;
+  if (typeof value !== "object") return value === studentId;
+  if (Array.isArray(value)) return value.some((entry) => objectMentionsStudent(entry, studentId));
+  return Object.entries(value).some(([key, entry]) => {
+    const lowerKey = key.toLowerCase();
+    return (lowerKey.endsWith("studentid") || lowerKey === "studentid") && entry === studentId
+      ? true
+      : objectMentionsStudent(entry, studentId);
+  });
+}
+
+function purgeStudentData(db, studentId) {
+  const studentUserIds = new Set(db.users.filter((user) => user.studentId === studentId).map((user) => user.id));
+  db.students = db.students.filter((student) => student.id !== studentId);
+  db.users = db.users.filter((user) => user.studentId !== studentId);
+  db.transactions = (db.transactions || []).filter((transaction) =>
+    transaction.studentId !== studentId
+    && !studentUserIds.has(transaction.createdBy)
+    && !objectMentionsStudent(transaction.meta, studentId)
+  );
+  db.attendanceRecords = (db.attendanceRecords || []).filter((record) => record.studentId !== studentId);
+  db.recitations = (db.recitations || []).filter((recitation) => recitation.studentId !== studentId);
+  db.requests = (db.requests || []).filter((request) =>
+    request.studentId !== studentId
+    && !studentUserIds.has(request.createdBy)
+    && !objectMentionsStudent(request.payload, studentId)
+  );
+  db.appearanceInventory = (db.appearanceInventory || []).filter((entry) => entry.studentId !== studentId && entry.fromStudentId !== studentId);
+  db.appearanceGifts = (db.appearanceGifts || []).filter((gift) => gift.fromStudentId !== studentId && gift.toStudentId !== studentId);
+  if (db.appearanceEquipped) delete db.appearanceEquipped[studentId];
+  (db.activities || []).forEach((activity) => {
+    activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== studentId);
+  });
+}
+
+function purgeOrphanStudentUsers(db) {
+  const studentIds = new Set((db.students || []).map((student) => student.id));
+  const before = db.users.length;
+  db.users = db.users.filter((user) => user.role !== "student" || !user.studentId || studentIds.has(user.studentId));
+  return db.users.length !== before;
 }
 
 function sign(user) {
@@ -791,17 +835,9 @@ app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), asy
   const db = await readDb();
   const student = db.students.find((s) => s.id === req.params.id);
   if (!student) return res.status(404).json({ error: "Student not found." });
-  db.students = db.students.filter((s) => s.id !== student.id);
-  db.users = db.users.filter((u) => u.studentId !== student.id);
-  db.transactions = db.transactions.filter((t) => t.studentId !== student.id);
-  db.attendanceRecords = db.attendanceRecords.filter((r) => r.studentId !== student.id);
-  db.recitations = db.recitations.filter((r) => r.studentId !== student.id);
-  db.appearanceInventory = (db.appearanceInventory || []).filter((entry) => entry.studentId !== student.id && entry.fromStudentId !== student.id);
-  db.appearanceGifts = (db.appearanceGifts || []).filter((gift) => gift.fromStudentId !== student.id && gift.toStudentId !== student.id);
-  if (db.appearanceEquipped) delete db.appearanceEquipped[student.id];
-  db.activities.forEach((activity) => {
-    activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== student.id);
-  });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  purgeStudentData(db, student.id);
   await writeDb(db);
   res.json({ ok: true });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
 import { adminTabs, post, request, slug, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { Field } from "./components/ui.jsx";
@@ -37,6 +37,7 @@ function useSession() {
 function Login({ onLogin, onPublicLeaderboard }) {
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState(() => localStorage.getItem("jcoins_login_notice") || "");
   useEffect(() => {
     if (!notice) return;
@@ -44,25 +45,30 @@ function Login({ onLogin, onPublicLeaderboard }) {
   }, [notice]);
   async function submit(e) {
     e.preventDefault();
+    if (loading) return;
     setError("");
-    try { onLogin(await post("/auth/login", form)); } catch (err) { setError(err.message); }
+    setLoading(true);
+    try { onLogin(await post("/auth/login", form)); } catch (err) { setError(err.message); setLoading(false); }
   }
   return <main className="login"><section className="login-panel">
     <div className="brand-mark"><JCoinLogo size={42} /> <span>JCoin</span></div><h1>JCoins Arena</h1><p>Teacher dashboard, student profiles, and a live quest board.</p>
     {notice && <div className="notice">{notice}</div>}
-    <form onSubmit={submit}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button>Enter Arena</button><button type="button" className="soft" onClick={onPublicLeaderboard}>View Leaderboard</button></form>
+    <form onSubmit={submit} aria-busy={loading}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Entering..." : "Enter Arena"}</button><button type="button" className="soft" disabled={loading} onClick={onPublicLeaderboard}>View Leaderboard</button></form>
   </section></main>;
 }
 
 function ChangePassword({ onDone }) {
   const [form, setForm] = useState({ currentPassword: "", newPassword: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   async function submit(e) {
     e.preventDefault();
+    if (loading) return;
     setError("");
-    try { onDone(await post("/auth/change-password", form)); } catch (err) { setError(err.message); }
+    setLoading(true);
+    try { onDone(await post("/auth/change-password", form)); } catch (err) { setError(err.message); setLoading(false); }
   }
-  return <main className="login"><section className="login-panel"><Shield /><h1>Change Password</h1><p>Create your own password before continuing.</p><form onSubmit={submit}><Field label="Current Password" type="password" value={form.currentPassword} onChange={(v) => setForm({ ...form, currentPassword: v })} /><Field label="New Password" type="password" value={form.newPassword} onChange={(v) => setForm({ ...form, newPassword: v })} />{error && <div className="error">{error}</div>}<button>Save Password</button></form></section></main>;
+  return <main className="login"><section className="login-panel"><Shield /><h1>Change Password</h1><p>Create your own password before continuing.</p><form onSubmit={submit} aria-busy={loading}><Field label="Current Password" type="password" value={form.currentPassword} onChange={(v) => setForm({ ...form, currentPassword: v })} /><Field label="New Password" type="password" value={form.newPassword} onChange={(v) => setForm({ ...form, newPassword: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Saving..." : "Save Password"}</button></form></section></main>;
 }
 
 export default function App() {
@@ -111,6 +117,8 @@ function RoleApp({ session, logout }) {
   const [message, setMessage] = useState("");
   const [successModal, setSuccessModal] = useState("");
   const [navOpen, setNavOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   async function load() {
     try {
@@ -144,6 +152,9 @@ function RoleApp({ session, logout }) {
   }
 
   async function run(fn, ok = "Saved") {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
     setMessage("");
     setSuccessModal("");
     try {
@@ -153,12 +164,15 @@ function RoleApp({ session, logout }) {
       setSuccessModal(ok);
     } catch (err) {
       setMessage(err.message);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   }
 
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const home = fallback;
-  return <div className="app-shell">
+  return <div className={`app-shell ${busy ? "is-busy" : ""}`} aria-busy={busy}>
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <button className="nav-brand brand-button" onClick={() => navigate(home)}><JCoinLogo size={32} /> <span>JCoins</span></button>
       <nav className="module-nav">{tabs.map((tab) => <button key={tab} className={active === tab ? "active" : ""} onClick={() => navigate(tab)}>{tab}</button>)}</nav>
@@ -178,6 +192,15 @@ function RoleApp({ session, logout }) {
             <div className="section-title">Success</div>
             <p>{successModal}</p>
             <button type="button" onClick={() => setSuccessModal("")}>OK</button>
+          </section>
+        </div>}
+        {busy && <div className="modal-backdrop loading-backdrop" role="alert" aria-live="polite">
+          <section className="modal-card loading-card">
+            <div className="loading-spinner" />
+            <div>
+              <div className="section-title">Working...</div>
+              <p>Please wait while JCoins saves your change.</p>
+            </div>
           </section>
         </div>}
         {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
