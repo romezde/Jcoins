@@ -66,23 +66,26 @@ export async function downloadXlsxTemplate({ filename, sheetName, columns, sampl
 }
 
 async function readXlsxObjects(file, headerMap) {
-  const ExcelJS = await loadExcelJS();
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await file.arrayBuffer());
-  const sheet = workbook.worksheets.find((worksheet) => !worksheet.name.startsWith("_")) || workbook.worksheets[0];
+  const XLSX = await loadSheetJS();
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  const sheetName = workbook.SheetNames.find((name) => !name.startsWith("_")) || workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
   if (!sheet) return [];
-  const headers = sheet.getRow(1).values.slice(1).map((header) => normalizeHeader(header, headerMap));
-  const rows = [];
-  for (let rowIndex = 2; rowIndex <= sheet.rowCount; rowIndex += 1) {
-    const row = sheet.getRow(rowIndex);
-    const object = Object.fromEntries(headers.map((header, index) => [header, cellText(row.getCell(index + 1))]));
-    if (Object.values(object).some((value) => String(value).trim())) rows.push(object);
-  }
-  return rows;
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+  if (!matrix.length) return [];
+  const headers = matrix[0].map((header) => normalizeHeader(header, headerMap));
+  return matrix.slice(1)
+    .map((cells) => Object.fromEntries(headers.map((header, index) => [header, cellText({ value: cells[index] })])))
+    .filter((row) => Object.values(row).some((value) => String(value).trim()));
 }
 
 async function loadExcelJS() {
   const mod = await import("exceljs");
+  return mod.default || mod;
+}
+
+async function loadSheetJS() {
+  const mod = await import("xlsx");
   return mod.default || mod;
 }
 
