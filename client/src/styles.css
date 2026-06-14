@@ -898,7 +898,8 @@ input::placeholder {
   display: grid;
   place-items: center;
   grid-template-columns: minmax(260px, 520px);
-  margin-top: 22px;
+  margin-top: 34px;
+  padding: 18px;
 }
 .name-wheel {
   position: relative;
@@ -927,11 +928,11 @@ input::placeholder {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 26%;
+  width: 28%;
   transform-origin: 0 50%;
-  transform: rotate(var(--angle)) translate(148%, -50%) rotate(var(--text-rotate));
+  transform: rotate(var(--angle)) translate(72%, -50%) rotate(var(--text-rotate));
   color: #fff;
-  font-size: clamp(7px, 1.35vw, 12px);
+  font-size: clamp(7px, 1.2vw, 11px);
   font-weight: 950;
   line-height: 1.05;
   text-align: center;
@@ -2250,7 +2251,7 @@ td button {
     left: 50%;
   }
   .wheel-slice-name {
-    width: 25%;
+    width: 29%;
     font-size: clamp(7px, 2.2vw, 10px);
   }
   .podium { grid-template-columns: 1fr; }
