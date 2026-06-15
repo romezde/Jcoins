@@ -113,6 +113,148 @@ const defaultAppearanceItems = [
   { id: "ap_icon_moon", name: "Moon Avatar Icon", type: "avatarIcon", price: 190, tier: "Legendary", preview: "Moon profile icon", icon: "\u263E", active: true, styleClass: "ap-icon-moon" },
   { id: "ap_effect_champion", name: "Champion Aura", type: "effect", price: 350, tier: "Legendary", preview: "Full champion glow", active: true, styleClass: "ap-effect-champion" }
 ];
+const guilds = [
+  { id: "explorers", name: "Explorers' Guild", trait: "Curiosity", traits: ["Curiosity", "Courage", "Discovery", "Growth"], message: "May your curiosity guide your journey." },
+  { id: "innovators", name: "Innovators' Guild", trait: "Innovation", traits: ["Innovation", "Problem Solving", "Improvement", "Vision"], message: "May your ideas shape the future." },
+  { id: "creators", name: "Creators' Guild", trait: "Creativity", traits: ["Creativity", "Imagination", "Expression", "Action"], message: "May your imagination bring possibilities to life." },
+  { id: "guardians", name: "Guardians' Guild", trait: "Responsibility", traits: ["Support", "Dependability", "Teamwork", "Strength"], message: "May your strength and responsibility protect your path." },
+  { id: "traders", name: "Traders' Guild", trait: "Strategy", traits: ["Strategy", "Planning", "Resourcefulness", "Wisdom"], message: "May your strategy and wisdom lead you forward." }
+];
+const guildQuestions = [
+  { id: "q1", text: "I enjoy trying activities that I have never done before.", guildId: "explorers" },
+  { id: "q2", text: "I often think of ways to improve things around me.", guildId: "innovators" },
+  { id: "q3", text: "I feel satisfied when I help someone solve a problem.", guildId: "guardians" },
+  { id: "q4", text: "I enjoy planning ahead before making important decisions.", guildId: "traders" },
+  { id: "q5", text: "I like expressing my ideas through projects or creative work.", guildId: "creators" },
+  { id: "q6", text: "I am comfortable stepping outside my comfort zone.", guildId: "explorers" },
+  { id: "q7", text: "I enjoy finding unique solutions to difficult challenges.", guildId: "innovators" },
+  { id: "q8", text: "People often come to me when they need support.", guildId: "guardians" },
+  { id: "q9", text: "I enjoy creating something from my own ideas.", guildId: "creators" },
+  { id: "q10", text: "I carefully consider the consequences of my decisions.", guildId: "traders" },
+  { id: "q11", text: "Learning something completely new excites me.", guildId: "explorers" },
+  { id: "q12", text: "I enjoy improving a process that already works.", guildId: "innovators" },
+  { id: "q13", text: "I feel responsible for contributing to the success of a group.", guildId: "guardians" },
+  { id: "q14", text: "I enjoy managing resources efficiently.", guildId: "traders" },
+  { id: "q15", text: "I often imagine how things could be made better.", guildId: "innovators" },
+  { id: "q16", text: "I enjoy discovering information on my own.", guildId: "explorers" },
+  { id: "q17", text: "I remain dependable even when tasks become difficult.", guildId: "guardians" },
+  { id: "q18", text: "I enjoy finding opportunities where everyone benefits.", guildId: "traders" },
+  { id: "q19", text: "I like turning ideas into action.", guildId: "creators" },
+  { id: "q20", text: "I enjoy taking on challenges that push me to grow.", guildId: "explorers" }
+];
+
+function defaultGuildSystem() {
+  return {
+    status: "not_started",
+    questions: guildQuestions,
+    responses: [],
+    startedAt: "",
+    lockedAt: "",
+    ceremonyStartedAt: ""
+  };
+}
+
+function publicGuild(guildId) {
+  const guild = guilds.find((item) => item.id === guildId);
+  return guild ? { id: guild.id, name: guild.name, trait: guild.trait, message: guild.message } : null;
+}
+
+function sanitizeGuildQuestions(questions = guildQuestions) {
+  return questions.map((question) => ({ id: question.id, text: question.text }));
+}
+
+function normalizeGuildSystem(system) {
+  const base = defaultGuildSystem();
+  return {
+    ...base,
+    ...(system && typeof system === "object" ? system : {}),
+    questions: guildQuestions,
+    responses: Array.isArray(system?.responses) ? system.responses : []
+  };
+}
+
+function guildDistribution(db) {
+  const counts = Object.fromEntries(guilds.map((guild) => [guild.id, 0]));
+  (db.guildSystem?.responses || []).forEach((response) => {
+    if (counts[response.assignedGuildId] != null) counts[response.assignedGuildId] += 1;
+  });
+  return guilds.map((guild) => ({ ...publicGuild(guild.id), count: counts[guild.id] || 0 }));
+}
+
+function guildResponse(db, studentId) {
+  return (db.guildSystem?.responses || []).find((response) => response.studentId === studentId);
+}
+
+function calculateGuildAffinities(answerMap) {
+  const totals = Object.fromEntries(guilds.map((guild) => [guild.id, 0]));
+  const counts = Object.fromEntries(guilds.map((guild) => [guild.id, 0]));
+  guildQuestions.forEach((question) => {
+    totals[question.guildId] += Number(answerMap[question.id] || 0);
+    counts[question.guildId] += 1;
+  });
+  return Object.fromEntries(guilds.map((guild) => [guild.id, Number((totals[guild.id] / Math.max(1, counts[guild.id])).toFixed(2))]));
+}
+
+function assignGuild(db, affinities) {
+  const counts = Object.fromEntries(guildDistribution(db).map((entry) => [entry.id, entry.count]));
+  const minCount = Math.min(...guilds.map((guild) => counts[guild.id] || 0));
+  return [...guilds].sort((a, b) => {
+    const aScore = Number(affinities[a.id] || 0) - ((counts[a.id] || 0) - minCount) * 0.75;
+    const bScore = Number(affinities[b.id] || 0) - ((counts[b.id] || 0) - minCount) * 0.75;
+    return bScore - aScore || (counts[a.id] || 0) - (counts[b.id] || 0) || a.name.localeCompare(b.name);
+  })[0].id;
+}
+
+function guildTraitPreview(affinities = {}) {
+  return [...guilds]
+    .sort((a, b) => Number(affinities[b.id] || 0) - Number(affinities[a.id] || 0))
+    .flatMap((guild) => guild.traits)
+    .filter((trait, index, list) => list.indexOf(trait) === index)
+    .slice(0, 8);
+}
+
+function guildSystemView(db, user) {
+  const system = normalizeGuildSystem(db.guildSystem);
+  const base = {
+    status: system.status,
+    startedAt: system.startedAt || "",
+    lockedAt: system.lockedAt || "",
+    ceremonyStartedAt: system.ceremonyStartedAt || "",
+    guilds: guilds.map((guild) => publicGuild(guild.id)),
+    questions: sanitizeGuildQuestions(system.questions),
+    distribution: guildDistribution({ ...db, guildSystem: system })
+  };
+  if (user.role === "student") {
+    const response = guildResponse({ ...db, guildSystem: system }, user.studentId);
+    return {
+      ...base,
+      response: response ? {
+        submittedAt: response.submittedAt,
+        revealed: !!response.revealed,
+        revealedAt: response.revealedAt || "",
+        assignedGuild: response.revealed ? publicGuild(response.assignedGuildId) : null
+      } : null
+    };
+  }
+  const visibleStudents = scopeStudents(db, user);
+  return {
+    ...base,
+    students: visibleStudents.map((student) => {
+      const response = guildResponse({ ...db, guildSystem: system }, student.id);
+      return {
+        studentId: student.id,
+        studentName: student.name,
+        section: student.section || "",
+        submitted: !!response,
+        revealed: !!response?.revealed,
+        submittedAt: response?.submittedAt || "",
+        revealedAt: response?.revealedAt || "",
+        status: !response ? "Not Submitted" : response.revealed ? "Revealed" : "Submitted / Ready",
+        assignedGuild: response?.revealed ? publicGuild(response.assignedGuildId)?.name || "" : ""
+      };
+    })
+  };
+}
 
 async function ensureDb() {
   if (supabase) {
@@ -159,6 +301,7 @@ function defaults() {
         ]
       },
       wheel: { spinSeconds: 3.3 },
+      guild: { revealSeconds: 10 },
       ranks: [
         { name: "Apprentice", min: 250 },
         { name: "Adept", min: 500 },
@@ -195,7 +338,8 @@ async function createInitialDb() {
     appearanceItems: defaultAppearanceItems,
     appearanceInventory: [],
     appearanceEquipped: {},
-    appearanceGifts: []
+    appearanceGifts: [],
+    guildSystem: defaultGuildSystem()
   };
 }
 
@@ -213,6 +357,7 @@ async function readDb() {
   db.settings.recitation = { ...d.settings.recitation, ...(db.settings.recitation || {}) };
   db.settings.activities = { ...d.settings.activities, ...(db.settings.activities || {}) };
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
+  db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.activities.types ||= d.settings.activities.types;
   db.settings.ranks ||= d.settings.ranks;
   db.subjects ||= [];
@@ -239,6 +384,9 @@ async function readDb() {
   db.requests ||= [];
   db.feedback ||= [];
   db.schedules ||= [];
+  const normalizedGuildSystem = normalizeGuildSystem(db.guildSystem);
+  if (!db.guildSystem || JSON.stringify(db.guildSystem.questions || []) !== JSON.stringify(guildQuestions)) changed = true;
+  db.guildSystem = normalizedGuildSystem;
   db.appearanceItems ||= [];
   db.appearanceInventory ||= [];
   if (!db.appearanceEquipped || Array.isArray(db.appearanceEquipped) || typeof db.appearanceEquipped !== "object") {
@@ -346,6 +494,7 @@ function purgeStudentData(db, studentId) {
   );
   db.appearanceInventory = (db.appearanceInventory || []).filter((entry) => entry.studentId !== studentId && entry.fromStudentId !== studentId);
   db.appearanceGifts = (db.appearanceGifts || []).filter((gift) => gift.fromStudentId !== studentId && gift.toStudentId !== studentId);
+  if (db.guildSystem) db.guildSystem.responses = (db.guildSystem.responses || []).filter((response) => response.studentId !== studentId);
   if (db.appearanceEquipped) delete db.appearanceEquipped[studentId];
   (db.activities || []).forEach((activity) => {
     activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== studentId);
@@ -668,7 +817,8 @@ function filteredOverview(db, user) {
     appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
     requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)),
     feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))),
-    schedules: scheduleRows(db, visibleScheduleRows)
+    schedules: scheduleRows(db, visibleScheduleRows),
+    guildSystem: guildSystemView(db, user)
   };
 }
 
@@ -738,6 +888,96 @@ app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req
   const db = await readDb();
   const overview = filteredOverview(db, req.user);
   res.json({ ...overview, students: hideProfilePhotos(overview.students) });
+});
+
+app.post("/api/admin/guild/start-assessment", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  db.guildSystem.status = "open";
+  db.guildSystem.startedAt = now();
+  db.guildSystem.lockedAt = "";
+  await writeDb(db);
+  res.json({ guildSystem: guildSystemView(db, req.user) });
+});
+
+app.post("/api/admin/guild/lock-assessment", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  db.guildSystem.status = "locked";
+  db.guildSystem.lockedAt = now();
+  await writeDb(db);
+  res.json({ guildSystem: guildSystemView(db, req.user) });
+});
+
+app.post("/api/admin/guild/start-ceremony", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  db.guildSystem.status = "ceremony_active";
+  db.guildSystem.ceremonyStartedAt = now();
+  await writeDb(db);
+  res.json({ guildSystem: guildSystemView(db, req.user) });
+});
+
+app.post("/api/admin/guild/reset", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = defaultGuildSystem();
+  await writeDb(db);
+  res.json({ guildSystem: guildSystemView(db, req.user) });
+});
+
+app.get("/api/admin/guild/students/:id/preview", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(req.params.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const response = guildResponse(db, req.params.id);
+  if (!response) return res.status(404).json({ error: "Student has not submitted the assessment yet." });
+  res.json({ studentId: req.params.id, studentName: studentName(db, req.params.id), traits: guildTraitPreview(response.affinities) });
+});
+
+app.post("/api/admin/guild/students/:id/reveal", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  if (db.guildSystem.status !== "ceremony_active") return res.status(400).json({ error: "Start the Sorting Ceremony first." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(req.params.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const response = guildResponse(db, req.params.id);
+  if (!response) return res.status(404).json({ error: "Student has not submitted the assessment yet." });
+  response.revealed = true;
+  response.revealedAt ||= now();
+  await writeDb(db);
+  res.json({ studentId: req.params.id, studentName: studentName(db, req.params.id), guild: publicGuild(response.assignedGuildId) });
+});
+
+app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  if (db.guildSystem.status !== "open") return res.status(400).json({ error: "The Guild Affinity Assessment is not open right now." });
+  if (!db.students.some((student) => student.id === req.user.studentId)) return res.status(404).json({ error: "Student not found." });
+  if (guildResponse(db, req.user.studentId)) return res.status(409).json({ error: "You already submitted the assessment." });
+  const incoming = Array.isArray(req.body.answers)
+    ? Object.fromEntries(req.body.answers.map((entry) => [entry.questionId, entry.value]))
+    : req.body.answers || {};
+  const answers = {};
+  for (const question of guildQuestions) {
+    const value = Number(incoming[question.id]);
+    if (!Number.isInteger(value) || value < 1 || value > 5) return res.status(400).json({ error: "Answer all questions from 1 to 5 before submitting." });
+    answers[question.id] = value;
+  }
+  const affinities = calculateGuildAffinities(answers);
+  const assignedGuildId = assignGuild(db, affinities);
+  const submittedAt = now();
+  db.guildSystem.responses.push({
+    id: randomUUID(),
+    studentId: req.user.studentId,
+    answers: Object.entries(answers).map(([questionId, value]) => ({ questionId, value })),
+    affinities,
+    assignedGuildId,
+    revealed: false,
+    submittedAt,
+    revealedAt: ""
+  });
+  await writeDb(db);
+  res.status(201).json({ submittedAt });
 });
 
 app.post("/api/admin/subjects", auth, requireRole("admin"), async (req, res) => {

@@ -1,7 +1,7 @@
-export const API = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4000/api`;
+export const API = import.meta.env.VITE_API_URL || "/api";
 
-export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "People", "Subjects", "Attendance", "Recitation", "Activities", "Transactions", "Shop", "Appearance Shop", "Approvals", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
-export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "People", "Attendance", "Recitation", "Activities", "Transactions", "Approvals", "Feedback", "Reports", "Name Wheel", "Profile", "Account"];
+export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "Guild Affinity", "People", "Subjects", "Attendance", "Recitation", "Activities", "Transactions", "Shop", "Appearance Shop", "Approvals", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
+export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "Guild Affinity", "People", "Attendance", "Recitation", "Activities", "Transactions", "Approvals", "Feedback", "Reports", "Name Wheel", "Profile", "Account"];
 export const studentTabs = ["Leaderboard", "Schedule", "Profile", "Activities", "Shop", "Trade Requests", "Appearance Shop", "Feedback", "History", "Account"];
 
 export function slug(tab) {

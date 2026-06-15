@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { put } from "../api.js";
+import { post, put } from "../api.js";
 import { Field, Panel, Table } from "../components/ui.jsx";
 
 export default function Settings({ data, run }) {
   const [settings, setSettings] = useState(data.settings);
+  const [guildResetConfirm, setGuildResetConfirm] = useState("");
   useEffect(() => setSettings(data.settings), [data.settings]);
-  const set = (group, key, value) => setSettings({ ...settings, [group]: { ...settings[group], [key]: Number(value) || value } });
+  const set = (group, key, value) => setSettings({ ...settings, [group]: { ...(settings[group] || {}), [key]: Number(value) || value } });
+  const guildSystem = data.guildSystem || {};
+  const guildSubmitted = (guildSystem.students || []).filter((student) => student.submitted).length;
+  const guildRevealed = (guildSystem.students || []).filter((student) => student.revealed).length;
   return <div className="dashboard-grid">
     <Panel title="Attendance Settings" defaultOpen={false}>
       <Field label="On Time Points" type="number" value={settings.attendance.onTimePoints} onChange={(v) => set("attendance", "onTimePoints", v)} />
@@ -29,6 +33,33 @@ export default function Settings({ data, run }) {
       <p className="muted-line">Example: 3.3 is quick, 5 is dramatic, 8 is very suspenseful.</p>
       <button onClick={() => run(() => put("/admin/settings", { settings }), "Wheel settings saved")}>Save Wheel Settings</button>
     </Panel>
+    <Panel title="Guild Settings" defaultOpen={false}>
+      <Field label="Reveal Duration Seconds" type="number" value={settings.guild?.revealSeconds ?? 10} onChange={(v) => set("guild", "revealSeconds", v)} />
+      <p className="muted-line">This controls how long the Sorting Ceremony shows traits before the guild appears.</p>
+      <div className="metric-strip">
+        <section className="metric-tile"><span>Status</span><strong>{guildStatusLabel(guildSystem.status)}</strong></section>
+        <section className="metric-tile"><span>Submitted</span><strong>{guildSubmitted}</strong></section>
+        <section className="metric-tile"><span>Revealed</span><strong>{guildRevealed}</strong></section>
+      </div>
+      <div className="button-row">
+        <button onClick={() => run(() => put("/admin/settings", { settings }), "Guild settings saved")}>Save Guild Settings</button>
+      </div>
+      <div className="danger-zone">
+        <div>
+          <div className="section-title">Reset Guilds</div>
+          <p className="muted-line">This clears assessment status, student responses, assigned guilds, and reveal history.</p>
+        </div>
+        <Field label='Type "RESET" to confirm' value={guildResetConfirm} onChange={setGuildResetConfirm} />
+        <button
+          type="button"
+          className="danger"
+          disabled={guildResetConfirm !== "RESET"}
+          onClick={() => run(() => post("/admin/guild/reset", {}), "Guild system reset").then((ok) => ok && setGuildResetConfirm(""))}
+        >
+          Reset All Guilds
+        </button>
+      </div>
+    </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [
         <input value={r.name} onChange={(e) => setSettings({ ...settings, ranks: settings.ranks.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />,
@@ -40,4 +71,13 @@ export default function Settings({ data, run }) {
       </div>
     </Panel>
   </div>;
+}
+
+function guildStatusLabel(status) {
+  return {
+    not_started: "Not Started",
+    open: "Open",
+    locked: "Locked",
+    ceremony_active: "Ceremony Active"
+  }[status] || "Not Started";
 }

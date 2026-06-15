@@ -19,6 +19,7 @@ import NameWheel from "./screens/NameWheel.jsx";
 import { StaffFeedback, StudentFeedback } from "./screens/Feedback.jsx";
 import Schedule from "./screens/Schedule.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
+import GuildAffinity from "./screens/GuildAffinity.jsx";
 
 function useSession() {
   const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("jcoins_session") || "null"));
@@ -111,9 +112,9 @@ function PublicLeaderboard({ onLogin }) {
 }
 
 function RoleApp({ session, logout }) {
-  const tabs = session.user.role === "student" ? studentTabs : session.user.role === "teacher" ? teacherTabs : session.user.role === "display" ? ["Leaderboard"] : adminTabs;
+  const baseTabs = session.user.role === "student" ? studentTabs : session.user.role === "teacher" ? teacherTabs : session.user.role === "display" ? ["Leaderboard"] : adminTabs;
   const fallback = session.user.role === "teacher" ? "Schedule" : session.user.role === "student" || session.user.role === "display" ? "Leaderboard" : "Dashboard";
-  const [active, setActive] = useState(() => tabFromPath(tabs, fallback));
+  const [active, setActive] = useState(() => tabFromPath(baseTabs, fallback));
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
@@ -121,6 +122,8 @@ function RoleApp({ session, logout }) {
   const [navOpen, setNavOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
+  const tabs = session.user.role === "student" && shouldShowGuildTab(normalized) ? insertTab(baseTabs, "Leaderboard", "Guild Affinity") : baseTabs;
 
   async function load() {
     try {
@@ -160,11 +163,11 @@ function RoleApp({ session, logout }) {
     setMessage("");
     setSuccessModal("");
     try {
-      await fn();
+      const result = await fn();
       await load();
       window.dispatchEvent(new CustomEvent("jcoins:action-success"));
       setSuccessModal(ok);
-      return true;
+      return result ?? true;
     } catch (err) {
       setMessage(err.message);
       return false;
@@ -174,7 +177,6 @@ function RoleApp({ session, logout }) {
     }
   }
 
-  const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const home = fallback;
   return <div className={`app-shell ${busy ? "is-busy" : ""}`} aria-busy={busy}>
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -371,6 +373,7 @@ function buildSearchResults(tabs, data) {
   (data?.attendanceWeeks || []).forEach((week) => add(list, "Attendance", week.title, "Attendance", week.subjectName));
   (data?.feedback || []).forEach((entry) => add(list, "Feedback", entry.title, "Feedback", `${entry.studentName} ${entry.category} ${entry.status} ${entry.feature}`));
   (data?.schedules || []).forEach((schedule) => add(list, "Schedule", `${schedule.subjectName} ${schedule.day}`, "Schedule", `${schedule.section} ${schedule.startTime} ${schedule.endTime} ${schedule.room} ${schedule.type}`));
+  (data?.guildSystem?.students || []).forEach((student) => add(list, "Guild", student.studentName, "Guild Affinity", `${student.section} ${student.status}`));
   return list;
 }
 
@@ -378,6 +381,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} />;
   if (tab === "Dashboard") return <Dashboard data={data} />;
   if (tab === "Schedule") return <Schedule data={data} run={run} role={role} />;
+  if (tab === "Guild Affinity") return <GuildAffinity data={data} run={run} role={role} />;
   if (tab === "People") return <People data={data} run={run} role={role} />;
   if (tab === "Subjects") return <Subjects data={data} run={run} />;
   if (tab === "Attendance") return <Attendance data={data} run={run} />;
@@ -396,4 +400,16 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Reports") return <Reports data={data} />;
   if (tab === "Account") return <Account data={data} role={role} />;
   return <section className="panel">Prototype screen coming next.</section>;
+}
+
+function insertTab(tabs, after, tab) {
+  if (tabs.includes(tab)) return tabs;
+  const index = tabs.indexOf(after);
+  if (index < 0) return [...tabs, tab];
+  return [...tabs.slice(0, index + 1), tab, ...tabs.slice(index + 1)];
+}
+
+function shouldShowGuildTab(data) {
+  const guild = data?.guildSystem;
+  return guild?.status === "open" || !!guild?.response;
 }
