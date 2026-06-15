@@ -926,6 +926,41 @@ input::placeholder {
 .reset-result code {
   overflow-wrap: anywhere;
 }
+.student-name-cell {
+  display: grid;
+  gap: 8px;
+}
+.table-name-button {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0;
+  color: #cffafe;
+  font-weight: 950;
+  text-align: left;
+}
+.table-name-button:hover {
+  color: var(--gold);
+}
+.student-profile-modal {
+  display: grid;
+  gap: 14px;
+}
+.student-profile-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+.student-profile-hero h2 {
+  margin: 0 0 6px;
+  font-size: clamp(28px, 6vw, 44px);
+  overflow-wrap: anywhere;
+}
+.student-profile-hero p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-weight: 900;
+}
 .panel { padding: 18px; }
 .panel-body {
   margin-top: 14px;
@@ -2737,6 +2772,10 @@ td button {
   }
   .account-grid {
     grid-template-columns: 1fr;
+  }
+  .student-profile-hero {
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
   .filter-bar, .transaction-filter-bar { grid-template-columns: 1fr; }
   .filter-count {

@@ -977,7 +977,26 @@ app.get("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "tea
   if (!student) return res.status(404).json({ error: "Student not found." });
   const allowedStudentIds = scopedStudentIds(db, req.user);
   if (!allowedStudentIds.has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
-  res.json({ profilePhoto: student.profilePhoto || "" });
+  const hydrated = hydrateStudents(db).find((item) => item.id === student.id) || student;
+  const transactions = db.transactions
+    .filter((transaction) => transaction.studentId === student.id)
+    .map((transaction) => ({ ...transaction, studentName: student.name }))
+    .sort(byDateDesc)
+    .slice(0, 20);
+  const weeks = db.attendanceWeeks
+    .filter((week) => (student.subjectIds || []).includes(week.subjectId))
+    .map((week) => ({
+      ...week,
+      subjectName: subjectName(db, week.subjectId),
+      attendanceBonus: attendanceBonus(db, student.id, week),
+      recitationBonus: recitationBonus(db, student.id, week)
+    }))
+    .slice(0, 10);
+  const activities = hydrateActivities(db).flatMap((activity) => activity.rows
+    .filter((row) => row.studentId === student.id)
+    .map((row) => ({ activity: activity.title, subjectName: activity.subjectName, deadline: activity.deadline, submitted: row.submitted, daysLate: row.daysLate, earned: row.earned })))
+    .slice(0, 20);
+  res.json({ student: { ...hydrated, profilePhoto: student.profilePhoto || "" }, transactions, weeks, activities, profilePhoto: student.profilePhoto || "" });
 });
 
 app.post("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "teacher"), async (req, res) => {

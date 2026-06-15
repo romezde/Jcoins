@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { del, post, put } from "../api.js";
-import { fileToProfilePhoto } from "../components/ProfilePhoto.jsx";
+import { del, post, put, request } from "../api.js";
+import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
 
@@ -15,6 +15,7 @@ export default function People({ data, run, role }) {
   const [importRows, setImportRows] = useState([]);
   const [importError, setImportError] = useState("");
   const [importResult, setImportResult] = useState("");
+  const [profileModal, setProfileModal] = useState(null);
   const visibleSubjects = role === "teacher" ? data.subjects.filter((s) => (data.user.subjectIds || []).includes(s.id)) : data.subjects;
   const sections = data.sections?.length ? data.sections : ["A", "B"];
   const filteredStudents = data.students.filter((student) => {
@@ -89,10 +90,19 @@ export default function People({ data, run, role }) {
     const profilePhoto = await fileToProfilePhoto(file);
     await run(() => post(`/admin/students/${studentId}/profile-photo`, { profilePhoto }), "Profile picture updated");
   }
+  async function openStudentProfile(student) {
+    setProfileModal({ loading: true, student });
+    try {
+      setProfileModal(await request(`/admin/students/${student.id}/profile-photo`));
+    } catch (err) {
+      setProfileModal({ error: err.message, student });
+    }
+  }
 
   return <div className="dashboard-grid">
     {resetModal && <ResetSuccessModal reset={resetModal} onClose={() => setResetModal(null)} />}
     {confirmReset && <ResetConfirmModal target={confirmReset} onCancel={() => setConfirmReset(null)} onConfirm={() => run(() => resetPassword(confirmReset), "Password reset")} />}
+    {profileModal && <StudentProfileModal profile={profileModal} onClose={() => setProfileModal(null)} />}
     <div className="quick-actions wide">
       <ActionModal title="Add Section">
         <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/sections", { name: sectionName }), "Section added"); setSectionName(""); }}>
@@ -155,7 +165,10 @@ export default function People({ data, run, role }) {
       <Table columns={["Name", "Username", "Section", "Subjects", "JCoins", "Rank", "Actions"]} rows={filteredStudents.map((s) => {
         const edit = edits[s.id] || s;
         return [
-          <input value={edit.name} onChange={(e) => setEdits({ ...edits, [s.id]: { ...edit, name: e.target.value } })} />,
+          <div className="student-name-cell">
+            <button type="button" className="ghost table-name-button" onClick={() => openStudentProfile(s)}>{s.name}</button>
+            <input value={edit.name} onChange={(e) => setEdits({ ...edits, [s.id]: { ...edit, name: e.target.value } })} />
+          </div>,
           s.username || "No account",
           <select value={edit.section || ""} onChange={(e) => setEdits({ ...edits, [s.id]: { ...edit, section: e.target.value } })}><option value="">No section</option>{sections.map((section) => <option key={section} value={section}>{section}</option>)}</select>,
           <DropdownChecklist label="Subjects" compact items={visibleSubjects} selected={edit.subjectIds || []} onChange={(ids) => setEdits({ ...edits, [s.id]: { ...edit, subjectIds: ids } })} />,
@@ -173,6 +186,45 @@ export default function People({ data, run, role }) {
 
     {role === "admin" && <Users data={data} run={run} onReset={(userId, username) => setConfirmReset({ userId, username })} />}
   </div>;
+}
+
+function StudentProfileModal({ profile, onClose }) {
+  const student = profile.student || {};
+  const needed = Math.max(0, Number(student.nextTarget || 0) - Number(student.currentJCoins || 0));
+  return <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <section className="modal-card modal-card-wide student-profile-modal">
+      <div className="section-head">
+        <div className="section-title">Student Profile</div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      {profile.loading ? <p className="muted-line">Loading profile...</p> : profile.error ? <p className="error">{profile.error}</p> : <>
+        <div className="student-profile-hero">
+          <ProfilePhotoFrame student={student} className="profile-picture-large" />
+          <div>
+            <h2>{student.name}</h2>
+            <p>{student.section || "No section"} • {student.username || "No username"}</p>
+            <div className="big-coins">{Number(student.currentJCoins || 0).toLocaleString()} JCoins</div>
+            <div className="rank-pill rank-chip">{student.rank || "Unranked"}</div>
+          </div>
+        </div>
+        <div className="bar"><div className="fill" style={{ width: `${student.progress || 0}%` }} /></div>
+        <p className="needed-coins">{needed ? `${needed.toLocaleString()} JCoins needed to reach ${student.nextRank}` : "Max rank reached"}</p>
+        <div className="account-grid">
+          <AccountMini label="Subjects" value={(student.subjectNames || []).join(", ") || "None"} />
+          <AccountMini label="Recent Activities" value={profile.activities?.length || 0} />
+          <AccountMini label="Recent Transactions" value={profile.transactions?.length || 0} />
+          <AccountMini label="Photo" value={student.profilePhoto ? "Uploaded" : "None"} />
+        </div>
+        <Table columns={["Date", "Type", "Amount", "Remarks"]} rows={(profile.transactions || []).map((transaction) => [new Date(transaction.createdAt).toLocaleString(), transaction.type, transaction.amount, transaction.note])} pageSize={5} />
+        <Table columns={["Week", "Subject", "Attendance Bonus", "Recitation Bonus"]} rows={(profile.weeks || []).map((week) => [week.title, week.subjectName, week.attendanceBonus ? "Earned" : "Not yet", week.recitationBonus ? "Earned" : "Not yet"])} pageSize={5} />
+        <Table columns={["Activity", "Subject", "Deadline", "Submitted", "Earned"]} rows={(profile.activities || []).map((activity) => [activity.activity, activity.subjectName, activity.deadline, activity.submitted ? "Submitted" : "Pending", activity.earned])} pageSize={5} />
+      </>}
+    </section>
+  </div>;
+}
+
+function AccountMini({ label, value }) {
+  return <div className="account-item"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function Users({ data, run, onReset }) {
