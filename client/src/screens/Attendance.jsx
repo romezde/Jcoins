@@ -153,15 +153,34 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
 
 function AttendanceTable({ week, data, run }) {
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState({ key: "name", date: "", direction: "asc" });
   // data.students is already role-scoped by the server for teachers.
   const q = search.trim().toLowerCase();
-  const students = data.students.filter((s) => (s.subjectIds || []).includes(week.subjectId) && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))));
   const status = (studentId, date) => data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
+  const students = data.students
+    .filter((s) => (s.subjectIds || []).includes(week.subjectId) && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))))
+    .sort((a, b) => compareAttendanceStudents(a, b, sort, status));
+  function toggleSort(next) {
+    setSort((current) => current.key === next.key && current.date === (next.date || "")
+      ? { ...next, date: next.date || "", direction: current.direction === "asc" ? "desc" : "asc" }
+      : { ...next, date: next.date || "", direction: "asc" });
+  }
+  const sortMark = (key, date = "") => sort.key === key && sort.date === date ? sort.direction === "asc" ? "↑" : "↓" : "↕";
   return <>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
     </div>
-    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th>Student</th>{week.dates.map((d) => <th key={d}>{d}<div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button><button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button></div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button><button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button></div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
   </>;
+}
+
+function compareAttendanceStudents(a, b, sort, status) {
+  const direction = sort.direction === "desc" ? -1 : 1;
+  if (sort.key === "date") {
+    const order = { "": 0, late: 1, check: 2 };
+    const diff = (order[status(a.id, sort.date)] ?? 0) - (order[status(b.id, sort.date)] ?? 0);
+    if (diff) return diff * direction;
+  }
+  return String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true, sensitivity: "base" }) * direction;
 }

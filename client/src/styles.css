@@ -1328,6 +1328,26 @@ input::placeholder {
   margin-top: 14px;
   -webkit-overflow-scrolling: touch;
 }
+.table-sort-bar {
+  display: none;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.table-sort-bar button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.table-sort-bar button.active {
+  border-color: rgba(34,211,238,.5);
+  color: #cffafe;
+  background: rgba(34,211,238,.14);
+}
 .pagination-bar {
   display: flex;
   align-items: center;
@@ -1365,6 +1385,21 @@ th {
   color: #cffafe;
   font-size: 12px;
   text-transform: uppercase;
+}
+.table-sort-button {
+  justify-content: flex-start;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+.table-sort-button:hover {
+  color: var(--gold);
 }
 td {
   color: var(--text);
@@ -2490,6 +2525,9 @@ td button {
   min-width: 126px;
 }
 @media (max-width: 1024px) {
+  .table-sort-bar {
+    display: flex;
+  }
   table {
     min-width: 0;
   }

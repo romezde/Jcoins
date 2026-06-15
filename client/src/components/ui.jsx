@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 
 export function Field({ label, value, onChange, type = "text", children }) {
@@ -65,19 +65,33 @@ export function DataTable({ title, columns, rows, defaultOpen = false }) {
 
 export function Table({ columns, rows, pageSize = 10 }) {
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const [sort, setSort] = useState({ index: null, direction: "asc" });
+  const sortedRows = useMemo(() => sort.index == null ? rows : [...rows].sort((a, b) => compareCells(a[sort.index], b[sort.index], sort.direction)), [rows, sort.index, sort.direction]);
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
-  const visibleRows = rows.slice(start, start + pageSize);
+  const visibleRows = sortedRows.slice(start, start + pageSize);
+
+  function toggleSort(index) {
+    setSort((current) => current.index === index
+      ? { index, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { index, direction: "asc" });
+    setPage(1);
+  }
 
   useEffect(() => {
     setPage(1);
   }, [rows.length]);
 
   return <>
-    <div className="table-wrap"><table><thead><tr>{columns.map((c) => <th key={String(c)}>{c}</th>)}</tr></thead><tbody>{visibleRows.length ? visibleRows.map((r, i) => <tr key={start + i}>{r.map((c, j) => <td key={j} data-label={String(columns[j] || "")}>{c}</td>)}</tr>) : <tr><td className="empty-cell" colSpan={columns.length}>No records yet.</td></tr>}</tbody></table></div>
+    <div className="table-sort-bar" aria-label="Sort table">
+      {columns.map((column, index) => <button key={String(column)} type="button" className={sort.index === index ? "soft active" : "soft"} onClick={() => toggleSort(index)}>
+        {column} {sort.index === index ? sort.direction === "asc" ? "↑" : "↓" : "↕"}
+      </button>)}
+    </div>
+    <div className="table-wrap"><table><thead><tr>{columns.map((c, index) => <th key={String(c)}><button type="button" className="table-sort-button" onClick={() => toggleSort(index)}>{c} {sort.index === index ? sort.direction === "asc" ? "↑" : "↓" : "↕"}</button></th>)}</tr></thead><tbody>{visibleRows.length ? visibleRows.map((r, i) => <tr key={start + i}>{r.map((c, j) => <td key={j} data-label={String(columns[j] || "")}>{c}</td>)}</tr>) : <tr><td className="empty-cell" colSpan={columns.length}>No records yet.</td></tr>}</tbody></table></div>
     {rows.length > pageSize && <div className="pagination-bar">
-      <span>Showing {start + 1}-{Math.min(start + pageSize, rows.length)} of {rows.length}</span>
+      <span>Showing {start + 1}-{Math.min(start + pageSize, sortedRows.length)} of {sortedRows.length}</span>
       <div className="pagination-actions">
         <button type="button" className="soft" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
         <strong>Page {currentPage} / {totalPages}</strong>
@@ -85,6 +99,36 @@ export function Table({ columns, rows, pageSize = 10 }) {
       </div>
     </div>}
   </>;
+}
+
+function compareCells(a, b, direction) {
+  const aValue = sortValue(a);
+  const bValue = sortValue(b);
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (aValue.type === "number" && bValue.type === "number") return (aValue.value - bValue.value) * multiplier;
+  if (aValue.type === "date" && bValue.type === "date") return (aValue.value - bValue.value) * multiplier;
+  return String(aValue.value).localeCompare(String(bValue.value), undefined, { numeric: true, sensitivity: "base" }) * multiplier;
+}
+
+function sortValue(cell) {
+  const value = extractCellText(cell).trim();
+  const numeric = Number(value.replace(/,/g, ""));
+  if (value !== "" && Number.isFinite(numeric)) return { type: "number", value: numeric };
+  const date = Date.parse(value);
+  if (value && Number.isFinite(date) && /[-/:,]|\b(am|pm)\b/i.test(value)) return { type: "date", value: date };
+  return { type: "text", value };
+}
+
+function extractCellText(cell) {
+  if (cell == null || typeof cell === "boolean") return "";
+  if (typeof cell === "string" || typeof cell === "number") return String(cell);
+  if (Array.isArray(cell)) return cell.map(extractCellText).join(" ");
+  if (React.isValidElement(cell)) {
+    if (cell.props?.value != null) return String(cell.props.value);
+    return extractCellText(cell.props?.children);
+  }
+  if (typeof cell === "object" && "value" in cell) return extractCellText(cell.value);
+  return String(cell);
 }
 
 export function Checklist({ title, items, selected, onChange, compact = false }) {
