@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { post } from "../api.js";
-import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
+import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function Transactions({ data, run }) {
-  const [form, setForm] = useState({ studentId: data.students[0]?.id || "", type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
+  const [form, setForm] = useState({ recipientMode: "single", studentId: data.students[0]?.id || "", studentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
   const [filter, setFilter] = useState({ type: "all", studentId: "all", search: "" });
   const typeOptions = ["bonus", "adjustment", "penalty", "trade", "shop"];
+  const canBulk = form.type !== "trade";
   const filteredTransactions = data.transactions.filter((transaction) => {
     const typeMatch = filter.type === "all" || transaction.type === filter.type;
     const studentMatch = filter.studentId === "all" || transaction.studentId === filter.studentId;
@@ -13,16 +14,32 @@ export default function Transactions({ data, run }) {
     const searchMatch = !q || [transaction.studentName, transaction.type, transaction.amount, transaction.note, transaction.createdAt].some((value) => String(value || "").toLowerCase().includes(q));
     return typeMatch && studentMatch && searchMatch;
   });
+  function submitTransaction(e) {
+    e.preventDefault();
+    const studentIds = form.type === "trade" || form.recipientMode === "single"
+      ? [form.studentId].filter(Boolean)
+      : form.recipientMode === "all"
+        ? data.students.map((student) => student.id)
+        : form.studentIds;
+    run(() => post("/admin/transactions", { ...form, studentId: studentIds[0] || "", studentIds }), studentIds.length > 1 ? `${studentIds.length} transactions added` : "Transaction added");
+  }
   return <div className="dashboard-grid">
     <ActionModal title="Add Transaction">
-      <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/transactions", form), "Transaction added"); }}>
-        <Select label="To Student" value={form.studentId} onChange={(v) => setForm({ ...form, studentId: v })} options={data.students} />
+      <form onSubmit={submitTransaction}>
         <Select label="Type" value={form.type} onChange={(v) => setForm({ ...form, type: v })} options={typeOptions} />
+        {canBulk && <Select label="Recipients" value={form.recipientMode} onChange={(recipientMode) => setForm({ ...form, recipientMode })} options={[
+          { value: "single", label: "One student" },
+          { value: "selected", label: "Selected students" },
+          { value: "all", label: `All students (${data.students.length})` }
+        ]} />}
+        {(!canBulk || form.recipientMode === "single") && <Select label="To Student" value={form.studentId} onChange={(v) => setForm({ ...form, studentId: v })} options={data.students} />}
+        {canBulk && form.recipientMode === "selected" && <DropdownChecklist label="Select Students" items={data.students} selected={form.studentIds} onChange={(studentIds) => setForm({ ...form, studentIds })} />}
+        {canBulk && form.recipientMode === "all" && <div className="notice">This will apply to all {data.students.length} students currently available to your account.</div>}
         {form.type === "trade" && <Select label="From Student" value={form.fromStudentId} onChange={(v) => setForm({ ...form, fromStudentId: v })} options={[{ id: "", name: "Select" }, ...data.students]} />}
         {form.type === "shop" && <Select label="Item" value={form.itemId} onChange={(v) => setForm({ ...form, itemId: v })} options={[{ id: "", name: "Select" }, ...data.shopItems.map((i) => ({ id: i.id, name: `${i.name} (${i.activeCost} JC)` }))]} />}
         <Field label="Amount" type="number" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
         <Field label="Remarks" value={form.remarks} onChange={(v) => setForm({ ...form, remarks: v })} />
-        <button>Add Transaction</button>
+        <button disabled={canBulk && form.recipientMode === "selected" && !form.studentIds.length}>Add Transaction</button>
       </form>
     </ActionModal>
     <Panel title="Transactions Table" wide defaultOpen>

@@ -1154,19 +1154,29 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
 app.post("/api/admin/transactions", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const allowedStudentIds = scopedStudentIds(db, req.user);
-  if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
   const type = req.body.type || "adjustment";
   if (type === "trade") {
+    if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
     if (!allowedStudentIds.has(req.body.fromStudentId)) return res.status(403).json({ error: "The trade source student is outside your assigned class scope." });
     const amount = Math.abs(Number(req.body.amount || 0));
     db.transactions.push(tx(req.body.fromStudentId, "trade", -amount, req.body.remarks || "Trade", now(), req.user.id, { toStudentId: req.body.studentId }));
     db.transactions.push(tx(req.body.studentId, "trade", amount, req.body.remarks || "Trade", now(), req.user.id, { fromStudentId: req.body.fromStudentId }));
-  } else if (type === "shop") {
-    const priced = activeShopPrice(db, req.body.itemId);
-    db.transactions.push(tx(req.body.studentId, "shop", -Math.abs(priced?.activeCost || req.body.amount || 0), req.body.remarks || priced?.name || "Shop", now(), req.user.id, { itemId: req.body.itemId }));
   } else {
-    const sign = type === "penalty" ? -1 : 1;
-    db.transactions.push(tx(req.body.studentId, type, sign * Number(req.body.amount || 0), req.body.remarks || type, now(), req.user.id));
+    const targetIds = [...new Set((Array.isArray(req.body.studentIds) && req.body.studentIds.length ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
+    if (!targetIds.length) return res.status(400).json({ error: "Choose at least one student." });
+    if (targetIds.some((studentId) => !allowedStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+    if (type === "shop") {
+      const priced = activeShopPrice(db, req.body.itemId);
+      targetIds.forEach((studentId) => {
+        db.transactions.push(tx(studentId, "shop", -Math.abs(priced?.activeCost || req.body.amount || 0), req.body.remarks || priced?.name || "Shop", now(), req.user.id, { itemId: req.body.itemId }));
+      });
+    } else {
+      const sign = type === "penalty" ? -1 : 1;
+      const amount = sign * Number(req.body.amount || 0);
+      targetIds.forEach((studentId) => {
+        db.transactions.push(tx(studentId, type, amount, req.body.remarks || type, now(), req.user.id));
+      });
+    }
   }
   await writeDb(db);
   res.status(201).json({ ok: true });
