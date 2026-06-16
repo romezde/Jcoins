@@ -1386,17 +1386,33 @@ app.post("/api/admin/attendance/check-all", auth, requireRole("admin", "teacher"
 app.post("/api/admin/recitations", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const allowedStudentIds = scopedStudentIds(db, req.user);
-  if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
   if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
-  const student = db.students.find((s) => s.id === req.body.studentId);
-  if (!student || !(student.subjectIds || []).includes(req.body.subjectId)) return res.status(400).json({ error: "Student is not enrolled in this subject." });
+  const studentIds = [...new Set((Array.isArray(req.body.studentIds) && req.body.studentIds.length ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
+  if (!studentIds.length) return res.status(400).json({ error: "Choose at least one student." });
+  if (studentIds.some((studentId) => !allowedStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+  const students = studentIds.map((studentId) => db.students.find((s) => s.id === studentId));
+  if (students.some((student) => !student || !(student.subjectIds || []).includes(req.body.subjectId))) return res.status(400).json({ error: "One or more students are not enrolled in this subject." });
   const amount = Math.min(Number(req.body.amount || 1), db.settings.recitation.maxPoints);
-  const recitation = { id: randomUUID(), studentId: req.body.studentId, subjectId: req.body.subjectId, date: req.body.date || today(), amount, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
-  db.recitations.push(recitation);
-  db.transactions.push(tx(recitation.studentId, "recitation", amount, `Recitation: ${recitation.remarks || subjectName(db, recitation.subjectId)}`, recitation.createdAt, req.user.id, { kind: "recitation", recitationId: recitation.id, subjectId: recitation.subjectId }));
-  db.attendanceWeeks.filter((week) => week.subjectId === recitation.subjectId && (week.dates || []).includes(recitation.date)).forEach((week) => syncWeekBonuses(db, week, req.user.id));
+  const createdAt = now();
+  const recitations = students.map((student) => ({
+    id: randomUUID(),
+    studentId: student.id,
+    subjectId: req.body.subjectId,
+    date: req.body.date || today(),
+    amount,
+    remarks: req.body.remarks || "",
+    createdAt,
+    createdBy: req.user.id
+  }));
+  db.recitations.push(...recitations);
+  recitations.forEach((recitation) => {
+    db.transactions.push(tx(recitation.studentId, "recitation", amount, `Recitation: ${recitation.remarks || subjectName(db, recitation.subjectId)}`, recitation.createdAt, req.user.id, { kind: "recitation", recitationId: recitation.id, subjectId: recitation.subjectId }));
+  });
+  db.attendanceWeeks.filter((week) => week.subjectId === req.body.subjectId && (week.dates || []).includes(req.body.date || today())).forEach((week) => {
+    students.forEach((student) => syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), req.user.id));
+  });
   await writeDb(db);
-  res.status(201).json({ recitation });
+  res.status(201).json({ createdCount: recitations.length, recitations });
 });
 
 app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (req, res) => {

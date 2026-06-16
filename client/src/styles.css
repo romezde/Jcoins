@@ -1229,6 +1229,13 @@ input::placeholder {
   color: var(--muted);
   font-weight: 850;
 }
+.searchable-student-list {
+  max-height: min(420px, 56vh);
+  overflow: auto;
+}
+.searchable-student-list .check span {
+  overflow-wrap: anywhere;
+}
 .danger-zone {
   display: grid;
   gap: 12px;
