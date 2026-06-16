@@ -395,7 +395,7 @@ function buildSearchResults(tabs, data) {
 }
 
 function Screen({ role, tab, data, run }) {
-  if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} />;
+  if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} role={role} />;
   if (tab === "Dashboard") return <Dashboard data={data} />;
   if (tab === "Schedule") return <Schedule data={data} run={run} role={role} />;
   if (tab === "Guild Affinity") return <GuildAffinity data={data} run={run} role={role} />;

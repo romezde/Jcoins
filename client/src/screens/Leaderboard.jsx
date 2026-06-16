@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Trophy } from "lucide-react";
+import { request } from "../api.js";
 import CosmeticFx from "../components/CosmeticFx.jsx";
+import { StudentProfileModal } from "./People.jsx";
 
-export default function Leaderboard({ students, currentStudentId }) {
+export default function Leaderboard({ students, currentStudentId, role }) {
   const [section, setSection] = useState("all");
   const [search, setSearch] = useState("");
+  const [profileModal, setProfileModal] = useState(null);
   const currentRef = useRef(null);
+  const canOpenProfiles = role === "admin" || role === "teacher";
   const sections = [...new Set(students.map((student) => student.section).filter(Boolean))].sort();
   const q = search.trim().toLowerCase();
   const filtered = (section === "all" ? students : section === "__none" ? students.filter((student) => !student.section) : students.filter((student) => student.section === section))
@@ -20,7 +24,18 @@ export default function Leaderboard({ students, currentStudentId }) {
     if (currentRef.current) currentRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentStudentId, section, students.length]);
 
+  async function openStudentProfile(student) {
+    if (!canOpenProfiles) return;
+    setProfileModal({ loading: true, student });
+    try {
+      setProfileModal(await request(`/admin/students/${student.id}/profile-photo`));
+    } catch (err) {
+      setProfileModal({ error: err.message, student });
+    }
+  }
+
   return <section className="leaderboard wide">
+    {profileModal && <StudentProfileModal profile={profileModal} onClose={() => setProfileModal(null)} />}
     <div className="section-head">
       <div className="section-title"><Trophy /> Quest Board</div>
       <select value={section} onChange={(e) => setSection(e.target.value)}>
@@ -33,15 +48,15 @@ export default function Leaderboard({ students, currentStudentId }) {
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search leaderboard names..." />
       <span>{filtered.length} student{filtered.length === 1 ? "" : "s"}</span>
     </div>
-    <div className="podium">{podiumOrder(ranked.slice(0, 3)).map((s) => <Champion key={s.id} student={s} place={s.leaderboardRank} />)}</div>
-    <div className="rows">{visibleRows.map((s) => s.divider ? <div key={s.id} className="rank-divider">Your current rank</div> : <StudentRow key={s.id} student={s} place={s.leaderboardRank} active={s.id === currentStudentId} rowRef={s.id === currentStudentId ? currentRef : null} />)}</div>
+    <div className="podium">{podiumOrder(ranked.slice(0, 3)).map((s) => <Champion key={s.id} student={s} place={s.leaderboardRank} onOpenProfile={canOpenProfiles ? openStudentProfile : null} />)}</div>
+    <div className="rows">{visibleRows.map((s) => s.divider ? <div key={s.id} className="rank-divider">Your current rank</div> : <StudentRow key={s.id} student={s} place={s.leaderboardRank} active={s.id === currentStudentId} rowRef={s.id === currentStudentId ? currentRef : null} onOpenProfile={canOpenProfiles ? openStudentProfile : null} />)}</div>
   </section>;
 }
 
-function Champion({ student, place }) {
+function Champion({ student, place, onOpenProfile }) {
   const appearanceClasses = student.appearance?.classes?.join(" ") || "";
   const badge = student.appearance?.items?.badge?.name;
-  return <article className={`champion-card appearance-card place-${place} ${appearanceClasses} ${rankClass(student.rank)}`}>
+  return <article className={`champion-card appearance-card place-${place} ${appearanceClasses} ${rankClass(student.rank)} ${onOpenProfile ? "clickable-leaderboard-card" : ""}`} {...clickableProfileProps(student, onOpenProfile)}>
     <CosmeticFx classes={appearanceClasses} />
     <div className="medal">#{place}</div>
     <LeaderboardAvatar student={student} className="champion-avatar" />
@@ -52,10 +67,10 @@ function Champion({ student, place }) {
   </article>;
 }
 
-function StudentRow({ student, place, active, rowRef }) {
+function StudentRow({ student, place, active, rowRef, onOpenProfile }) {
   const appearanceClasses = student.appearance?.classes?.join(" ") || "";
   const badge = student.appearance?.items?.badge?.name;
-  return <article ref={rowRef} className={`student-row appearance-card list-place-${place <= 3 ? place : "normal"} ${appearanceClasses} ${rankClass(student.rank)} ${active ? "self-row" : ""}`}>
+  return <article ref={rowRef} className={`student-row appearance-card list-place-${place <= 3 ? place : "normal"} ${appearanceClasses} ${rankClass(student.rank)} ${active ? "self-row" : ""} ${onOpenProfile ? "clickable-leaderboard-card" : ""}`} {...clickableProfileProps(student, onOpenProfile)}>
     <CosmeticFx classes={appearanceClasses} />
     <div className="place">#{place}</div>
     <LeaderboardAvatar student={student} className="leaderboard-avatar" />
@@ -66,6 +81,20 @@ function StudentRow({ student, place, active, rowRef }) {
       <div className="bar"><div className="fill" style={{ width: `${student.progress}%` }} /></div>
     </div>
   </article>;
+}
+
+function clickableProfileProps(student, onOpenProfile) {
+  if (!onOpenProfile) return {};
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: () => onOpenProfile(student),
+    onKeyDown: (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      onOpenProfile(student);
+    }
+  };
 }
 
 function rankClass(rank = "") {

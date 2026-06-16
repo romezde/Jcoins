@@ -188,7 +188,7 @@ export default function People({ data, run, role }) {
   </div>;
 }
 
-function StudentProfileModal({ profile, onClose }) {
+export function StudentProfileModal({ profile, onClose }) {
   const student = profile.student || {};
   const needed = Math.max(0, Number(student.nextTarget || 0) - Number(student.currentJCoins || 0));
   return <div className="modal-backdrop" role="dialog" aria-modal="true">

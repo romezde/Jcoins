@@ -2020,6 +2020,13 @@ td button {
   padding: 7px 10px;
   color: #cffafe;
 }
+.clickable-leaderboard-card {
+  cursor: pointer;
+}
+.clickable-leaderboard-card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
 .rows { display: grid; gap: 10px; margin-top: 16px; }
 .rank-divider {
   border: 1px dashed rgba(250,204,21,.55);
