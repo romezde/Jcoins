@@ -4,9 +4,11 @@ import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../
 
 export default function Transactions({ data, run }) {
   const [form, setForm] = useState({ recipientMode: "single", studentId: data.students[0]?.id || "", studentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
+  const [targetFilter, setTargetFilter] = useState({ subjectId: "all", section: "all", guildId: "all" });
   const [filter, setFilter] = useState({ type: "all", studentId: "all", search: "" });
   const typeOptions = ["bonus", "adjustment", "penalty", "trade", "shop"];
   const canBulk = form.type !== "trade";
+  const filteredTargetStudents = data.students.filter((student) => studentMatchesTarget(data, student, targetFilter));
   const filteredTransactions = data.transactions.filter((transaction) => {
     const typeMatch = filter.type === "all" || transaction.type === filter.type;
     const studentMatch = filter.studentId === "all" || transaction.studentId === filter.studentId;
@@ -20,6 +22,8 @@ export default function Transactions({ data, run }) {
       ? [form.studentId].filter(Boolean)
       : form.recipientMode === "all"
         ? data.students.map((student) => student.id)
+        : form.recipientMode === "filtered"
+          ? filteredTargetStudents.map((student) => student.id)
         : form.studentIds;
     run(() => post("/admin/transactions", { ...form, studentId: studentIds[0] || "", studentIds }), studentIds.length > 1 ? `${studentIds.length} transactions added` : "Transaction added");
   }
@@ -30,16 +34,18 @@ export default function Transactions({ data, run }) {
         {canBulk && <Select label="Recipients" value={form.recipientMode} onChange={(recipientMode) => setForm({ ...form, recipientMode })} options={[
           { value: "single", label: "One student" },
           { value: "selected", label: "Selected students" },
+          { value: "filtered", label: "Filtered group" },
           { value: "all", label: `All students (${data.students.length})` }
         ]} />}
         {(!canBulk || form.recipientMode === "single") && <Select label="To Student" value={form.studentId} onChange={(v) => setForm({ ...form, studentId: v })} options={data.students} />}
         {canBulk && form.recipientMode === "selected" && <DropdownChecklist label="Select Students" items={data.students} selected={form.studentIds} onChange={(studentIds) => setForm({ ...form, studentIds })} />}
+        {canBulk && form.recipientMode === "filtered" && <FilteredRecipients data={data} filter={targetFilter} setFilter={setTargetFilter} students={filteredTargetStudents} />}
         {canBulk && form.recipientMode === "all" && <div className="notice">This will apply to all {data.students.length} students currently available to your account.</div>}
         {form.type === "trade" && <Select label="From Student" value={form.fromStudentId} onChange={(v) => setForm({ ...form, fromStudentId: v })} options={[{ id: "", name: "Select" }, ...data.students]} />}
         {form.type === "shop" && <Select label="Item" value={form.itemId} onChange={(v) => setForm({ ...form, itemId: v })} options={[{ id: "", name: "Select" }, ...data.shopItems.map((i) => ({ id: i.id, name: `${i.name} (${i.activeCost} JC)` }))]} />}
         <Field label="Amount" type="number" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
         <Field label="Remarks" value={form.remarks} onChange={(v) => setForm({ ...form, remarks: v })} />
-        <button disabled={canBulk && form.recipientMode === "selected" && !form.studentIds.length}>Add Transaction</button>
+        <button disabled={canBulk && ((form.recipientMode === "selected" && !form.studentIds.length) || (form.recipientMode === "filtered" && !filteredTargetStudents.length))}>Add Transaction</button>
       </form>
     </ActionModal>
     <Panel title="Transactions Table" wide defaultOpen>
@@ -52,4 +58,35 @@ export default function Transactions({ data, run }) {
       <Table columns={["Date", "Student", "Type", "Amount", "Remarks"]} rows={filteredTransactions.map((t) => [new Date(t.createdAt).toLocaleString(), t.studentName, t.type, t.amount, t.note])} />
     </Panel>
   </div>;
+}
+
+function FilteredRecipients({ data, filter, setFilter, students }) {
+  const guildOptions = [
+    { value: "all", label: "All guilds" },
+    ...(data.guildSystem?.guilds || []).map((guild) => ({ value: guild.id, label: guild.name }))
+  ];
+  return <section className="transaction-target-box">
+    <div className="form-grid two">
+      <Select label="Subject" value={filter.subjectId} onChange={(subjectId) => setFilter({ ...filter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
+      <Select label="Section" value={filter.section} onChange={(section) => setFilter({ ...filter, section })} options={[{ value: "all", label: "All sections" }, ...(data.sections || []).map((section) => ({ value: section, label: section }))]} />
+      <Select label="Guild" value={filter.guildId} onChange={(guildId) => setFilter({ ...filter, guildId })} options={guildOptions} />
+    </div>
+    <div className="notice">This will apply to {students.length} matching student{students.length === 1 ? "" : "s"}.</div>
+    {students.length > 0 && <p className="muted-line transaction-target-preview">{students.slice(0, 8).map((student) => student.name).join(", ")}{students.length > 8 ? `, and ${students.length - 8} more` : ""}</p>}
+  </section>;
+}
+
+function studentMatchesTarget(data, student, filter) {
+  const subjectMatch = filter.subjectId === "all" || (student.subjectIds || []).includes(filter.subjectId);
+  const sectionMatch = filter.section === "all" || student.section === filter.section;
+  const guildMatch = filter.guildId === "all" || studentGuildId(data, student.id) === filter.guildId;
+  return subjectMatch && sectionMatch && guildMatch;
+}
+
+function studentGuildId(data, studentId) {
+  const row = (data.guildSystem?.students || []).find((student) => student.studentId === studentId);
+  if (!row) return "";
+  if (row.assignedGuildId) return row.assignedGuildId;
+  const guild = (data.guildSystem?.guilds || []).find((item) => item.name === row.assignedGuild);
+  return guild?.id || "";
 }

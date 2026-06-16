@@ -3756,6 +3756,19 @@ td button {
   margin-top: 12px;
 }
 
+.transaction-target-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, .42);
+}
+
+.transaction-target-preview {
+  margin: 0;
+}
+
 .ai-assistant {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
