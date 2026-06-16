@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { CheckCircle2, Lock, Sparkles, Wand2 } from "lucide-react";
 import { post, request } from "../api.js";
-import { Field, Panel, Table } from "../components/ui.jsx";
+import { Field, Panel, Select, Table } from "../components/ui.jsx";
 
 const likert = [
   { value: 1, label: "Strongly Disagree" },
@@ -23,7 +23,7 @@ const confettiColors = ["#facc15", "#22d3ee", "#fb7185", "#86efac", "#a78bfa", "
 export default function GuildAffinity({ data, run, role }) {
   const guild = data.guildSystem || {};
   if (role === "student") return <StudentGuildAssessment guild={guild} run={run} />;
-  return <StaffGuildCeremony guild={guild} run={run} revealSeconds={data.settings?.guild?.revealSeconds} />;
+  return <StaffGuildCeremony guild={guild} run={run} role={role} revealSeconds={data.settings?.guild?.revealSeconds} />;
 }
 
 function StudentGuildAssessment({ guild, run }) {
@@ -95,9 +95,10 @@ function StudentGuildAssessment({ guild, run }) {
   </form>;
 }
 
-function StaffGuildCeremony({ guild, run, revealSeconds = 10 }) {
+function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
   const [search, setSearch] = useState("");
   const [ceremony, setCeremony] = useState(null);
+  const [assignTarget, setAssignTarget] = useState(null);
   const [loadingReveal, setLoadingReveal] = useState(false);
   const revealMs = clamp(Number(revealSeconds || 10), 3, 60) * 1000;
   const students = guild.students || [];
@@ -106,15 +107,22 @@ function StaffGuildCeremony({ guild, run, revealSeconds = 10 }) {
   const readyStudents = students.filter((student) => student.submitted && !student.revealed);
   const notSubmitted = students.filter((student) => !student.submitted).length;
 
-  const rows = filteredStudents.map((student) => [
+  const rows = filteredStudents.map((student) => {
+    const guildText = student.assignedGuild || (role === "admin" && student.hiddenAssignedGuild ? `${student.hiddenAssignedGuild} (hidden)` : student.submitted ? "Hidden" : "-");
+    const actions = <div className="inline">
+      {student.submitted && !student.revealed
+        ? <button type="button" className="soft" disabled={guild.status !== "ceremony_active" || loadingReveal} onClick={() => setCeremony({ phase: "ready", student })}>Reveal</button>
+        : null}
+      {role === "admin" && <button type="button" className="soft" onClick={() => setAssignTarget(student)}>Assign</button>}
+    </div>;
+    return [
     student.studentName,
     student.section || "No section",
     <span className={`guild-status-pill ${student.revealed ? "revealed" : student.submitted ? "ready" : ""}`}>{student.status}</span>,
-    student.assignedGuild || (student.submitted ? "Hidden" : "-"),
-    student.submitted && !student.revealed
-      ? <button type="button" className="soft" disabled={guild.status !== "ceremony_active" || loadingReveal} onClick={() => setCeremony({ phase: "ready", student })}>Reveal</button>
-      : "-"
-  ]);
+    guildText,
+    actions
+  ];
+  });
 
   async function beginReveal(student) {
     if (guild.status !== "ceremony_active" || loadingReveal) return;
@@ -152,6 +160,12 @@ function StaffGuildCeremony({ guild, run, revealSeconds = 10 }) {
     <Panel title="Sorting List" wide defaultOpen actions={<Field label="" value={search} onChange={setSearch} />}>
       <Table columns={["Student", "Section", "Status", "Guild", "Ceremony"]} rows={rows} />
     </Panel>
+    {assignTarget && <AssignGuildModal
+      guild={guild}
+      student={assignTarget}
+      run={run}
+      onClose={() => setAssignTarget(null)}
+    />}
     {ceremony?.phase === "ready" && <div className="modal-backdrop guild-start-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card guild-start-modal">
         <p className="guild-kicker">Sorting Ceremony</p>
@@ -176,6 +190,29 @@ function StaffGuildCeremony({ guild, run, revealSeconds = 10 }) {
       </section>
     </div>}
   </>;
+}
+
+function AssignGuildModal({ guild, student, run, onClose }) {
+  const [guildId, setGuildId] = useState(student.assignedGuildId || guild.guilds?.[0]?.id || "");
+  const options = (guild.guilds || []).map((item) => ({ value: item.id, label: item.name }));
+  async function save() {
+    const ok = await run(() => post(`/admin/guild/students/${student.studentId}/assign`, { guildId }), "Guild assigned");
+    if (ok) onClose();
+  }
+  return <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <section className="modal-card">
+      <div className="section-head">
+        <div className="section-title">Assign Guild</div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      <div className="guild-assign-body">
+        <p><strong>{student.studentName}</strong>{student.section ? ` - ${student.section}` : ""}</p>
+        <Select label="Guild" value={guildId} onChange={setGuildId} options={options} />
+        <p className="muted-line">This stays hidden from the student until the Sorting Ceremony reveal.</p>
+        <button type="button" disabled={!guildId} onClick={save}>Save Guild Assignment</button>
+      </div>
+    </section>
+  </div>;
 }
 
 function CeremonyOverlay({ student, traits }) {

@@ -250,7 +250,9 @@ function guildSystemView(db, user) {
         submittedAt: response?.submittedAt || "",
         revealedAt: response?.revealedAt || "",
         status: !response ? "Not Submitted" : response.revealed ? "Revealed" : "Submitted / Ready",
-        assignedGuild: response?.revealed ? publicGuild(response.assignedGuildId)?.name || "" : ""
+        assignedGuild: response?.revealed ? publicGuild(response.assignedGuildId)?.name || "" : "",
+        assignedGuildId: user.role === "admin" && response ? response.assignedGuildId || "" : "",
+        hiddenAssignedGuild: user.role === "admin" && response && !response.revealed ? publicGuild(response.assignedGuildId)?.name || "" : ""
       };
     })
   };
@@ -946,6 +948,36 @@ app.post("/api/admin/guild/students/:id/reveal", auth, requireRole("admin", "tea
   response.revealedAt ||= now();
   await writeDb(db);
   res.json({ studentId: req.params.id, studentName: studentName(db, req.params.id), guild: publicGuild(response.assignedGuildId) });
+});
+
+app.post("/api/admin/guild/students/:id/assign", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  const student = db.students.find((item) => item.id === req.params.id);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const guild = guilds.find((item) => item.id === req.body.guildId);
+  if (!guild) return res.status(400).json({ error: "Choose a valid guild." });
+  let response = guildResponse(db, student.id);
+  if (!response) {
+    response = {
+      id: randomUUID(),
+      studentId: student.id,
+      answers: [],
+      affinities: Object.fromEntries(guilds.map((item) => [item.id, 0])),
+      assignedGuildId: guild.id,
+      revealed: false,
+      submittedAt: now(),
+      revealedAt: "",
+      source: "admin_assign"
+    };
+    db.guildSystem.responses.push(response);
+  }
+  response.assignedGuildId = guild.id;
+  response.assignedBy = req.user.id;
+  response.assignedAt = now();
+  response.source = response.source || "assessment";
+  await writeDb(db);
+  res.json({ studentId: student.id, studentName: student.name, guild: publicGuild(guild.id) });
 });
 
 app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, res) => {
