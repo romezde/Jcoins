@@ -3896,6 +3896,19 @@ td button {
   margin: 0;
 }
 
+.voice-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.voice-button.listening {
+  border-color: rgba(34, 211, 238, .55);
+  color: #cffafe;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, .12);
+}
+
 @media (max-width: 720px) {
   .form-grid.two {
     grid-template-columns: 1fr;

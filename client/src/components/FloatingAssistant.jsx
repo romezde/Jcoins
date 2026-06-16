@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Bot, Send, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Bot, Mic, MicOff, Send, X } from "lucide-react";
 import { postForm } from "../api.js";
 
 export default function FloatingAssistant() {
@@ -8,6 +8,12 @@ export default function FloatingAssistant() {
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  useEffect(() => () => {
+    if (recognitionRef.current) recognitionRef.current.stop();
+  }, []);
 
   async function send(e) {
     e.preventDefault();
@@ -48,6 +54,38 @@ export default function FloatingAssistant() {
     }
   }
 
+  function toggleVoiceInput() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setMessages((current) => [...current, { role: "assistant", text: "Voice input is not supported in this browser. You can still type your command here." }]);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onstart = () => setListening(true);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript || "")
+        .join(" ")
+        .trim();
+      if (transcript) setText(transcript);
+    };
+    recognition.onerror = () => {
+      setListening(false);
+      setMessages((current) => [...current, { role: "assistant", text: "I could not hear that clearly. Please try the mic again or type it." }]);
+    };
+    recognition.onend = () => setListening(false);
+    recognition.start();
+  }
+
   return <div className={`ai-assistant ${open ? "open" : ""}`}>
     {open && <section className="ai-panel" aria-label="AI Assistant">
       <div className="ai-head">
@@ -63,9 +101,13 @@ export default function FloatingAssistant() {
         {loading && <article className="ai-message assistant"><p>Thinking...</p></article>}
       </div>
       <form className="ai-compose" onSubmit={send}>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask a question or request a quiz draft..." />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? "Listening..." : "Ask a question or request a quiz draft..."} />
         <div className="ai-compose-actions">
           <label className="soft file-button">Attach<input type="file" accept=".pptx,.docx,.pdf,.xlsx,.csv,.txt" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+          <button type="button" className={`soft voice-button ${listening ? "listening" : ""}`} onClick={toggleVoiceInput} disabled={loading} aria-label={listening ? "Stop voice input" : "Start voice input"} title={listening ? "Stop voice input" : "Start voice input"}>
+            {listening ? <MicOff size={16} /> : <Mic size={16} />}
+            <span>{listening ? "Stop" : "Voice"}</span>
+          </button>
           <button disabled={loading || !text.trim()}><Send size={16} /> Send</button>
         </div>
         {file && <small className="muted-line">{file.name}</small>}
