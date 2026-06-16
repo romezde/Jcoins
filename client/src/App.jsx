@@ -10,6 +10,7 @@ import Subjects from "./screens/Subjects.jsx";
 import Attendance from "./screens/Attendance.jsx";
 import Recitation from "./screens/Recitation.jsx";
 import Activities from "./screens/Activities.jsx";
+import Quizzes from "./screens/Quizzes.jsx";
 import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
@@ -20,6 +21,7 @@ import { StaffFeedback, StudentFeedback } from "./screens/Feedback.jsx";
 import Schedule from "./screens/Schedule.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
 import GuildAffinity from "./screens/GuildAffinity.jsx";
+import FloatingAssistant from "./components/FloatingAssistant.jsx";
 
 function useSession() {
   const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("jcoins_session") || "null"));
@@ -220,6 +222,7 @@ function RoleApp({ session, logout }) {
         {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
       </main>
     </div>
+    {(session.user.role === "admin" || session.user.role === "teacher") && <FloatingAssistant />}
   </div>;
 }
 
@@ -387,6 +390,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Attendance") return <Attendance data={data} run={run} />;
   if (tab === "Recitation") return <Recitation data={data} run={run} />;
   if (tab === "Activities") return role === "student" ? <StudentActivities data={data} /> : <Activities data={data} run={run} />;
+  if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
   if (tab === "Transactions") return <Transactions data={data} run={run} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;

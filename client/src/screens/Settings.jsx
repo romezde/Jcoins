@@ -28,6 +28,22 @@ export default function Settings({ data, run }) {
       ])} />
       <button type="button" className="soft" onClick={() => setSettings({ ...settings, activities: { ...settings.activities, types: [...settings.activities.types, { name: "New Type", points: 10 }] } })}>Add Type</button>
     </Panel>
+    <Panel title="Quiz Settings" defaultOpen={false}>
+      <Field label="Default Passing Percent" type="number" value={settings.quizzes?.defaultPassingPercent ?? 75} onChange={(v) => set("quizzes", "defaultPassingPercent", v)} />
+      <label>Default Answer Reveal
+        <select value={settings.quizzes?.defaultAnswerVisibility || "after_deadline"} onChange={(e) => setSettings({ ...settings, quizzes: { ...(settings.quizzes || {}), defaultAnswerVisibility: e.target.value } })}>
+          <option value="immediate">Immediately after submission</option>
+          <option value="after_deadline">After deadline</option>
+          <option value="scheduled">On specific date/time</option>
+          <option value="never">Never</option>
+        </select>
+      </label>
+      <Table columns={["Difficulty", "Fixed JCoins"]} rows={(settings.quizzes?.difficulties || []).map((difficulty, i) => [
+        difficulty.name,
+        <input type="number" value={difficulty.points} onChange={(e) => setSettings({ ...settings, quizzes: { ...(settings.quizzes || {}), difficulties: settings.quizzes.difficulties.map((item, j) => j === i ? { ...item, points: Number(e.target.value) } : item) } })} />
+      ])} />
+      <button onClick={() => run(() => put("/admin/settings", { settings }), "Quiz settings saved")}>Save Quiz Settings</button>
+    </Panel>
     <Panel title="Wheel Settings" defaultOpen={false}>
       <Field label="Spin Duration Seconds" type="number" value={settings.wheel?.spinSeconds ?? 3.3} onChange={(v) => set("wheel", "spinSeconds", v)} />
       <p className="muted-line">Example: 3.3 is quick, 5 is dramatic, 8 is very suspenseful.</p>

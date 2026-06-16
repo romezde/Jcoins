@@ -7,9 +7,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { createClient } from "@supabase/supabase-js";
+import multer from "multer";
+import AdmZip from "adm-zip";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const { PDFParse } = require("pdf-parse");
 const dataDir = path.resolve(__dirname, "../data");
 const dbPath = path.join(dataDir, "db.json");
 const JWT_SECRET = process.env.JWT_SECRET || "dev-jcoins-secret-change-before-production";
@@ -22,6 +27,7 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   : null;
 
 const app = express();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
@@ -30,6 +36,8 @@ const now = () => new Date().toISOString();
 const byDateDesc = (a, b) => String(b.createdAt || b.date || "").localeCompare(String(a.createdAt || a.date || ""));
 const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const reminderOptions = [0, 5, 10, 15, 30, 60];
+const quizDifficulties = ["Easy", "Moderate", "Hard", "Advanced"];
+const answerVisibilityOptions = ["immediate", "after_deadline", "scheduled", "never"];
 const defaultShopItems = [
   { id: "item_hint", tier: "Low", name: "Hint During Quiz", cost: 50, notes: "1 per quiz" },
   { id: "item_seat_choice", tier: "Low", name: "Seat Choice (1 Day)", cost: 80, notes: "" },
@@ -333,6 +341,16 @@ function defaults() {
           { name: "Complex", points: 50 }
         ]
       },
+      quizzes: {
+        defaultPassingPercent: 75,
+        defaultAnswerVisibility: "after_deadline",
+        difficulties: [
+          { name: "Easy", points: 20 },
+          { name: "Moderate", points: 30 },
+          { name: "Hard", points: 40 },
+          { name: "Advanced", points: 50 }
+        ]
+      },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
       ranks: [
@@ -363,6 +381,7 @@ async function createInitialDb() {
     attendanceRecords: [],
     recitations: [],
     activities: [],
+    quizzes: [],
     shopItems: defaultShopItems,
     sales: [],
     requests: [],
@@ -389,9 +408,18 @@ async function readDb() {
   db.settings.attendance = { ...d.settings.attendance, ...(db.settings.attendance || {}) };
   db.settings.recitation = { ...d.settings.recitation, ...(db.settings.recitation || {}) };
   db.settings.activities = { ...d.settings.activities, ...(db.settings.activities || {}) };
+  db.settings.quizzes = { ...d.settings.quizzes, ...(db.settings.quizzes || {}) };
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.activities.types ||= d.settings.activities.types;
+  db.settings.quizzes.difficulties ||= d.settings.quizzes.difficulties;
+  db.settings.quizzes.defaultPassingPercent = Math.max(1, Math.min(100, Number(db.settings.quizzes.defaultPassingPercent || d.settings.quizzes.defaultPassingPercent)));
+  db.settings.quizzes.defaultAnswerVisibility = answerVisibilityOptions.includes(db.settings.quizzes.defaultAnswerVisibility) ? db.settings.quizzes.defaultAnswerVisibility : d.settings.quizzes.defaultAnswerVisibility;
+  db.settings.quizzes.difficulties = quizDifficulties.map((name) => {
+    const existing = (db.settings.quizzes.difficulties || []).find((difficulty) => difficulty.name === name);
+    const fallback = d.settings.quizzes.difficulties.find((difficulty) => difficulty.name === name);
+    return { name, points: Number(existing?.points ?? fallback?.points ?? 0) };
+  });
   db.settings.ranks ||= d.settings.ranks;
   db.subjects ||= [];
   db.sections ||= [...new Set((db.students || []).map((s) => s.section).filter(Boolean))];
@@ -405,6 +433,8 @@ async function readDb() {
   db.attendanceRecords ||= [];
   db.recitations ||= [];
   db.activities ||= [];
+  db.quizzes ||= [];
+  db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
   db.shopItems ||= [];
   defaultShopItems.forEach((item) => {
     if (!db.shopItems.some((existing) => existing.id === item.id)) {
@@ -531,6 +561,10 @@ function purgeStudentData(db, studentId) {
   if (db.appearanceEquipped) delete db.appearanceEquipped[studentId];
   (db.activities || []).forEach((activity) => {
     activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== studentId);
+  });
+  (db.quizzes || []).forEach((quiz) => {
+    quiz.submissions = (quiz.submissions || []).filter((submission) => submission.studentId !== studentId);
+    quiz.retakeStudentIds = (quiz.retakeStudentIds || []).filter((id) => id !== studentId);
   });
 }
 
@@ -733,6 +767,170 @@ function activityBase(db, type) {
   return db.settings.activities.types.find((t) => t.name === type)?.points ?? Number(type || 0) ?? 0;
 }
 
+function quizRewardValue(db, difficulty) {
+  return db.settings.quizzes.difficulties.find((item) => item.name === difficulty)?.points ?? 0;
+}
+
+function cleanQuizQuestion(question = {}) {
+  const type = question.type === "true_false" ? "true_false" : "multiple_choice";
+  const options = type === "true_false"
+    ? ["True", "False"]
+    : (Array.isArray(question.options) ? question.options : [])
+      .map((option) => String(option || "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+  const normalizedOptions = type === "multiple_choice" && options.length >= 2 ? options : ["Option A", "Option B"];
+  const answer = String(question.answer || question.correctAnswer || normalizedOptions[0] || "True").trim();
+  const safeAnswer = (type === "true_false" ? ["True", "False"] : normalizedOptions).includes(answer)
+    ? answer
+    : (type === "true_false" ? "True" : normalizedOptions[0]);
+  return {
+    id: question.id || randomUUID(),
+    type,
+    prompt: String(question.prompt || question.text || "Question").trim().slice(0, 500),
+    options: type === "true_false" ? ["True", "False"] : normalizedOptions,
+    answer: safeAnswer
+  };
+}
+
+function normalizeQuiz(quiz, db) {
+  quiz.title = String(quiz.title || "Quiz").trim() || "Quiz";
+  quiz.subjectId ||= db.subjects[0]?.id || "";
+  quiz.section = String(quiz.section || "").trim();
+  quiz.difficulty = quizDifficulties.includes(quiz.difficulty) ? quiz.difficulty : "Easy";
+  quiz.rewardValue = Number.isFinite(Number(quiz.rewardValue)) ? Number(quiz.rewardValue) : quizRewardValue(db, quiz.difficulty);
+  quiz.deadline ||= today();
+  quiz.status = ["draft", "published", "closed"].includes(quiz.status) ? quiz.status : "draft";
+  quiz.questions = (Array.isArray(quiz.questions) ? quiz.questions : []).map(cleanQuizQuestion);
+  quiz.passingScore = Math.max(1, Math.min(Number(quiz.passingScore || Math.ceil(quiz.questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100) || 1), Math.max(1, quiz.questions.length)));
+  quiz.retakeMode = ["none", "all", "selected"].includes(quiz.retakeMode) ? quiz.retakeMode : "none";
+  quiz.retakeStudentIds = Array.isArray(quiz.retakeStudentIds) ? quiz.retakeStudentIds : [];
+  quiz.answerVisibility = answerVisibilityOptions.includes(quiz.answerVisibility) ? quiz.answerVisibility : db.settings.quizzes.defaultAnswerVisibility;
+  quiz.answerRevealAt = String(quiz.answerRevealAt || "");
+  quiz.shuffleQuestions = !!quiz.shuffleQuestions;
+  quiz.shuffleOptions = !!quiz.shuffleOptions;
+  quiz.submissions = Array.isArray(quiz.submissions) ? quiz.submissions : [];
+  quiz.submissions.forEach((submission) => {
+    submission.attempts = Array.isArray(submission.attempts) ? submission.attempts : [];
+    submission.bestAwarded = Number(submission.bestAwarded || 0);
+    submission.bestScore = Number(submission.bestScore || 0);
+  });
+  quiz.source = quiz.source || "manual";
+  quiz.createdAt ||= now();
+  return quiz;
+}
+
+function quizStudents(db, quiz) {
+  return db.students
+    .filter((student) => student.section === quiz.section && (student.subjectIds || []).includes(quiz.subjectId))
+    .map((student) => hydrateStudents(db).find((hydrated) => hydrated.id === student.id) || student);
+}
+
+function canUseQuiz(user, quiz) {
+  return canUseSubject(user, quiz.subjectId) && canUseSection(user, quiz.section);
+}
+
+function canStudentSeeQuiz(db, quiz, studentId) {
+  const student = db.students.find((item) => item.id === studentId);
+  return !!student && student.section === quiz.section && (student.subjectIds || []).includes(quiz.subjectId);
+}
+
+function isQuizDeadlineOpen(quiz) {
+  return !quiz.deadline || new Date(`${quiz.deadline}T23:59:59`).getTime() >= Date.now();
+}
+
+function canRetakeQuiz(quiz, studentId, submission) {
+  if (!submission?.attempts?.length) return true;
+  if (quiz.retakeMode === "all") return true;
+  if (quiz.retakeMode === "selected") return (quiz.retakeStudentIds || []).includes(studentId);
+  return false;
+}
+
+function canShowQuizAnswers(quiz) {
+  if (quiz.answerVisibility === "immediate") return true;
+  if (quiz.answerVisibility === "never") return false;
+  if (quiz.answerVisibility === "scheduled") return !!quiz.answerRevealAt && new Date(quiz.answerRevealAt).getTime() <= Date.now();
+  return !isQuizDeadlineOpen(quiz);
+}
+
+function scoreQuiz(quiz, answers = {}) {
+  const correct = quiz.questions.reduce((sum, question) => sum + (String(answers[question.id] || "") === question.answer ? 1 : 0), 0);
+  const total = quiz.questions.length;
+  const passingScore = Math.max(1, Math.min(Number(quiz.passingScore || total || 1), Math.max(1, total)));
+  const rewardValue = Number(quiz.rewardValue || 0);
+  const awarded = Math.round(rewardValue * Math.min(correct / passingScore, 1));
+  return { correct, total, passingScore, rewardValue, awarded };
+}
+
+function publicQuiz(quiz, db, user) {
+  const submissions = quiz.submissions || [];
+  const students = quizStudents(db, quiz);
+  const rows = students.map((student) => {
+    const submission = submissions.find((item) => item.studentId === student.id);
+    const latest = submission?.attempts?.at(-1);
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      section: student.section || "",
+      attempts: submission?.attempts?.length || 0,
+      latestScore: latest ? `${latest.correct}/${latest.total}` : "",
+      bestScore: submission?.bestScore ?? "",
+      bestAwarded: submission?.bestAwarded ?? 0,
+      submittedAt: latest?.submittedAt || "",
+      canRetake: canRetakeQuiz(quiz, student.id, submission)
+    };
+  });
+  const base = {
+    ...quiz,
+    subjectName: subjectName(db, quiz.subjectId),
+    rewardValue: Number(quiz.rewardValue ?? quizRewardValue(db, quiz.difficulty)),
+    studentCount: students.length,
+    submittedCount: rows.filter((row) => row.attempts).length,
+    tracker: `${rows.filter((row) => row.attempts).length}/${students.length}`,
+    rows
+  };
+  if (user.role === "student") {
+    const submission = submissions.find((item) => item.studentId === user.studentId);
+    const latest = submission?.attempts?.at(-1);
+    const showAnswers = canShowQuizAnswers(quiz);
+    const visibleQuestions = quiz.shuffleQuestions ? [...quiz.questions].sort(() => Math.random() - 0.5) : quiz.questions;
+    return {
+      ...base,
+      rows: [],
+      questions: visibleQuestions.map((question) => {
+        const options = quiz.shuffleOptions && question.type === "multiple_choice" ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
+        return {
+          id: question.id,
+          type: question.type,
+          prompt: question.prompt,
+          options,
+          answer: showAnswers ? question.answer : undefined
+        };
+      }),
+      submission: submission ? {
+        attempts: submission.attempts.length,
+        latest,
+        bestScore: submission.bestScore,
+        bestAwarded: submission.bestAwarded,
+        showAnswers
+      } : null,
+      canSubmit: quiz.status === "published" && isQuizDeadlineOpen(quiz) && canRetakeQuiz(quiz, user.studentId, submission)
+    };
+  }
+  return base;
+}
+
+function hydrateQuizzes(db, user) {
+  return (db.quizzes || [])
+    .map((quiz) => normalizeQuiz(quiz, db))
+    .filter((quiz) => {
+      if (user.role === "student") return quiz.status !== "draft" && canStudentSeeQuiz(db, quiz, user.studentId);
+      return canUseQuiz(user, quiz);
+    })
+    .map((quiz) => publicQuiz(quiz, db, user))
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function daysLate(deadline, submittedDate) {
   if (!deadline || !submittedDate) return 0;
   const toDay = (value) => {
@@ -832,6 +1030,7 @@ function filteredOverview(db, user) {
     return false;
   });
   const activities = hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity);
+  const quizzes = hydrateQuizzes(db, user);
   const transactions = db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc);
   return {
     user,
@@ -845,6 +1044,7 @@ function filteredOverview(db, user) {
     attendanceRecords: db.attendanceRecords.filter((r) => studentIds.has(r.studentId)),
     recitations: db.recitations.filter((r) => studentIds.has(r.studentId)).map((r) => ({ ...r, studentName: studentName(db, r.studentId), subjectName: subjectName(db, r.subjectId) })).sort(byDateDesc),
     activities,
+    quizzes,
     shopItems: db.shopItems.map((item) => activeShopPrice(db, item.id)),
     sales: db.sales,
     appearanceItems: db.appearanceItems,
@@ -1094,6 +1294,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   const removedRecordIds = new Set(db.attendanceRecords.filter((record) => removedWeekIds.has(record.weekId)).map((record) => record.id));
   const removedRecitationIds = new Set(db.recitations.filter((recitation) => recitation.subjectId === subjectId).map((recitation) => recitation.id));
   const removedActivityIds = new Set(db.activities.filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
+  const removedQuizIds = new Set((db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId).map((quiz) => quiz.id));
   db.subjects = db.subjects.filter((s) => s.id !== subjectId);
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
   db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
@@ -1101,13 +1302,15 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   db.schedules = (db.schedules || []).filter((schedule) => schedule.subjectId !== subjectId);
   db.recitations = db.recitations.filter((recitation) => recitation.subjectId !== subjectId);
   db.activities = db.activities.filter((activity) => activity.subjectId !== subjectId);
+  db.quizzes = (db.quizzes || []).filter((quiz) => quiz.subjectId !== subjectId);
   db.transactions = db.transactions.filter((transaction) => {
     const meta = transaction.meta || {};
     return meta.subjectId !== subjectId
       && !removedWeekIds.has(meta.weekId)
       && !removedRecordIds.has(meta.recordId)
       && !removedRecitationIds.has(meta.recitationId)
-      && !removedActivityIds.has(meta.activityId);
+      && !removedActivityIds.has(meta.activityId)
+      && !removedQuizIds.has(meta.quizId);
   });
   await writeDb(db);
   res.json({ ok: true });
@@ -1509,11 +1712,160 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   sub.remarks = req.body.remarks || "";
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
   const row = hydrated.rows.find((r) => r.studentId === sub.studentId);
+  sub.snapshot = {
+    type: activity.type,
+    basePoints: hydrated.basePoints,
+    latePenaltyPerDay: Number(db.settings.activities.latePenaltyPerDay || 0),
+    daysLate: row.daysLate,
+    earned: row.earned
+  };
   const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === sub.studentId);
   if (existing) existing.amount = row.earned;
   else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
   await writeDb(db);
   res.json({ submission: sub });
+});
+
+function quizFromBody(db, body, user, existing = {}) {
+  const subjectId = body.subjectId || existing.subjectId || "";
+  const section = String(body.section ?? existing.section ?? "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId)) throw new Error("Valid subject is required.");
+  if (!section) throw new Error("Section is required.");
+  if (!canUseSubject(user, subjectId) || !canUseSection(user, section)) throw new Error("This quiz is outside your assigned class scope.");
+  const questions = (Array.isArray(body.questions) ? body.questions : existing.questions || []).map(cleanQuizQuestion);
+  if (!questions.length) throw new Error("Add at least one question.");
+  const difficulty = quizDifficulties.includes(body.difficulty || existing.difficulty) ? body.difficulty || existing.difficulty : "Easy";
+  const passingScore = Math.max(1, Math.min(Number(body.passingScore || existing.passingScore || Math.ceil(questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100)), questions.length));
+  return {
+    title: String(body.title ?? existing.title ?? "Quiz").trim().slice(0, 120) || "Quiz",
+    subjectId,
+    section,
+    difficulty,
+    rewardValue: Number(existing.rewardValue ?? quizRewardValue(db, difficulty)),
+    deadline: String(body.deadline ?? existing.deadline ?? today()).slice(0, 10),
+    questions,
+    passingScore,
+    retakeMode: ["none", "all", "selected"].includes(body.retakeMode ?? existing.retakeMode) ? body.retakeMode ?? existing.retakeMode : "none",
+    retakeStudentIds: Array.isArray(body.retakeStudentIds ?? existing.retakeStudentIds) ? [...new Set(body.retakeStudentIds ?? existing.retakeStudentIds)] : [],
+    answerVisibility: answerVisibilityOptions.includes(body.answerVisibility ?? existing.answerVisibility) ? body.answerVisibility ?? existing.answerVisibility : db.settings.quizzes.defaultAnswerVisibility,
+    answerRevealAt: String(body.answerRevealAt ?? existing.answerRevealAt ?? ""),
+    shuffleQuestions: !!(body.shuffleQuestions ?? existing.shuffleQuestions),
+    shuffleOptions: !!(body.shuffleOptions ?? existing.shuffleOptions),
+    source: body.source || existing.source || "manual"
+  };
+}
+
+app.post("/api/admin/quizzes", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = quizFromBody(db, req.body, req.user);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const quiz = normalizeQuiz({ id: randomUUID(), ...input, status: "draft", submissions: [], createdAt: now(), createdBy: req.user.id }, db);
+  db.quizzes.push(quiz);
+  await writeDb(db);
+  res.status(201).json({ quiz: publicQuiz(quiz, db, req.user) });
+});
+
+app.put("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  if (quiz.status !== "draft") return res.status(400).json({ error: "Only draft quizzes can be edited." });
+  let input;
+  try {
+    input = quizFromBody(db, req.body, req.user, quiz);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  Object.assign(quiz, input, { rewardValue: quizRewardValue(db, input.difficulty), updatedAt: now() });
+  normalizeQuiz(quiz, db);
+  await writeDb(db);
+  res.json({ quiz: publicQuiz(quiz, db, req.user) });
+});
+
+app.post("/api/admin/quizzes/:id/publish", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  normalizeQuiz(quiz, db);
+  if (!quiz.questions.length) return res.status(400).json({ error: "Add at least one question before publishing." });
+  quiz.status = "published";
+  quiz.publishedAt = now();
+  quiz.rewardValue = Number(quiz.rewardValue ?? quizRewardValue(db, quiz.difficulty));
+  await writeDb(db);
+  res.json({ quiz: publicQuiz(quiz, db, req.user) });
+});
+
+app.post("/api/admin/quizzes/:id/close", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  quiz.status = "closed";
+  quiz.closedAt = now();
+  await writeDb(db);
+  res.json({ quiz: publicQuiz(quiz, db, req.user) });
+});
+
+app.delete("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  db.quizzes = db.quizzes.filter((item) => item.id !== quiz.id);
+  db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id));
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
+app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  normalizeQuiz(quiz, db);
+  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
+  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
+  if (!isQuizDeadlineOpen(quiz)) return res.status(400).json({ error: "The deadline has passed." });
+  let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
+  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return res.status(400).json({ error: "No retake is available for this quiz." });
+  if (!submission) {
+    submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0 };
+    quiz.submissions.push(submission);
+  }
+  const answers = req.body.answers && typeof req.body.answers === "object" ? req.body.answers : {};
+  const result = scoreQuiz(quiz, answers);
+  const attempt = {
+    id: randomUUID(),
+    attemptNumber: submission.attempts.length + 1,
+    answers,
+    correct: result.correct,
+    total: result.total,
+    passingScore: result.passingScore,
+    difficulty: quiz.difficulty,
+    rewardValue: result.rewardValue,
+    awarded: result.awarded,
+    submittedAt: now()
+  };
+  submission.attempts.push(attempt);
+  submission.bestScore = Math.max(Number(submission.bestScore || 0), result.correct);
+  submission.bestAwarded = Math.max(Number(submission.bestAwarded || 0), result.awarded);
+  const existing = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === req.user.studentId);
+  const note = `${quiz.title} quiz reward`;
+  const meta = { kind: "quiz", quizId: quiz.id, subjectId: quiz.subjectId, section: quiz.section, difficulty: quiz.difficulty, passingScore: result.passingScore, bestScore: submission.bestScore };
+  if (existing) {
+    existing.amount = submission.bestAwarded;
+    existing.note = note;
+    existing.meta = { ...(existing.meta || {}), ...meta };
+  } else if (submission.bestAwarded) {
+    db.transactions.push(tx(req.user.studentId, "quiz", submission.bestAwarded, note, attempt.submittedAt, req.user.id, meta));
+  }
+  await writeDb(db);
+  res.status(201).json({ attempt, submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded } });
 });
 
 app.post("/api/admin/transactions", auth, requireRole("admin", "teacher"), async (req, res) => {
@@ -1712,6 +2064,121 @@ app.put("/api/admin/settings", auth, requireRole("admin"), async (req, res) => {
   db.settings = req.body.settings;
   await writeDb(db);
   res.json({ settings: db.settings });
+});
+
+function stripXmlText(xml = "") {
+  return String(xml)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractZipText(buffer, matcher) {
+  const zip = new AdmZip(buffer);
+  return zip.getEntries()
+    .filter((entry) => !entry.isDirectory && matcher(entry.entryName))
+    .map((entry) => stripXmlText(entry.getData().toString("utf8")))
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 30000);
+}
+
+async function extractReferenceText(file) {
+  if (!file) return "";
+  const name = String(file.originalname || "").toLowerCase();
+  const mime = String(file.mimetype || "").toLowerCase();
+  if (name.endsWith(".docx") || mime.includes("wordprocessingml")) return extractZipText(file.buffer, (entry) => entry.startsWith("word/") && entry.endsWith(".xml"));
+  if (name.endsWith(".pptx") || mime.includes("presentationml")) return extractZipText(file.buffer, (entry) => entry.startsWith("ppt/slides/") && entry.endsWith(".xml"));
+  if (name.endsWith(".xlsx") || mime.includes("spreadsheet")) return extractZipText(file.buffer, (entry) => entry.startsWith("xl/") && entry.endsWith(".xml"));
+  if (name.endsWith(".pdf") || mime.includes("pdf")) {
+    const parser = new PDFParse({ data: file.buffer });
+    try {
+      const parsed = await parser.getText();
+      return String(parsed.text || "").slice(0, 30000);
+    } finally {
+      await parser.destroy();
+    }
+  }
+  if (mime.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".csv")) return file.buffer.toString("utf8").slice(0, 30000);
+  throw new Error("Upload a PPTX, DOCX, PDF, XLSX, TXT, or CSV file.");
+}
+
+function parseAiJson(text = "") {
+  const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) return { reply: cleaned || "I could not format a response." };
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return { reply: cleaned || "I could not format a response." };
+    }
+  }
+}
+
+async function askGemini({ message, referenceText, context }) {
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key) {
+    return {
+      reply: "AI Assistant is ready, but Gemini is not configured yet. Add GEMINI_API_KEY on the backend to enable live AI replies and quiz generation."
+    };
+  }
+  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const prompt = [
+    "You are the JCoins Arena assistant for Jerome's classroom economy app.",
+    "Reply conversationally and briefly.",
+    "If the user asks to create a quiz, return a JSON object with reply and quizDraft.",
+    "Quiz drafts must only use auto-gradable multiple_choice or true_false questions.",
+    "Each multiple_choice question needs 4 options and an answer that exactly matches one option.",
+    "Do not claim anything is saved or published.",
+    "Return only JSON in this shape:",
+    "{\"reply\":\"short message\",\"quizDraft\":{\"title\":\"\",\"difficulty\":\"Easy|Moderate|Hard|Advanced\",\"passingScore\":0,\"questions\":[{\"type\":\"multiple_choice\",\"prompt\":\"\",\"options\":[\"\",\"\",\"\",\"\"],\"answer\":\"\"}]}}",
+    `App context: ${JSON.stringify(context).slice(0, 4000)}`,
+    referenceText ? `Reference text:\n${referenceText.slice(0, 18000)}` : "No uploaded reference text.",
+    `User message: ${message}`
+  ].join("\n\n");
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || "AI request failed.");
+  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
+  return parseAiJson(text);
+}
+
+app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), upload.single("file"), async (req, res) => {
+  try {
+    const db = await readDb();
+    const message = String(req.body.message || "").trim();
+    if (!message) return res.status(400).json({ error: "Type a message first." });
+    const referenceText = await extractReferenceText(req.file);
+    const overview = filteredOverview(db, req.user);
+    const result = await askGemini({
+      message,
+      referenceText,
+      context: {
+        role: req.user.role,
+        subjects: overview.subjects.map((subject) => subject.name),
+        sections: req.user.role === "admin" ? db.sections : req.user.sectionIds || [],
+        quizDifficulties: db.settings.quizzes.difficulties
+      }
+    });
+    if (result.quizDraft?.questions) {
+      result.quizDraft.questions = result.quizDraft.questions.map(cleanQuizQuestion).slice(0, 60);
+      result.quizDraft.difficulty = quizDifficulties.includes(result.quizDraft.difficulty) ? result.quizDraft.difficulty : "Easy";
+      result.quizDraft.passingScore = Math.max(1, Math.min(Number(result.quizDraft.passingScore || result.quizDraft.questions.length), Math.max(1, result.quizDraft.questions.length)));
+    }
+    res.json({ ...result, referenceUsed: !!referenceText });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.put("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) => {
