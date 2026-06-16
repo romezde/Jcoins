@@ -158,6 +158,20 @@ function RoleApp({ session, logout }) {
     window.history.pushState({}, "", `/${slug(tab)}`);
   }
 
+  useEffect(() => {
+    const openModuleAction = (event) => {
+      const { tab, openEvent, prefillEvent, detail } = event.detail || {};
+      if (!tab || !tabs.includes(tab)) return;
+      navigate(tab);
+      window.setTimeout(() => {
+        if (prefillEvent) window.dispatchEvent(new CustomEvent(prefillEvent, { detail }));
+        if (openEvent) window.dispatchEvent(new CustomEvent(openEvent, { detail }));
+      }, 120);
+    };
+    window.addEventListener("jcoins:open-module-action", openModuleAction);
+    return () => window.removeEventListener("jcoins:open-module-action", openModuleAction);
+  }, [tabs.join("|")]);
+
   async function run(fn, ok = "Saved") {
     if (busyRef.current) return;
     busyRef.current = true;

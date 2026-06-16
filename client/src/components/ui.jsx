@@ -31,8 +31,14 @@ export function Panel({ title, children, wide = false, defaultOpen = true, actio
   </section>;
 }
 
-export function ActionModal({ title, buttonLabel = title, children }) {
+export function ActionModal({ title, buttonLabel = title, children, openEvent }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!openEvent) return undefined;
+    const openModal = () => setOpen(true);
+    window.addEventListener(openEvent, openModal);
+    return () => window.removeEventListener(openEvent, openModal);
+  }, [openEvent]);
   useEffect(() => {
     if (!open) return undefined;
     const close = () => setOpen(false);

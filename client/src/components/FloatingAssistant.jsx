@@ -16,6 +16,23 @@ export default function FloatingAssistant() {
     const userMessage = { role: "user", text: message, fileName: file?.name || "" };
     setMessages((current) => [...current, userMessage]);
     setText("");
+    const recitationIntent = parseRecitationIntent(message);
+    if (recitationIntent) {
+      setOpen(false);
+      window.dispatchEvent(new CustomEvent("jcoins:open-module-action", {
+        detail: {
+          tab: "Recitation",
+          prefillEvent: "jcoins:prefill-recitation",
+          openEvent: "jcoins:open-recitation-modal",
+          detail: recitationIntent
+        }
+      }));
+      setMessages((current) => [...current, {
+        role: "assistant",
+        text: `Opening the Recitation modal${recitationIntent.studentQuery ? ` for ${recitationIntent.studentQuery}` : ""}. Please review before saving.`
+      }]);
+      return;
+    }
     setLoading(true);
     try {
       const payload = new FormData();
@@ -56,6 +73,22 @@ export default function FloatingAssistant() {
     </section>}
     <button type="button" className="ai-fab" onClick={() => setOpen(!open)} aria-label="Open AI Assistant"><Bot size={24} /></button>
   </div>;
+}
+
+function parseRecitationIntent(message) {
+  const text = String(message || "").trim();
+  const lower = text.toLowerCase();
+  if (!/\brecitation\b/.test(lower)) return null;
+  if (!/\b(add|give|record|mark)\b/.test(lower)) return null;
+  const amountMatch = lower.match(/\b(\d{1,2})\s*(?:points?|jcoins?)?\b/);
+  const amount = amountMatch ? Number(amountMatch[1]) : 1;
+  const studentMatch = lower.match(/\b(?:to|for)\s+(.+?)(?:\s+(?:for|in|on)\b|$)/);
+  const studentQuery = studentMatch?.[1]?.replace(/\b(recitation|points?|jcoins?)\b/g, "").trim() || "";
+  return {
+    amount,
+    studentQuery,
+    remarks: text
+  };
 }
 
 function QuizDraftSummary({ draft }) {

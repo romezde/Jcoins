@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { post, today } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
@@ -9,6 +9,26 @@ export default function Recitation({ data, run }) {
   const amounts = Array.from({ length: data.settings.recitation.maxPoints }, (_, i) => ({ value: i + 1, label: i + 1 }));
   const weekOptions = buildRecitationWeeks(data.recitations);
   const eligibleStudents = useMemo(() => data.students.filter((student) => !form.subjectId || (student.subjectIds || []).includes(form.subjectId)), [data.students, form.subjectId]);
+  useEffect(() => {
+    const prefill = (event) => {
+      const detail = event.detail || {};
+      const query = String(detail.studentQuery || "").trim().toLowerCase();
+      const matches = query ? data.students.filter((student) => student.name.toLowerCase().includes(query)) : [];
+      const selectedSubjectId = matches[0]?.subjectIds?.includes(form.subjectId)
+        ? form.subjectId
+        : matches[0]?.subjectIds?.[0] || form.subjectId || data.subjects[0]?.id || "";
+      const amount = Math.max(1, Math.min(Number(detail.amount || form.amount || 1), Number(data.settings.recitation.maxPoints || 1)));
+      setForm((current) => ({
+        ...current,
+        subjectId: selectedSubjectId,
+        studentIds: matches.map((student) => student.id),
+        amount,
+        remarks: detail.remarks || current.remarks
+      }));
+    };
+    window.addEventListener("jcoins:prefill-recitation", prefill);
+    return () => window.removeEventListener("jcoins:prefill-recitation", prefill);
+  }, [data.students, data.subjects, data.settings.recitation.maxPoints, form.amount, form.subjectId]);
   const filteredRecitations = data.recitations.filter((recitation) => {
     const subjectMatch = filter.subjectId === "all" || recitation.subjectId === filter.subjectId;
     const studentMatch = filter.studentId === "all" || recitation.studentId === filter.studentId;
@@ -19,7 +39,7 @@ export default function Recitation({ data, run }) {
   }).sort((a, b) => String(a.studentName).localeCompare(String(b.studentName)) || String(a.date).localeCompare(String(b.date)));
 
   return <div className="dashboard-grid">
-    <ActionModal title="Add Recitation">
+    <ActionModal title="Add Recitation" openEvent="jcoins:open-recitation-modal">
       <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/recitations", form), form.studentIds.length > 1 ? `${form.studentIds.length} recitations added` : "Recitation added"); }}>
         <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, studentIds: form.studentIds.filter((id) => data.students.find((student) => student.id === id)?.subjectIds?.includes(subjectId)) })} options={data.subjects} />
         <SearchableStudentPicker students={eligibleStudents} selected={form.studentIds} onChange={(studentIds) => setForm({ ...form, studentIds })} />
