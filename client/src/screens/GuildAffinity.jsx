@@ -106,6 +106,9 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
   const filteredStudents = students.filter((student) => !q || [student.studentName, student.section, student.status, student.assignedGuild].some((value) => String(value || "").toLowerCase().includes(q)));
   const readyStudents = students.filter((student) => student.submitted && !student.revealed);
   const notSubmitted = students.filter((student) => !student.submitted).length;
+  const sectionDistributions = guild.distributionBySection?.length
+    ? guild.distributionBySection
+    : [{ section: "All sections", guilds: guild.distribution || [] }];
 
   const rows = filteredStudents.map((student) => {
     const guildText = student.assignedGuild || (role === "admin" && student.hiddenAssignedGuild ? `${student.hiddenAssignedGuild} (hidden)` : student.submitted ? "Hidden" : "-");
@@ -155,8 +158,18 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
     <div className="guild-stat-grid">
       <section className="panel stat"><span>Ready</span><strong>{readyStudents.length}</strong></section>
       <section className="panel stat"><span>Not Submitted</span><strong>{notSubmitted}</strong></section>
-      {(guild.distribution || []).map((item) => <section className="panel stat guild-count" key={item.id}><span>{item.name}</span><strong>{item.count}</strong></section>)}
     </div>
+    <section className="panel wide guild-section-distribution">
+      <div className="section-title">Guilds By Section</div>
+      <div className="guild-section-grid">
+        {sectionDistributions.map((section) => <div className="guild-section-card" key={section.section}>
+          <strong>{section.section}</strong>
+          <div className="guild-section-counts">
+            {(section.guilds || []).map((item) => <span key={item.id}><b>{item.count}</b>{item.name}</span>)}
+          </div>
+        </div>)}
+      </div>
+    </section>
     <Panel title="Sorting List" wide defaultOpen actions={<Field label="" value={search} onChange={setSearch} />}>
       <Table columns={["Student", "Section", "Status", "Guild", "Ceremony"]} rows={rows} />
     </Panel>

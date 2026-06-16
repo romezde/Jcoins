@@ -916,6 +916,52 @@ input::placeholder {
 .guild-count span {
   min-height: 34px;
 }
+.guild-section-distribution {
+  display: grid;
+  gap: 14px;
+}
+.guild-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.guild-section-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(15,23,42,.62);
+}
+.guild-section-card > strong {
+  color: var(--gold);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.guild-section-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.guild-section-counts span {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 10px;
+  padding: 8px;
+  color: var(--muted);
+  background: rgba(2,6,23,.34);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.12;
+  text-transform: uppercase;
+}
+.guild-section-counts b {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
 .guild-status-pill {
   display: inline-flex;
   align-items: center;
@@ -3163,6 +3209,12 @@ td button {
   .guild-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: min(100% - 16px, 1180px);
+  }
+  .guild-section-grid {
+    grid-template-columns: 1fr;
+  }
+  .guild-section-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .guild-question {
     padding: 12px;

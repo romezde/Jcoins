@@ -173,12 +173,42 @@ function normalizeGuildSystem(system) {
   };
 }
 
-function guildDistribution(db) {
+function guildSection(student) {
+  return student?.section || "No section";
+}
+
+function guildCountsForStudents(db, students) {
   const counts = Object.fromEntries(guilds.map((guild) => [guild.id, 0]));
+  const studentIds = new Set((students || []).map((student) => student.id));
   (db.guildSystem?.responses || []).forEach((response) => {
-    if (counts[response.assignedGuildId] != null) counts[response.assignedGuildId] += 1;
+    if (studentIds.has(response.studentId) && counts[response.assignedGuildId] != null) counts[response.assignedGuildId] += 1;
   });
+  return counts;
+}
+
+function guildDistribution(db, students = db.students || []) {
+  const counts = guildCountsForStudents(db, students);
   return guilds.map((guild) => ({ ...publicGuild(guild.id), count: counts[guild.id] || 0 }));
+}
+
+function guildDistributionBySection(db, students = db.students || []) {
+  const sectionMap = new Map();
+  (students || []).forEach((student) => {
+    const section = guildSection(student);
+    if (!sectionMap.has(section)) sectionMap.set(section, []);
+    sectionMap.get(section).push(student);
+  });
+  return [...sectionMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([section, sectionStudents]) => ({
+      section,
+      total: sectionStudents.length,
+      guilds: guildDistribution(db, sectionStudents)
+    }));
+}
+
+function guildCountsForSection(db, section) {
+  return guildCountsForStudents(db, (db.students || []).filter((student) => guildSection(student) === section));
 }
 
 function guildResponse(db, studentId) {
@@ -195,8 +225,8 @@ function calculateGuildAffinities(answerMap) {
   return Object.fromEntries(guilds.map((guild) => [guild.id, Number((totals[guild.id] / Math.max(1, counts[guild.id])).toFixed(2))]));
 }
 
-function assignGuild(db, affinities) {
-  const counts = Object.fromEntries(guildDistribution(db).map((entry) => [entry.id, entry.count]));
+function assignGuild(db, affinities, student) {
+  const counts = guildCountsForSection(db, guildSection(student));
   const minCount = Math.min(...guilds.map((guild) => counts[guild.id] || 0));
   return [...guilds].sort((a, b) => {
     const aScore = Number(affinities[a.id] || 0) - ((counts[a.id] || 0) - minCount) * 0.75;
@@ -215,6 +245,7 @@ function guildTraitPreview(affinities = {}) {
 
 function guildSystemView(db, user) {
   const system = normalizeGuildSystem(db.guildSystem);
+  const visibleStudents = scopeStudents(db, user);
   const base = {
     status: system.status,
     startedAt: system.startedAt || "",
@@ -222,7 +253,8 @@ function guildSystemView(db, user) {
     ceremonyStartedAt: system.ceremonyStartedAt || "",
     guilds: guilds.map((guild) => publicGuild(guild.id)),
     questions: sanitizeGuildQuestions(system.questions),
-    distribution: guildDistribution({ ...db, guildSystem: system })
+    distribution: guildDistribution({ ...db, guildSystem: system }, visibleStudents),
+    distributionBySection: guildDistributionBySection({ ...db, guildSystem: system }, visibleStudents)
   };
   if (user.role === "student") {
     const response = guildResponse({ ...db, guildSystem: system }, user.studentId);
@@ -236,7 +268,6 @@ function guildSystemView(db, user) {
       } : null
     };
   }
-  const visibleStudents = scopeStudents(db, user);
   return {
     ...base,
     students: visibleStudents.map((student) => {
@@ -996,7 +1027,8 @@ app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, 
     answers[question.id] = value;
   }
   const affinities = calculateGuildAffinities(answers);
-  const assignedGuildId = assignGuild(db, affinities);
+  const student = db.students.find((item) => item.id === req.user.studentId);
+  const assignedGuildId = assignGuild(db, affinities, student);
   const submittedAt = now();
   db.guildSystem.responses.push({
     id: randomUUID(),
