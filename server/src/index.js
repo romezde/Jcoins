@@ -981,6 +981,29 @@ app.post("/api/admin/guild/students/:id/reveal", auth, requireRole("admin", "tea
   res.json({ studentId: req.params.id, studentName: studentName(db, req.params.id), guild: publicGuild(response.assignedGuildId) });
 });
 
+app.post("/api/admin/guild/reveal-all", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  if (db.guildSystem.status !== "ceremony_active") return res.status(400).json({ error: "Start the Sorting Ceremony first." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  const revealedAt = now();
+  const revealed = [];
+  db.guildSystem.responses.forEach((response) => {
+    if (!response.revealed && allowedStudentIds.has(response.studentId)) {
+      response.revealed = true;
+      response.revealedAt = revealedAt;
+      revealed.push({
+        studentId: response.studentId,
+        studentName: studentName(db, response.studentId),
+        section: db.students.find((student) => student.id === response.studentId)?.section || "",
+        guild: publicGuild(response.assignedGuildId)
+      });
+    }
+  });
+  await writeDb(db);
+  res.json({ revealedCount: revealed.length, revealed });
+});
+
 app.post("/api/admin/guild/students/:id/assign", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   db.guildSystem = normalizeGuildSystem(db.guildSystem);

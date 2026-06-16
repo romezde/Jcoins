@@ -99,6 +99,7 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
   const [search, setSearch] = useState("");
   const [ceremony, setCeremony] = useState(null);
   const [assignTarget, setAssignTarget] = useState(null);
+  const [bulkReveal, setBulkReveal] = useState(null);
   const [loadingReveal, setLoadingReveal] = useState(false);
   const revealMs = clamp(Number(revealSeconds || 10), 3, 60) * 1000;
   const students = guild.students || [];
@@ -143,6 +144,13 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
     }
   }
 
+  async function revealAll() {
+    if (!readyStudents.length || guild.status !== "ceremony_active") return;
+    if (!confirm(`Reveal all ${readyStudents.length} ready student${readyStudents.length === 1 ? "" : "s"}?`)) return;
+    const result = await run(() => post("/admin/guild/reveal-all", {}), "All ready guilds revealed");
+    if (result?.revealed) setBulkReveal(result.revealed);
+  }
+
   return <>
     <section className="panel wide guild-admin-hero">
       <div>
@@ -153,6 +161,7 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
         <button type="button" onClick={() => run(() => post("/admin/guild/start-assessment", {}), "Guild assessment opened")}>Start Assessment</button>
         <button type="button" className="soft" onClick={() => run(() => post("/admin/guild/lock-assessment", {}), "Guild assessment locked")}><Lock size={16} /> End / Lock</button>
         <button type="button" className="soft" onClick={() => run(() => post("/admin/guild/start-ceremony", {}), "Sorting Ceremony started")}><Wand2 size={16} /> Start Ceremony</button>
+        <button type="button" className="soft" disabled={guild.status !== "ceremony_active" || !readyStudents.length} onClick={revealAll}>Reveal All</button>
       </div>
     </section>
     <div className="guild-stat-grid">
@@ -179,6 +188,22 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
       run={run}
       onClose={() => setAssignTarget(null)}
     />}
+    {bulkReveal && <div className="modal-backdrop guild-result-backdrop" role="dialog" aria-modal="true">
+      <GuildConfetti />
+      <section className="modal-card modal-card-wide guild-bulk-reveal-modal">
+        <div className="section-head">
+          <div className="section-title">Guilds Revealed</div>
+          <button type="button" className="soft" onClick={() => setBulkReveal(null)}>Close</button>
+        </div>
+        <div className="guild-bulk-list">
+          {bulkReveal.length ? bulkReveal.map((item) => <div className="guild-bulk-card" key={item.studentId}>
+            <strong>{item.studentName}</strong>
+            <span>{item.section || "No section"}</span>
+            <b>{item.guild?.name || "Guild"}</b>
+          </div>) : <p className="muted-line">No ready students were waiting to be revealed.</p>}
+        </div>
+      </section>
+    </div>}
     {ceremony?.phase === "ready" && <div className="modal-backdrop guild-start-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card guild-start-modal">
         <p className="guild-kicker">Sorting Ceremony</p>
