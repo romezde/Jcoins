@@ -3758,9 +3758,11 @@ td button {
 
 .ai-assistant {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 90;
+  display: grid;
+  justify-items: end;
   pointer-events: none;
 }
 
@@ -3881,6 +3883,8 @@ td button {
   .ai-assistant {
     right: 12px;
     bottom: 12px;
+  }
+  .ai-assistant.open {
     left: 12px;
   }
   .ai-panel {
