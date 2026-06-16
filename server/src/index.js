@@ -2128,7 +2128,9 @@ async function askGemini({ message, referenceText, context }) {
       reply: "AI Assistant is ready, but Gemini is not configured yet. Add GEMINI_API_KEY on the backend to enable live AI replies and quiz generation."
     };
   }
-  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const models = process.env.GEMINI_MODEL
+    ? [process.env.GEMINI_MODEL]
+    : ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
   const prompt = [
     "You are the JCoins Arena assistant for Jerome's classroom economy app.",
     "Reply conversationally and briefly.",
@@ -2142,15 +2144,22 @@ async function askGemini({ message, referenceText, context }) {
     referenceText ? `Reference text:\n${referenceText.slice(0, 18000)}` : "No uploaded reference text.",
     `User message: ${message}`
   ].join("\n\n");
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || "AI request failed.");
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
-  return parseAiJson(text);
+  let lastError = "";
+  for (const model of models) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
+      return parseAiJson(text);
+    }
+    lastError = payload.error?.message || `AI request failed for ${model}.`;
+    if (!/not found|not supported|not available/i.test(lastError)) break;
+  }
+  throw new Error(lastError || "AI request failed.");
 }
 
 app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), upload.single("file"), async (req, res) => {
