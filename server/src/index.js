@@ -745,13 +745,14 @@ function daysLate(deadline, submittedDate) {
 
 function hydrateActivities(db) {
   return db.activities.map((a) => {
+    a.maxScore = Number(a.maxScore || 0);
     const base = activityBase(db, a.type);
     const submissions = a.submissions || [];
     const rows = db.students.filter((s) => (s.subjectIds || []).includes(a.subjectId)).map((s) => {
       const sub = submissions.find((x) => x.studentId === s.id) || {};
       const late = sub.submitted ? daysLate(a.deadline, sub.dateSubmitted) : 0;
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
-      return { studentId: s.id, studentName: s.name, submitted: !!sub.submitted, dateSubmitted: sub.dateSubmitted || "", daysLate: late, earned, remarks: sub.remarks || "" };
+      return { studentId: s.id, studentName: s.name, submitted: !!sub.submitted, dateSubmitted: sub.dateSubmitted || "", daysLate: late, earned, score: sub.score ?? "", remarks: sub.remarks || "" };
     });
     return { ...a, subjectName: subjectName(db, a.subjectId), basePoints: base, tracker: `${rows.filter((r) => r.submitted).length}/${rows.length}`, rows };
   });
@@ -1473,7 +1474,7 @@ app.post("/api/admin/recitations", auth, requireRole("admin", "teacher"), async 
 app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
-  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, dateCreated: req.body.dateCreated || today(), deadline: req.body.deadline || today(), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
+  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, dateCreated: req.body.dateCreated || today(), deadline: req.body.deadline || today(), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", maxScore: Math.max(0, Number(req.body.maxScore || 0)), remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
   db.activities.push(activity);
   await writeDb(db);
   res.status(201).json({ activity });
@@ -1503,6 +1504,8 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   }
   sub.submitted = !!req.body.submitted;
   sub.dateSubmitted = req.body.dateSubmitted || (sub.submitted ? today() : "");
+  const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), Number(activity.maxScore || Infinity)));
+  sub.score = Number.isFinite(score) || score === "" ? score : "";
   sub.remarks = req.body.remarks || "";
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
   const row = hydrated.rows.find((r) => r.studentId === sub.studentId);
