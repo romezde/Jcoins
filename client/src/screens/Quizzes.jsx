@@ -40,7 +40,7 @@ export default function Quizzes({ data, run, role }) {
         <QuizActions quiz={quiz} run={run} />
       ])} />
     </Panel>
-    {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
+    {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} run={run} />)}
   </div>;
 }
 
@@ -145,16 +145,21 @@ function QuestionEditor({ questions, setQuestions }) {
   </div>;
 }
 
+function deleteQuiz(quiz, run) {
+  return confirm(`Delete ${quiz.title}? This removes quiz submissions and quiz JCoin transactions.`)
+    && run(() => del(`/admin/quizzes/${quiz.id}`), "Quiz deleted");
+}
+
 function QuizActions({ quiz, run }) {
   return <div className="inline">
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
-    <button type="button" className="danger" onClick={() => confirm(`Delete ${quiz.title}? This removes quiz submissions and quiz JCoin transactions.`) && run(() => del(`/admin/quizzes/${quiz.id}`), "Quiz deleted")}>Delete</button>
+    <button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete</button>
   </div>;
 }
 
-function QuizCard({ quiz }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false}>
+function QuizCard({ quiz, run }) {
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
