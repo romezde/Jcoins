@@ -1554,6 +1554,18 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   res.status(201).json({ createdCount: created.length, created });
 });
 
+app.post("/api/admin/students/batch-delete", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const targetIds = [...new Set((Array.isArray(req.body.studentIds) ? req.body.studentIds : []).filter(Boolean))];
+  if (!targetIds.length) return res.status(400).json({ error: "Choose at least one student to remove." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (targetIds.some((studentId) => !allowedStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+  const existingIds = targetIds.filter((studentId) => db.students.some((student) => student.id === studentId));
+  existingIds.forEach((studentId) => purgeStudentData(db, studentId));
+  await writeDb(db);
+  res.json({ removedCount: existingIds.length });
+});
+
 app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const student = db.students.find((s) => s.id === req.params.id);

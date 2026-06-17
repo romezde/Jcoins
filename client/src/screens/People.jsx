@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { del, post, put, request, today } from "../api.js";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
+import { StudentFilterFields, studentMatchesFilters } from "../components/StudentMultiPicker.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
 
@@ -12,6 +13,8 @@ export default function People({ data, run, role }) {
   const [resetModal, setResetModal] = useState(null);
   const [confirmReset, setConfirmReset] = useState(null);
   const [studentFilter, setStudentFilter] = useState({ section: "all", search: "" });
+  const [batchRemoveFilter, setBatchRemoveFilter] = useState({ search: "", section: "all", guildId: "all" });
+  const [batchRemoveConfirm, setBatchRemoveConfirm] = useState("");
   const [assistantForm, setAssistantForm] = useState({ section: data.sections?.[0] || "", studentId: "", weekStart: today() });
   const [importRows, setImportRows] = useState([]);
   const [importError, setImportError] = useState("");
@@ -20,6 +23,7 @@ export default function People({ data, run, role }) {
   const visibleSubjects = role === "teacher" ? data.subjects.filter((s) => (data.user.subjectIds || []).includes(s.id)) : data.subjects;
   const sections = data.sections?.length ? data.sections : ["A", "B"];
   const assistantStudents = data.students.filter((student) => !assistantForm.section || student.section === assistantForm.section);
+  const batchRemoveStudents = data.students.filter((student) => studentMatchesFilters(data, student, batchRemoveFilter, { includeSubject: false }));
   const filteredStudents = data.students.filter((student) => {
     const sectionMatch = studentFilter.section === "all" ? true : studentFilter.section === "__none" ? !student.section : student.section === studentFilter.section;
     const q = studentFilter.search.trim().toLowerCase();
@@ -137,6 +141,26 @@ export default function People({ data, run, role }) {
           {!!importRows.length && <Table columns={["Name", "Username", "Section", "Subjects", "Starting JC"]} rows={importRows.slice(0, 20).map((row) => [row.name, row.username, row.section || "No section", row.subjects, row.startingJCoins])} pageSize={5} />}
           {!!importRows.length && <p className="muted-line">Ready to import {importRows.length} student{importRows.length === 1 ? "" : "s"}. Preview shows the first 20 rows.</p>}
           <button disabled={!importRows.length}>Import Students</button>
+        </form>
+      </ActionModal>
+
+      <ActionModal title="Batch Remove Students">
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          run(async () => {
+            const result = await post("/admin/students/batch-delete", { studentIds: batchRemoveStudents.map((student) => student.id) });
+            setBatchRemoveConfirm("");
+            return result;
+          }, `${batchRemoveStudents.length} student${batchRemoveStudents.length === 1 ? "" : "s"} removed`);
+        }}>
+          <p className="muted-line">Filter the student list, review the names, then type REMOVE to confirm.</p>
+          <div className="form-grid two">
+            <StudentFilterFields data={data} filter={batchRemoveFilter} setFilter={setBatchRemoveFilter} showSubject={false} searchLabel="Search Student" />
+          </div>
+          <div className="notice">{batchRemoveStudents.length} matching student{batchRemoveStudents.length === 1 ? "" : "s"} will be removed.</div>
+          {batchRemoveStudents.length > 0 && <p className="muted-line transaction-target-preview">{batchRemoveStudents.slice(0, 12).map((student) => student.name).join(", ")}{batchRemoveStudents.length > 12 ? `, and ${batchRemoveStudents.length - 12} more` : ""}</p>}
+          <Field label='Type "REMOVE" to confirm' value={batchRemoveConfirm} onChange={setBatchRemoveConfirm} />
+          <button className="danger" disabled={!batchRemoveStudents.length || batchRemoveConfirm !== "REMOVE"}>Remove Matching Students</button>
         </form>
       </ActionModal>
 
