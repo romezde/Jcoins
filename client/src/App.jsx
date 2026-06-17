@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
-import { adminTabs, post, request, slug, studentTabs, tabFromPath, teacherTabs } from "./api.js";
+import { adminTabs, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { Field } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
 import Dashboard from "./screens/Dashboard.jsx";
@@ -125,7 +125,7 @@ function RoleApp({ session, logout }) {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
-  const tabs = session.user.role === "student" && shouldShowGuildTab(normalized) ? insertTab(baseTabs, "Leaderboard", "Guild Affinity") : baseTabs;
+  const tabs = buildTabs(baseTabs, normalized, session.user.role);
 
   async function load() {
     try {
@@ -395,17 +395,18 @@ function buildSearchResults(tabs, data) {
 }
 
 function Screen({ role, tab, data, run }) {
+  const assistantData = role === "student" && studentAssistantTabs.includes(tab) ? studentAssistantData(data) : data;
   if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} role={role} />;
   if (tab === "Dashboard") return <Dashboard data={data} />;
   if (tab === "Schedule") return <Schedule data={data} run={run} role={role} />;
   if (tab === "Guild Affinity") return <GuildAffinity data={data} run={run} role={role} />;
   if (tab === "People") return <People data={data} run={run} role={role} />;
   if (tab === "Subjects") return <Subjects data={data} run={run} />;
-  if (tab === "Attendance") return <Attendance data={data} run={run} />;
-  if (tab === "Recitation") return <Recitation data={data} run={run} />;
+  if (tab === "Attendance") return <Attendance data={assistantData} run={run} role={role} />;
+  if (tab === "Recitation") return <Recitation data={assistantData} run={run} />;
   if (tab === "Activities") return role === "student" ? <StudentActivities data={data} /> : <Activities data={data} run={run} />;
   if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
-  if (tab === "Transactions") return <Transactions data={data} run={run} />;
+  if (tab === "Transactions") return <Transactions data={assistantData} run={run} role={role} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
@@ -418,6 +419,34 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Reports") return <Reports data={data} />;
   if (tab === "Account") return <Account data={data} role={role} />;
   return <section className="panel">Prototype screen coming next.</section>;
+}
+
+function buildTabs(baseTabs, data, role) {
+  let tabs = role === "student" && shouldShowGuildTab(data) ? insertTab(baseTabs, "Leaderboard", "Guild Affinity") : baseTabs;
+  if (role === "student" && data?.assistantAccess?.active) {
+    [...studentAssistantTabs].reverse().forEach((tab) => {
+      tabs = insertTab(tabs, "Schedule", tab);
+    });
+  }
+  return tabs;
+}
+
+function studentAssistantData(data) {
+  const access = data?.assistantAccess || {};
+  if (!access.active) return data;
+  return {
+    ...data,
+    students: access.students || [],
+    attendanceWeeks: (data.attendanceWeeks || []).filter((week) => weekOverlapsAssignment(week, access.assignment)),
+    transactions: access.transactions || [],
+    attendanceRecords: access.attendanceRecords || [],
+    recitations: access.recitations || []
+  };
+}
+
+function weekOverlapsAssignment(week, assignment) {
+  if (!assignment) return true;
+  return (week.dates || []).some((date) => date >= assignment.weekStart && date <= assignment.weekEnd);
 }
 
 function insertTab(tabs, after, tab) {

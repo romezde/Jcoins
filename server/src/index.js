@@ -380,6 +380,7 @@ async function createInitialDb() {
     attendanceWeeks: [],
     attendanceRecords: [],
     recitations: [],
+    studentAssistants: [],
     activities: [],
     quizzes: [],
     shopItems: defaultShopItems,
@@ -432,6 +433,7 @@ async function readDb() {
   });
   db.attendanceRecords ||= [];
   db.recitations ||= [];
+  db.studentAssistants ||= [];
   db.activities ||= [];
   db.quizzes ||= [];
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
@@ -593,6 +595,27 @@ function requireRole(...roles) {
   return (req, res, next) => roles.includes(req.user.role) ? next() : res.status(403).json({ error: "Forbidden" });
 }
 
+function requireStaffOrAssistant(req, res, next) {
+  if (req.user.role === "admin" || req.user.role === "teacher") return next();
+  if (req.user.role === "student") return next();
+  return res.status(403).json({ error: "Forbidden" });
+}
+
+function activeStudentAssistant(db, user, date = today()) {
+  if (user.role !== "student" || !user.studentId) return null;
+  const target = String(date || today()).slice(0, 10);
+  return (db.studentAssistants || []).find((assignment) =>
+    assignment.studentId === user.studentId
+    && assignment.weekStart <= target
+    && assignment.weekEnd >= target
+  ) || null;
+}
+
+function assistantScopeStudents(db, assignment) {
+  if (!assignment) return [];
+  return hydrateStudents(db).filter((student) => student.section === assignment.section);
+}
+
 function scopeStudents(db, user) {
   const hydrated = hydrateStudents(db);
   if (user.role === "admin" || user.role === "display") return hydrated;
@@ -604,6 +627,33 @@ function scopeStudents(db, user) {
 
 function scopedStudentIds(db, user) {
   return new Set(scopeStudents(db, user).map((student) => student.id));
+}
+
+function actionScopeStudents(db, user) {
+  if (user.role === "student") return assistantScopeStudents(db, activeStudentAssistant(db, user));
+  return scopeStudents(db, user);
+}
+
+function actionScopedStudentIds(db, user) {
+  return new Set(actionScopeStudents(db, user).map((student) => student.id));
+}
+
+function canUseSubjectForAction(db, user, subjectId) {
+  if (user.role !== "student") return canUseSubject(user, subjectId);
+  return actionScopeStudents(db, user).some((student) => (student.subjectIds || []).includes(subjectId));
+}
+
+function ensureAssistantAccess(db, user) {
+  if (user.role !== "student") return null;
+  const assignment = activeStudentAssistant(db, user);
+  if (!assignment) throw new Error("You are not the active student assistant this week.");
+  return assignment;
+}
+
+function assistantCanUseDate(user, assignment, date) {
+  if (user.role !== "student") return true;
+  const target = String(date || today()).slice(0, 10);
+  return !!assignment && assignment.weekStart <= target && assignment.weekEnd >= target;
 }
 
 function canUseSubject(user, subjectId) {
@@ -1056,6 +1106,30 @@ function filteredOverview(db, user) {
   };
 }
 
+function studentAssistantAccess(db, user) {
+  const assignment = activeStudentAssistant(db, user);
+  if (!assignment) return { active: false };
+  const students = assistantScopeStudents(db, assignment);
+  const studentIds = new Set(students.map((student) => student.id));
+  return {
+    active: true,
+    assignment,
+    students: hideProfilePhotos(students),
+    transactions: db.transactions.filter((transaction) => studentIds.has(transaction.studentId)).map((transaction) => ({ ...transaction, studentName: studentName(db, transaction.studentId) })).sort(byDateDesc),
+    attendanceRecords: db.attendanceRecords.filter((record) => studentIds.has(record.studentId)),
+    recitations: db.recitations.filter((recitation) => studentIds.has(recitation.studentId)).map((recitation) => ({ ...recitation, studentName: studentName(db, recitation.studentId), subjectName: subjectName(db, recitation.subjectId) })).sort(byDateDesc)
+  };
+}
+
+function assistantAssignmentRows(db, user) {
+  return (db.studentAssistants || []).filter((assignment) => canUseSection(user, assignment.section)).map((assignment) => ({
+    ...assignment,
+    studentName: studentName(db, assignment.studentId),
+    assignedByName: db.users.find((user) => user.id === assignment.createdBy)?.username || "system",
+    active: assignment.weekStart <= today() && assignment.weekEnd >= today()
+  })).sort((a, b) => String(b.weekStart).localeCompare(String(a.weekStart)) || String(a.section).localeCompare(String(b.section)));
+}
+
 app.get("/api/health", (req, res) => res.json({ ok: true, storage: supabase ? "supabase" : "file" }));
 
 app.post("/api/auth/login", async (req, res) => {
@@ -1102,7 +1176,7 @@ app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
     attendanceBonus: attendanceBonus(db, student.id, w),
     recitationBonus: recitationBonus(db, student.id, w)
   }));
-  res.json({ ...overview, students: allStudents, student, appearanceInventory: inventory, appearanceGifts: gifts, weeks });
+  res.json({ ...overview, students: allStudents, student, appearanceInventory: inventory, appearanceGifts: gifts, weeks, assistantAccess: studentAssistantAccess(db, req.user) });
 });
 
 app.post("/api/student/profile-photo", auth, requireRole("student"), async (req, res) => {
@@ -1121,7 +1195,7 @@ app.post("/api/student/profile-photo", auth, requireRole("student"), async (req,
 app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const overview = filteredOverview(db, req.user);
-  res.json({ ...overview, students: hideProfilePhotos(overview.students) });
+  res.json({ ...overview, students: hideProfilePhotos(overview.students), studentAssistants: assistantAssignmentRows(db, req.user) });
 });
 
 app.post("/api/admin/guild/start-assessment", auth, requireRole("admin", "teacher"), async (req, res) => {
@@ -1605,29 +1679,38 @@ app.delete("/api/admin/attendance/weeks/:id/dates/:date", auth, requireRole("adm
   res.json({ ok: true });
 });
 
-app.put("/api/admin/attendance/records", auth, requireRole("admin", "teacher"), async (req, res) => {
+app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (req, res) => {
   const db = await readDb();
+  let assistantAssignment = null;
+  try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
   const { weekId, date, studentId, status } = req.body;
-  const allowedStudentIds = new Set(scopeStudents(db, req.user).map((student) => student.id));
+  if (!assistantCanUseDate(req.user, assistantAssignment, date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
+  const allowedStudentIds = actionScopedStudentIds(db, req.user);
   if (!allowedStudentIds.has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const week = db.attendanceWeeks.find((w) => w.id === weekId);
+  if (!week) return res.status(404).json({ error: "Week not found." });
+  const student = db.students.find((item) => item.id === studentId);
+  if (!student || !(student.subjectIds || []).includes(week.subjectId)) return res.status(400).json({ error: "This student is not enrolled in this subject." });
   let record = db.attendanceRecords.find((r) => r.weekId === weekId && r.date === date && r.studentId === studentId);
   if (!record) {
     record = { id: randomUUID(), weekId, date, studentId, status: "" };
     db.attendanceRecords.push(record);
   }
   record.status = status;
-  const week = db.attendanceWeeks.find((w) => w.id === weekId);
   syncAttendanceTransaction(db, record, week, req.user.id);
   if (week) syncWeekBonuses(db, week, req.user.id);
   await writeDb(db);
   res.json({ record });
 });
 
-app.post("/api/admin/attendance/check-all", auth, requireRole("admin", "teacher"), async (req, res) => {
+app.post("/api/admin/attendance/check-all", auth, requireStaffOrAssistant, async (req, res) => {
   const db = await readDb();
+  let assistantAssignment = null;
+  try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const week = db.attendanceWeeks.find((w) => w.id === req.body.weekId);
   if (!week) return res.status(404).json({ error: "Week not found." });
-  const students = scopeStudents(db, req.user).filter((s) => (s.subjectIds || []).includes(week.subjectId));
+  const students = actionScopeStudents(db, req.user).filter((s) => (s.subjectIds || []).includes(week.subjectId));
   students.forEach((student) => {
     let record = db.attendanceRecords.find((r) => r.weekId === week.id && r.date === req.body.date && r.studentId === student.id);
     if (!record) {
@@ -1642,10 +1725,13 @@ app.post("/api/admin/attendance/check-all", auth, requireRole("admin", "teacher"
   res.json({ ok: true });
 });
 
-app.post("/api/admin/recitations", auth, requireRole("admin", "teacher"), async (req, res) => {
+app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, res) => {
   const db = await readDb();
-  const allowedStudentIds = scopedStudentIds(db, req.user);
-  if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  let assistantAssignment = null;
+  try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date || today())) return res.status(403).json({ error: "Student assistants can only add recitations inside their assigned week." });
+  const allowedStudentIds = actionScopedStudentIds(db, req.user);
+  if (!canUseSubjectForAction(db, req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
   const studentIds = [...new Set((Array.isArray(req.body.studentIds) && req.body.studentIds.length ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
   if (!studentIds.length) return res.status(400).json({ error: "Choose at least one student." });
   if (studentIds.some((studentId) => !allowedStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
@@ -1868,10 +1954,12 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
   res.status(201).json({ attempt, submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded } });
 });
 
-app.post("/api/admin/transactions", auth, requireRole("admin", "teacher"), async (req, res) => {
+app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, res) => {
   const db = await readDb();
-  const allowedStudentIds = scopedStudentIds(db, req.user);
+  try { ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  const allowedStudentIds = actionScopedStudentIds(db, req.user);
   const type = req.body.type || "adjustment";
+  if (req.user.role === "student" && !["bonus", "adjustment", "penalty"].includes(type)) return res.status(403).json({ error: "Student assistants can only add bonus, adjustment, or penalty transactions." });
   if (type === "trade") {
     if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
     if (!allowedStudentIds.has(req.body.fromStudentId)) return res.status(403).json({ error: "The trade source student is outside your assigned class scope." });
@@ -1897,6 +1985,38 @@ app.post("/api/admin/transactions", auth, requireRole("admin", "teacher"), async
   }
   await writeDb(db);
   res.status(201).json({ ok: true });
+});
+
+app.post("/api/admin/student-assistants", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const student = db.students.find((item) => item.id === req.body.studentId);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const section = String(req.body.section || student.section || "").trim();
+  if (!section) return res.status(400).json({ error: "Choose a section." });
+  if (student.section !== section) return res.status(400).json({ error: "The selected student is not in that section." });
+  const allowedStudentIds = scopedStudentIds(db, req.user);
+  if (!allowedStudentIds.has(student.id) || !canUseSection(req.user, section)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
+  const weekStart = String(req.body.weekStart || today()).slice(0, 10);
+  const start = new Date(`${weekStart}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return res.status(400).json({ error: "Choose a valid week start date." });
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const weekEnd = end.toISOString().slice(0, 10);
+  db.studentAssistants = (db.studentAssistants || []).filter((assignment) => !(assignment.section === section && assignment.weekStart === weekStart));
+  const assignment = { id: randomUUID(), studentId: student.id, section, weekStart, weekEnd, createdAt: now(), createdBy: req.user.id };
+  db.studentAssistants.push(assignment);
+  await writeDb(db);
+  res.status(201).json({ assignment });
+});
+
+app.delete("/api/admin/student-assistants/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const assignment = (db.studentAssistants || []).find((item) => item.id === req.params.id);
+  if (!assignment) return res.status(404).json({ error: "Assignment not found." });
+  if (!canUseSection(req.user, assignment.section)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
+  db.studentAssistants = (db.studentAssistants || []).filter((item) => item.id !== assignment.id);
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.post("/api/admin/shop/items", auth, requireRole("admin"), async (req, res) => {

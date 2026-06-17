@@ -3,7 +3,7 @@ import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
-export default function Attendance({ data, run }) {
+export default function Attendance({ data, run, role }) {
   const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
@@ -14,16 +14,17 @@ export default function Attendance({ data, run }) {
   const currentGroup = monthGroups.find((group) => group.key === currentMonth);
   const visibleWeeks = currentGroup?.weeks || [];
   const sections = [...new Set((data.students || []).map((student) => student.section).filter(Boolean))].sort();
+  const canManageWeeks = role !== "student";
 
   return <div className="dashboard-grid">
-    <ActionModal title="Add Attendance Week">
+    {canManageWeeks && <ActionModal title="Add Attendance Week">
       <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/attendance/weeks", week), "Week added"); }}>
         <Select label="Subject" value={week.subjectId} onChange={(v) => setWeek({ ...week, subjectId: v })} options={data.subjects} />
         <Field label="Week Title" value={week.title} onChange={(v) => setWeek({ ...week, title: v })} />
         <Field label="First Date" type="date" value={week.firstDate} onChange={(v) => setWeek({ ...week, firstDate: v })} />
         <button>Add Week</button>
       </form>
-    </ActionModal>
+    </ActionModal>}
     {monthGroups.length > 0 && <section className="panel wide attendance-month-panel">
       <div className="section-head">
         <div className="section-title">Attendance Month</div>
@@ -38,8 +39,8 @@ export default function Attendance({ data, run }) {
         <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
       </div>
     </section>}
-    {visibleWeeks.map((w, index) => <Panel title={attendanceWeekTitle(w)} wide defaultOpen={index === 0} key={w.id} actions={<div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div>}>
-      <AttendanceTable week={w} data={data} run={run} />
+    {visibleWeeks.map((w, index) => <Panel title={attendanceWeekTitle(w)} wide defaultOpen={index === 0} key={w.id} actions={canManageWeeks ? <div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div> : null}>
+      <AttendanceTable week={w} data={data} run={run} canManageWeeks={canManageWeeks} />
     </Panel>)}
     {!monthGroups.length && <section className="panel wide">No attendance weeks yet.</section>}
   </div>;
@@ -151,7 +152,7 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
   return { value: "", className: "absent" };
 }
 
-function AttendanceTable({ week, data, run }) {
+function AttendanceTable({ week, data, run, canManageWeeks }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState({ key: "name", date: "", direction: "asc" });
   // data.students is already role-scoped by the server for teachers.
@@ -171,7 +172,7 @@ function AttendanceTable({ week, data, run }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
     </div>
-    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button><button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button></div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
   </>;
 }
 

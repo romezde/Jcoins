@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { del, post, put, request } from "../api.js";
+import { del, post, put, request, today } from "../api.js";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
@@ -12,12 +12,14 @@ export default function People({ data, run, role }) {
   const [resetModal, setResetModal] = useState(null);
   const [confirmReset, setConfirmReset] = useState(null);
   const [studentFilter, setStudentFilter] = useState({ section: "all", search: "" });
+  const [assistantForm, setAssistantForm] = useState({ section: data.sections?.[0] || "", studentId: "", weekStart: today() });
   const [importRows, setImportRows] = useState([]);
   const [importError, setImportError] = useState("");
   const [importResult, setImportResult] = useState("");
   const [profileModal, setProfileModal] = useState(null);
   const visibleSubjects = role === "teacher" ? data.subjects.filter((s) => (data.user.subjectIds || []).includes(s.id)) : data.subjects;
   const sections = data.sections?.length ? data.sections : ["A", "B"];
+  const assistantStudents = data.students.filter((student) => !assistantForm.section || student.section === assistantForm.section);
   const filteredStudents = data.students.filter((student) => {
     const sectionMatch = studentFilter.section === "all" ? true : studentFilter.section === "__none" ? !student.section : student.section === studentFilter.section;
     const q = studentFilter.search.trim().toLowerCase();
@@ -147,7 +149,31 @@ export default function People({ data, run, role }) {
           <button>Create Teacher</button>
         </form>
       </ActionModal>}
+
+      <ActionModal title="Assign Student Assistant">
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          run(() => post("/admin/student-assistants", assistantForm), "Student assistant assigned");
+        }}>
+          <Select label="Section" value={assistantForm.section} onChange={(section) => setAssistantForm({ ...assistantForm, section, studentId: "" })} options={sections.map((section) => ({ value: section, label: section }))} />
+          <Select label="Student" value={assistantForm.studentId} onChange={(studentId) => setAssistantForm({ ...assistantForm, studentId })} options={[{ value: "", label: "Select student" }, ...assistantStudents.map((student) => ({ value: student.id, label: student.name }))]} />
+          <Field label="Week Start" type="date" value={assistantForm.weekStart} onChange={(weekStart) => setAssistantForm({ ...assistantForm, weekStart })} />
+          <button disabled={!assistantForm.section || !assistantForm.studentId}>Assign Assistant</button>
+        </form>
+      </ActionModal>
     </div>
+
+    <Panel title="Student Assistants" wide defaultOpen={false}>
+      <Table columns={["Week", "Section", "Student", "Status", "Assigned By", "Action"]} rows={(data.studentAssistants || []).map((assignment) => [
+        `${assignment.weekStart} to ${assignment.weekEnd}`,
+        assignment.section,
+        assignment.studentName,
+        assignment.active ? "Active" : "Scheduled",
+        assignment.assignedByName,
+        <button className="danger" onClick={() => confirm(`Remove ${assignment.studentName} as assistant for ${assignment.section}?`) && run(() => del(`/admin/student-assistants/${assignment.id}`), "Student assistant removed")}>Remove</button>
+      ])} />
+      {!(data.studentAssistants || []).length && <p className="muted-line">No student assistants assigned yet.</p>}
+    </Panel>
 
     <Panel title="Section List" defaultOpen={false}>
       <Table columns={["Section", "Action"]} rows={sections.map((section) => [

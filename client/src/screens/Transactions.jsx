@@ -3,11 +3,11 @@ import { post } from "../api.js";
 import { StudentFilterFields, StudentMultiPicker, studentMatchesFilters } from "../components/StudentMultiPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 
-export default function Transactions({ data, run }) {
+export default function Transactions({ data, run, role }) {
   const [form, setForm] = useState({ recipientMode: "single", studentId: data.students[0]?.id || "", studentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
   const [targetFilter, setTargetFilter] = useState({ search: "", subjectId: "all", section: "all", guildId: "all" });
   const [filter, setFilter] = useState({ type: "all", studentId: "all", subjectId: "all", section: "all", guildId: "all", search: "" });
-  const typeOptions = ["bonus", "adjustment", "penalty", "trade", "shop"];
+  const typeOptions = role === "student" ? ["bonus", "adjustment", "penalty"] : ["bonus", "adjustment", "penalty", "trade", "shop"];
   const canBulk = form.type !== "trade";
   const studentById = new Map(data.students.map((student) => [student.id, student]));
   const filteredTargetStudents = data.students.filter((student) => studentMatchesFilters(data, student, targetFilter));
