@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
 import { adminTabs, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
-import { Field } from "./components/ui.jsx";
+import { DropdownChecklist, Field, Select } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
 import Dashboard from "./screens/Dashboard.jsx";
 import Leaderboard from "./screens/Leaderboard.jsx";
@@ -44,10 +44,15 @@ function Login({ onLogin, onPublicLeaderboard }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState(() => localStorage.getItem("jcoins_login_notice") || "");
+  const [registrationOptions, setRegistrationOptions] = useState(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
   useEffect(() => {
     if (!notice) return;
     localStorage.removeItem("jcoins_login_notice");
   }, [notice]);
+  useEffect(() => {
+    request("/registration/options").then(setRegistrationOptions).catch(() => setRegistrationOptions({ enabled: false, sections: [], subjects: [] }));
+  }, []);
   async function submit(e) {
     e.preventDefault();
     if (loading) return;
@@ -58,8 +63,63 @@ function Login({ onLogin, onPublicLeaderboard }) {
   return <main className="login"><section className="login-panel">
     <div className="brand-mark"><JCoinLogo size={42} /> <span>JCoin</span></div><h1>JCoins Arena</h1><p>Teacher dashboard, student profiles, and a live quest board.</p>
     {notice && <div className="notice">{notice}</div>}
-    <form onSubmit={submit} aria-busy={loading}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Entering..." : "Enter Arena"}</button><button type="button" className="soft" disabled={loading} onClick={onPublicLeaderboard}>View Leaderboard</button></form>
+    <form onSubmit={submit} aria-busy={loading}><Field label="Username" value={form.username} onChange={(v) => setForm({ ...form, username: v })} /><Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Entering..." : "Enter Arena"}</button><button type="button" className="soft" disabled={loading} onClick={onPublicLeaderboard}>View Leaderboard</button>{registrationOptions?.enabled && <button type="button" className="soft" disabled={loading} onClick={() => setRegisterOpen(true)}>Create Student Account</button>}</form>
+    {registerOpen && <StudentRegistrationModal options={registrationOptions} onClose={() => setRegisterOpen(false)} onSubmitted={(message) => { setNotice(message); setRegisterOpen(false); }} />}
   </section></main>;
+}
+
+function StudentRegistrationModal({ options, onClose, onSubmitted }) {
+  const [form, setForm] = useState({ surname: "", firstName: "", middleName: "", password: "", section: options.sections?.[0] || "", subjectIds: [], registrationCode: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const username = registrationUsername(form);
+  const fullName = `${form.surname.trim()}, ${[form.firstName.trim(), form.middleName.trim()].filter(Boolean).join(" ")}`.trim();
+
+  async function submit(e) {
+    e.preventDefault();
+    if (busy) return;
+    setError("");
+    setBusy(true);
+    try {
+      const result = await post("/auth/register-student", form);
+      onSubmitted(`Registration submitted. Your username will be ${result.username}. Wait for teacher approval before logging in.`);
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  const setUpper = (key, value) => setForm({ ...form, [key]: value.toUpperCase() });
+  return <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <section className="modal-card modal-card-wide">
+      <div className="section-head">
+        <div className="section-title">Create Student Account</div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      <form onSubmit={submit}>
+        <div className="form-grid two">
+          <Field label="Surname" value={form.surname} onChange={(value) => setUpper("surname", value)} />
+          <Field label="First Name" value={form.firstName} onChange={(value) => setUpper("firstName", value)} />
+          <Field label="Middle Name" value={form.middleName} onChange={(value) => setUpper("middleName", value)} />
+          <Field label="Password" type="password" value={form.password} onChange={(password) => setForm({ ...form, password })} />
+          <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section })} options={(options.sections || []).map((section) => ({ value: section, label: section }))} />
+          <Field label="Registration Code" value={form.registrationCode} onChange={(registrationCode) => setForm({ ...form, registrationCode })} />
+        </div>
+        <DropdownChecklist label="Subjects" items={options.subjects || []} selected={form.subjectIds} onChange={(subjectIds) => setForm({ ...form, subjectIds })} />
+        <div className="notice">Username: {username || "surname.firstname"}</div>
+        <p className="muted-line">Name will be saved as {fullName || "SURNAME, FIRST NAME MIDDLE NAME"}.</p>
+        {error && <div className="error">{error}</div>}
+        <button disabled={busy || !form.surname.trim() || !form.firstName.trim() || form.password.length < 6 || !form.section || !form.subjectIds.length}>{busy ? "Submitting..." : "Submit Registration"}</button>
+      </form>
+    </section>
+  </div>;
+}
+
+function registrationUsername(form) {
+  const clean = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const surname = clean(form.surname);
+  const first = clean(form.firstName);
+  return surname && first ? `${surname}.${first}` : "";
 }
 
 function ChangePassword({ onDone }) {

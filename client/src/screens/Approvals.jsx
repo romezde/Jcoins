@@ -17,6 +17,11 @@ export default function Approvals({ data, run }) {
 }
 
 function requestDetails(request) {
+  if (request.type === "registration") {
+    const payload = request.payload || {};
+    const subjects = (payload.subjectNames || payload.subjectIds || []).join(", ");
+    return `${payload.username || "username"} | Section ${payload.section || "-"}${subjects ? ` | ${subjects}` : ""}`;
+  }
   if (request.type === "purchase") return request.itemName || request.remarks || "Purchase request";
   if (request.type === "trade") return `Trade with ${request.toStudentName || "student"} - ${request.payload?.amount || 0} JC${request.remarks ? ` - ${request.remarks}` : ""}`;
   return request.remarks || "";

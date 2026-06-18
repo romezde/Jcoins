@@ -353,6 +353,7 @@ function defaults() {
       },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
+      registration: { enabled: false, code: "" },
       ranks: [
         { name: "Apprentice", min: 250 },
         { name: "Adept", min: 500 },
@@ -412,6 +413,7 @@ async function readDb() {
   db.settings.quizzes = { ...d.settings.quizzes, ...(db.settings.quizzes || {}) };
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
+  db.settings.registration = { ...d.settings.registration, ...(db.settings.registration || {}) };
   db.settings.activities.types ||= d.settings.activities.types;
   db.settings.quizzes.difficulties ||= d.settings.quizzes.difficulties;
   db.settings.quizzes.defaultPassingPercent = Math.max(1, Math.min(100, Number(db.settings.quizzes.defaultPassingPercent || d.settings.quizzes.defaultPassingPercent)));
@@ -716,14 +718,41 @@ function appearanceGiftRows(db, studentId = null) {
 function requestRows(db, requests) {
   return requests.map((request) => {
     const payload = request.payload || {};
+    const publicPayload = request.type === "registration"
+      ? { ...payload, passwordHash: undefined, subjectNames: (payload.subjectIds || []).map((subjectId) => subjectName(db, subjectId)) }
+      : payload;
     return {
       ...request,
-      studentName: studentName(db, request.studentId),
+      payload: publicPayload,
+      studentName: request.type === "registration" ? payload.fullName || "New student" : studentName(db, request.studentId),
       fromStudentName: studentName(db, request.studentId),
       itemName: payload.itemId ? activeShopPrice(db, payload.itemId)?.name || "Unknown Item" : "",
       toStudentName: payload.toStudentId ? studentName(db, payload.toStudentId) : ""
     };
   });
+}
+
+function formatStudentFullName({ surname, firstName, middleName }) {
+  const last = String(surname || "").trim().replace(/\s+/g, " ").toUpperCase();
+  const first = String(firstName || "").trim().replace(/\s+/g, " ").toUpperCase();
+  const middle = String(middleName || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return `${last}, ${[first, middle].filter(Boolean).join(" ")}`.trim();
+}
+
+function studentRegistrationUsername({ surname, firstName }) {
+  const clean = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return `${clean(surname)}.${clean(firstName)}`;
+}
+
+function canUseRequest(db, user, request) {
+  if (user.role === "admin") return true;
+  if (request.type === "registration") {
+    const payload = request.payload || {};
+    const subjectIds = Array.isArray(payload.subjectIds) ? payload.subjectIds : [];
+    return canUseSection(user, payload.section) && subjectIds.every((subjectId) => canUseSubject(user, subjectId));
+  }
+  if (!request.studentId) return true;
+  return scopedStudentIds(db, user).has(request.studentId);
 }
 
 function feedbackRows(db, feedback) {
@@ -1099,7 +1128,7 @@ function filteredOverview(db, user) {
     sales: db.sales,
     appearanceItems: db.appearanceItems,
     appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
-    requests: requestRows(db, db.requests.filter((r) => user.role === "admin" || !r.studentId || studentIds.has(r.studentId)).sort(byDateDesc)),
+    requests: requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request)).sort(byDateDesc)),
     feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))),
     schedules: scheduleRows(db, visibleScheduleRows),
     guildSystem: guildSystemView(db, user)
@@ -1148,6 +1177,66 @@ app.post("/api/auth/change-password", auth, async (req, res) => {
   user.mustChangePassword = false;
   await writeDb(db);
   res.json({ token: sign(user), user: publicUser(user) });
+});
+
+app.get("/api/registration/options", async (req, res) => {
+  const db = await readDb();
+  res.json({
+    enabled: !!db.settings.registration?.enabled,
+    sections: db.sections || [],
+    subjects: db.subjects.map((subject) => ({ id: subject.id, name: subject.name }))
+  });
+});
+
+app.post("/api/auth/register-student", async (req, res) => {
+  const db = await readDb();
+  if (!db.settings.registration?.enabled) return res.status(403).json({ error: "Student registration is currently closed." });
+  const surname = String(req.body.surname || "").trim();
+  const firstName = String(req.body.firstName || "").trim();
+  const middleName = String(req.body.middleName || "").trim();
+  const password = String(req.body.password || "");
+  const section = String(req.body.section || "").trim();
+  const subjectIds = Array.isArray(req.body.subjectIds) ? [...new Set(req.body.subjectIds)] : [];
+  const code = String(req.body.registrationCode || "").trim();
+  const expectedCode = String(db.settings.registration?.code || "").trim();
+  if (!surname || !firstName) return res.status(400).json({ error: "Surname and first name are required." });
+  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (!expectedCode) return res.status(403).json({ error: "Registration code is not configured yet." });
+  if (code !== expectedCode) return res.status(403).json({ error: "Registration code is incorrect." });
+  if (!db.sections.includes(section)) return res.status(400).json({ error: "Choose an existing section." });
+  if (!subjectIds.length || subjectIds.some((subjectId) => !db.subjects.some((subject) => subject.id === subjectId))) return res.status(400).json({ error: "Choose existing subjects." });
+  const fullName = formatStudentFullName({ surname, firstName, middleName });
+  const username = studentRegistrationUsername({ surname, firstName });
+  if (!username || username === ".") return res.status(400).json({ error: "Enter a valid surname and first name." });
+  const duplicateUser = db.users.some((user) => user.username.toLowerCase() === username.toLowerCase());
+  const duplicateStudent = db.students.some((student) => student.name.toLowerCase() === fullName.toLowerCase());
+  const duplicatePending = db.requests.some((request) => request.type === "registration" && request.status === "pending" && (
+    String(request.payload?.username || "").toLowerCase() === username.toLowerCase()
+    || String(request.payload?.fullName || "").toLowerCase() === fullName.toLowerCase()
+  ));
+  if (duplicateUser || duplicateStudent || duplicatePending) return res.status(409).json({ error: "This student already has an account or pending registration." });
+  const request = {
+    id: randomUUID(),
+    type: "registration",
+    status: "pending",
+    studentId: "",
+    payload: {
+      surname: surname.toUpperCase(),
+      firstName: firstName.toUpperCase(),
+      middleName: middleName.toUpperCase(),
+      fullName,
+      username,
+      passwordHash: await bcrypt.hash(password, 10),
+      section,
+      subjectIds
+    },
+    remarks: `Student registration for ${fullName}`,
+    createdAt: now(),
+    createdBy: "self-registration"
+  };
+  db.requests.push(request);
+  await writeDb(db);
+  res.status(201).json({ username, fullName, status: "pending" });
 });
 
 app.get("/api/leaderboard", async (req, res) => {
@@ -2509,9 +2598,25 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
   const db = await readDb();
   const request = db.requests.find((r) => r.id === req.params.id);
   if (!request) return res.status(404).json({ error: "Request not found." });
+  if (!canUseRequest(db, req.user, request)) return res.status(403).json({ error: "This request is outside your assigned class scope." });
+  if (request.status !== "pending") return res.status(400).json({ error: "Only pending requests can be resolved." });
   request.status = req.body.status || "approved";
   request.resolvedAt = now();
   request.resolvedBy = req.user.id;
+  if (request.type === "registration" && request.status === "approved") {
+    const payload = request.payload || {};
+    if (db.users.some((user) => user.username.toLowerCase() === String(payload.username || "").toLowerCase()) || db.students.some((student) => student.name.toLowerCase() === String(payload.fullName || "").toLowerCase())) {
+      return res.status(409).json({ error: "This student already has an account." });
+    }
+    if (!db.sections.includes(payload.section)) return res.status(400).json({ error: "Registration section no longer exists." });
+    if (!Array.isArray(payload.subjectIds) || payload.subjectIds.some((subjectId) => !db.subjects.some((subject) => subject.id === subjectId))) return res.status(400).json({ error: "One or more registration subjects no longer exist." });
+    const student = { id: randomUUID(), name: payload.fullName, section: payload.section, subjectIds: payload.subjectIds, createdAt: now() };
+    db.students.push(student);
+    db.users.push({ id: randomUUID(), username: payload.username, passwordHash: payload.passwordHash, role: "student", mustChangePassword: false, studentId: student.id, subjectIds: [], sectionIds: [] });
+    request.studentId = student.id;
+    delete request.payload.passwordHash;
+  }
+  if (request.type === "registration" && request.status !== "approved") delete request.payload.passwordHash;
   await writeDb(db);
   res.json({ request });
 });

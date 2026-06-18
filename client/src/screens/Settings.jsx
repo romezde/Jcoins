@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { post, put } from "../api.js";
-import { Field, Panel, Table } from "../components/ui.jsx";
+import { Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function Settings({ data, run }) {
   const [settings, setSettings] = useState(data.settings);
@@ -80,6 +80,11 @@ export default function Settings({ data, run }) {
           Reset All Guilds
         </button>
       </div>
+    </Panel>
+    <Panel title="Student Registration" defaultOpen={false}>
+      <Select label="Student Registration" value={settings.registration?.enabled ? "on" : "off"} onChange={(value) => setSettings({ ...settings, registration: { ...(settings.registration || {}), enabled: value === "on" } })} options={[{ value: "off", label: "Off" }, { value: "on", label: "On" }]} />
+      <Field label="Registration Code" value={settings.registration?.code || ""} onChange={(code) => setSettings({ ...settings, registration: { ...(settings.registration || {}), code } })} />
+      <p className="muted-line">Students need this code before they can submit a registration request.</p>
     </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [
