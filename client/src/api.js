@@ -17,7 +17,7 @@ export function tabFromPath(tabs, fallback) {
 export function request(path, options = {}) {
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 45000);
+  const timeout = window.setTimeout(() => controller.abort(), 90000);
   return fetch(`${API}${path}`, {
     ...options,
     signal: controller.signal,
@@ -31,7 +31,7 @@ export function request(path, options = {}) {
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
   }).catch((err) => {
-    if (err.name === "AbortError") throw new Error("Server took too long to respond. Render may still be waking up. Please refresh and try again.");
+    if (err.name === "AbortError") throw new Error("Server took too long to respond. Please refresh and try again.");
     throw err;
   }).finally(() => {
     window.clearTimeout(timeout);
