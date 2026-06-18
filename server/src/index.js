@@ -4,7 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -22,6 +22,8 @@ const PORT = Number(process.env.PORT || 4000);
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
+const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
+const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
@@ -35,6 +37,12 @@ const eventTokens = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
+const localDate = (date = new Date(), timeZone = BACKUP_TIME_ZONE) => new Intl.DateTimeFormat("en-CA", {
+  timeZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+}).format(date);
 const byDateDesc = (a, b) => String(b.createdAt || b.date || "").localeCompare(String(a.createdAt || a.date || ""));
 const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const reminderOptions = [0, 5, 10, 15, 30, 60];
@@ -428,6 +436,109 @@ function broadcastChange(reason = "data_changed") {
   for (const [id, res] of eventClients.entries()) {
     if (!sendEvent(res, "change", payload)) eventClients.delete(id);
   }
+}
+
+function msUntilNextLocalMidnight() {
+  const current = new Date();
+  const currentDate = localDate(current);
+  for (let minutes = 1; minutes <= 36 * 60; minutes += 1) {
+    const candidate = new Date(current.getTime() + minutes * 60 * 1000);
+    if (localDate(candidate) !== currentDate) {
+      return Math.max(1000, candidate.getTime() - current.getTime() + 2000);
+    }
+  }
+  return 24 * 60 * 60 * 1000;
+}
+
+function backupRowId(date = localDate()) {
+  return `backup-${date}`;
+}
+
+async function backupExists(date = localDate()) {
+  if (!supabase) {
+    try {
+      await readFile(path.join(dataDir, "backups", `${backupRowId(date)}.json`), "utf8");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id")
+    .eq("id", backupRowId(date))
+    .maybeSingle();
+  if (error) throw supabaseSetupError(error);
+  return !!data;
+}
+
+async function pruneLocalBackups() {
+  const backupDir = path.join(dataDir, "backups");
+  try {
+    const files = (await readdir(backupDir))
+      .filter((file) => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(file))
+      .sort()
+      .reverse();
+    await Promise.all(files.slice(BACKUP_RETENTION_DAYS).map((file) => rm(path.join(backupDir, file), { force: true })));
+  } catch {
+    // Local backup pruning should never block the running classroom app.
+  }
+}
+
+async function pruneSupabaseBackups() {
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id")
+    .like("id", "backup-%")
+    .order("updated_at", { ascending: false });
+  if (error) throw supabaseSetupError(error);
+  const staleIds = (data || []).slice(BACKUP_RETENTION_DAYS).map((row) => row.id);
+  if (!staleIds.length) return;
+  const { error: deleteError } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .delete()
+    .in("id", staleIds);
+  if (deleteError) throw supabaseSetupError(deleteError);
+}
+
+async function createDailyBackup(reason = "scheduled") {
+  const date = localDate();
+  if (await backupExists(date)) return false;
+  const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
+  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db };
+  if (supabase) {
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .upsert({ id: backupRowId(date), state: backup, updated_at: backup.createdAt });
+    if (error) throw supabaseSetupError(error);
+    await pruneSupabaseBackups();
+    return true;
+  }
+  const backupDir = path.join(dataDir, "backups");
+  await mkdir(backupDir, { recursive: true });
+  await writeFile(path.join(backupDir, `${backupRowId(date)}.json`), JSON.stringify(backup, null, 2));
+  await pruneLocalBackups();
+  return true;
+}
+
+function scheduleDailyBackup() {
+  const runBackup = async (reason) => {
+    try {
+      await ensureDb();
+      await createDailyBackup(reason);
+    } catch (err) {
+      console.error("Daily backup failed:", err.message);
+    }
+  };
+  runBackup("server-start");
+  const scheduleNext = () => {
+    if (globalThis.__jcoinsBackupTimer) clearTimeout(globalThis.__jcoinsBackupTimer);
+    globalThis.__jcoinsBackupTimer = setTimeout(async () => {
+      await runBackup("midnight");
+      scheduleNext();
+    }, msUntilNextLocalMidnight());
+  };
+  scheduleNext();
 }
 
 async function readDb() {
@@ -2893,4 +3004,5 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
   res.json({ request });
 });
 
+scheduleDailyBackup();
 app.listen(PORT, () => console.log(`JCoins API running at http://localhost:${PORT}`));

@@ -122,6 +122,13 @@ function registrationUsername(form) {
   return surname && first ? `${surname}.${first}` : "";
 }
 
+function msUntilNextMidnight() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 2, 0);
+  return Math.max(1000, next.getTime() - now.getTime());
+}
+
 function ChangePassword({ onDone }) {
   const [form, setForm] = useState({ currentPassword: "", newPassword: "" });
   const [error, setError] = useState("");
@@ -226,9 +233,17 @@ function RoleApp({ session, logout }) {
       }, delay);
     };
     const pollTimer = window.setInterval(() => scheduleRefresh(0), document.visibilityState === "visible" ? 60000 : 180000);
+    let midnightTimer = null;
     let source = null;
     let reconnectTimer = null;
     let cancelled = false;
+    const scheduleMidnightRefresh = () => {
+      window.clearTimeout(midnightTimer);
+      midnightTimer = window.setTimeout(() => {
+        scheduleRefresh(0);
+        scheduleMidnightRefresh();
+      }, msUntilNextMidnight());
+    };
     const connectRealtime = () => {
       request("/events/token").then(({ token }) => {
         if (cancelled || !token) return;
@@ -264,13 +279,18 @@ function RoleApp({ session, logout }) {
     const onVisible = () => {
       if (document.visibilityState === "visible") scheduleRefresh(0);
     };
+    const onOnline = () => scheduleRefresh(0);
+    scheduleMidnightRefresh();
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       window.clearTimeout(realtimeTimerRef.current);
+      window.clearTimeout(midnightTimer);
       window.clearTimeout(reconnectTimer);
       window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       if (source) source.close();
     };
   }, [session.user.id, session.user.role]);
