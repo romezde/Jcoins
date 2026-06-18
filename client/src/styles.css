@@ -2008,14 +2008,24 @@ td button {
 .champion-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: 2px solid var(--line);
+  border-radius: 18px;
   padding: 18px;
   background: linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
 }
+.champion-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .78;
+}
 .champion-card.place-1 {
-  border-color: rgba(250,204,21,.7);
-  background: linear-gradient(145deg, rgba(250,204,21,.22), rgba(34,211,238,.12));
+  border-color: rgba(250,204,21,.96);
+  background:
+    radial-gradient(circle at 20% 12%, rgba(254,240,138,.44), transparent 34%),
+    linear-gradient(145deg, rgba(250,204,21,.32), rgba(245,158,11,.18) 58%, rgba(34,211,238,.12));
+  box-shadow: 0 0 0 1px rgba(250,204,21,.34), 0 24px 70px rgba(250,204,21,.18);
 }
 .champion-card.place-1 {
   min-height: 285px;
@@ -2024,10 +2034,20 @@ td button {
 .champion-card.place-2 {
   min-height: 225px;
   padding: 22px;
+  border-color: rgba(125,211,252,.86);
+  background:
+    radial-gradient(circle at 18% 16%, rgba(226,232,240,.32), transparent 34%),
+    linear-gradient(145deg, rgba(148,163,184,.25), rgba(34,211,238,.16) 62%, rgba(30,41,59,.62));
+  box-shadow: 0 0 0 1px rgba(125,211,252,.25), 0 20px 56px rgba(34,211,238,.14);
 }
 .champion-card.place-3 {
   min-height: 185px;
   padding: 18px;
+  border-color: rgba(251,146,60,.82);
+  background:
+    radial-gradient(circle at 18% 16%, rgba(253,186,116,.3), transparent 34%),
+    linear-gradient(145deg, rgba(249,115,22,.24), rgba(180,83,9,.16) 62%, rgba(30,41,59,.62));
+  box-shadow: 0 0 0 1px rgba(251,146,60,.24), 0 18px 48px rgba(249,115,22,.14);
 }
 .place-1 {
   animation: goldPulse 1.9s infinite ease-in-out;
@@ -2041,26 +2061,47 @@ td button {
 .medal {
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  position: relative;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
   border-radius: 999px;
   background: linear-gradient(#fde047, #f59e0b);
   color: #422006;
+  box-shadow: 0 10px 28px rgba(0,0,0,.26), inset 0 2px 0 rgba(255,255,255,.42);
   font-weight: 950;
 }
+.champion-card.place-1 .medal {
+  width: 62px;
+  height: 62px;
+  background: linear-gradient(145deg, #fef08a, #facc15 50%, #f97316);
+  font-size: 18px;
+}
+.champion-card.place-2 .medal {
+  background: linear-gradient(145deg, #f8fafc, #94a3b8 52%, #22d3ee);
+  color: #0f172a;
+}
+.champion-card.place-3 .medal {
+  background: linear-gradient(145deg, #fed7aa, #fb923c 54%, #9a3412);
+  color: #431407;
+}
 .champion-card h3 {
+  position: relative;
+  z-index: 1;
   margin: 14px 0 8px;
   font-size: 28px;
   overflow-wrap: anywhere;
 }
-.champion-card.place-1 h3 { font-size: 36px; }
-.champion-card.place-2 h3 { font-size: 30px; }
-.champion-card.place-3 h3 { font-size: 24px; }
+.champion-card.place-1 h3 { font-size: 40px; color: #fef9c3; text-shadow: 0 0 20px rgba(250,204,21,.48); }
+.champion-card.place-2 h3 { font-size: 31px; color: #e0f2fe; text-shadow: 0 0 18px rgba(34,211,238,.3); }
+.champion-card.place-3 h3 { font-size: 25px; color: #ffedd5; text-shadow: 0 0 16px rgba(249,115,22,.28); }
 .champion-card.place-1 strong { font-size: 30px; }
 .champion-card.place-2 strong { font-size: 24px; }
 .champion-card.place-3 strong { font-size: 20px; }
-.champion-card strong { display: block; color: var(--gold); font-size: 22px; }
+.champion-card strong { position: relative; z-index: 1; display: block; color: var(--gold); font-size: 22px; }
 .champion-card span {
+  position: relative;
+  z-index: 1;
   display: inline-block;
   margin-top: 8px;
   border: 1px solid rgba(34,211,238,.4);
@@ -2117,20 +2158,28 @@ td button {
   grid-template-columns: 86px 66px minmax(180px, 1.4fr) 190px minmax(220px, 1fr);
   min-height: 92px;
   padding: 18px;
-  border-color: rgba(250,204,21,.7);
-  background: rgba(250,204,21,.12);
+  border-width: 2px;
+  border-color: rgba(250,204,21,.92);
+  background: linear-gradient(135deg, rgba(250,204,21,.24), rgba(245,158,11,.11));
+  box-shadow: 0 0 0 1px rgba(250,204,21,.25), 0 14px 38px rgba(250,204,21,.12);
 }
 .student-row.list-place-2 {
   grid-template-columns: 78px 58px minmax(170px, 1.4fr) 170px minmax(200px, 1fr);
   min-height: 78px;
   padding: 15px;
-  border-color: rgba(34,211,238,.42);
+  border-width: 2px;
+  border-color: rgba(125,211,252,.72);
+  background: linear-gradient(135deg, rgba(148,163,184,.22), rgba(34,211,238,.1));
+  box-shadow: 0 12px 32px rgba(34,211,238,.1);
 }
 .student-row.list-place-3 {
   grid-template-columns: 72px 52px minmax(160px, 1.4fr) 150px minmax(180px, 1fr);
   min-height: 68px;
   padding: 13px;
-  border-color: rgba(249,115,22,.38);
+  border-width: 2px;
+  border-color: rgba(251,146,60,.7);
+  background: linear-gradient(135deg, rgba(249,115,22,.2), rgba(180,83,9,.09));
+  box-shadow: 0 10px 28px rgba(249,115,22,.09);
 }
 .student-row.list-place-1 .place { font-size: 30px; }
 .student-row.list-place-2 .place { font-size: 25px; }
@@ -3687,10 +3736,18 @@ td button {
     padding: 11px;
     border-radius: 11px;
   }
+  .champion-card.place-1 {
+    border-width: 2px;
+  }
   .medal {
     width: 32px;
     height: 32px;
     font-size: 13px;
+  }
+  .champion-card.place-1 .medal {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
   }
   .champion-avatar,
   .champion-avatar.has-equipped-avatar-icon {
