@@ -2076,6 +2076,24 @@ td button {
   outline-offset: 3px;
 }
 .rows { display: grid; gap: 10px; margin-top: 16px; }
+.leaderboard-rest-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 0;
+  color: #fef08a;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.leaderboard-rest-label::before,
+.leaderboard-rest-label::after {
+  content: "";
+  flex: 1 1 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(250,204,21,.58), transparent);
+}
 .rank-divider {
   border: 1px dashed rgba(250,204,21,.55);
   border-radius: 999px;
@@ -3477,9 +3495,15 @@ td button {
     gap: 10px;
     margin-top: 12px;
   }
+  .podium .champion-card.place-1 { order: 1; }
+  .podium .champion-card.place-2 { order: 2; }
+  .podium .champion-card.place-3 { order: 3; }
+  .leaderboard-rest-label {
+    margin: 18px 0 0;
+  }
   .rows {
     gap: 8px;
-    margin-top: 12px;
+    margin-top: 10px;
   }
   .student-row {
     grid-template-columns: 42px 38px 1fr auto;

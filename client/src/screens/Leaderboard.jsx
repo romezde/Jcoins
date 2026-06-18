@@ -15,10 +15,10 @@ export default function Leaderboard({ students, currentStudentId, role }) {
   const filtered = (section === "all" ? students : section === "__none" ? students.filter((student) => !student.section) : students.filter((student) => student.section === section))
     .filter((student) => !q || [student.name, student.username, student.section, student.rank].some((value) => String(value || "").toLowerCase().includes(q)));
   const ranked = filtered.map((student, index) => ({ ...student, leaderboardRank: index + 1 }));
-  const topRows = ranked.slice(0, 100);
+  const restRows = ranked.slice(3, 100);
   const currentRow = currentStudentId ? ranked.find((student) => student.id === currentStudentId) : null;
-  const showCurrentBelowTop = currentRow && currentRow.leaderboardRank > 100 && !topRows.some((student) => student.id === currentRow.id);
-  const visibleRows = showCurrentBelowTop ? [...topRows, { divider: true, id: "current-divider" }, currentRow] : topRows;
+  const showCurrentBelowTop = currentRow && currentRow.leaderboardRank > 100 && !restRows.some((student) => student.id === currentRow.id);
+  const visibleRows = showCurrentBelowTop ? [...restRows, { divider: true, id: "current-divider" }, currentRow] : restRows;
 
   useEffect(() => {
     if (currentRef.current) currentRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -49,7 +49,8 @@ export default function Leaderboard({ students, currentStudentId, role }) {
       <span>{filtered.length} student{filtered.length === 1 ? "" : "s"}</span>
     </div>
     <div className="podium">{podiumOrder(ranked.slice(0, 3)).map((s) => <Champion key={s.id} student={s} place={s.leaderboardRank} onOpenProfile={canOpenProfiles ? openStudentProfile : null} />)}</div>
-    <div className="rows">{visibleRows.map((s) => s.divider ? <div key={s.id} className="rank-divider">Your current rank</div> : <StudentRow key={s.id} student={s} place={s.leaderboardRank} active={s.id === currentStudentId} rowRef={s.id === currentStudentId ? currentRef : null} onOpenProfile={canOpenProfiles ? openStudentProfile : null} />)}</div>
+    {visibleRows.length > 0 && <div className="leaderboard-rest-label">Rest of the leaderboard</div>}
+    {visibleRows.length > 0 && <div className="rows leaderboard-rest">{visibleRows.map((s) => s.divider ? <div key={s.id} className="rank-divider">Your current rank</div> : <StudentRow key={s.id} student={s} place={s.leaderboardRank} active={s.id === currentStudentId} rowRef={s.id === currentStudentId ? currentRef : null} onOpenProfile={canOpenProfiles ? openStudentProfile : null} />)}</div>}
   </section>;
 }
 
