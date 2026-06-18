@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
-import { adminTabs, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
+import { adminTabs, eventUrl, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { DropdownChecklist, Field, Select } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
 import Dashboard from "./screens/Dashboard.jsx";
@@ -181,26 +181,99 @@ function RoleApp({ session, logout }) {
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [successModal, setSuccessModal] = useState("");
+  const [lastUpdated, setLastUpdated] = useState("");
+  const [liveStatus, setLiveStatus] = useState("connecting");
   const [navOpen, setNavOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const loadInFlightRef = useRef(false);
+  const pendingLoadRef = useRef(false);
+  const realtimeTimerRef = useRef(null);
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
 
   async function load() {
+    if (loadInFlightRef.current) {
+      pendingLoadRef.current = true;
+      return;
+    }
+    loadInFlightRef.current = true;
     try {
       setLoadError("");
       setData(await request(session.user.role === "student" ? "/student/me" : session.user.role === "display" ? "/leaderboard" : "/admin/overview"));
+      setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (err) {
       setLoadError(err.message);
       if (shouldClearSession(err.message)) {
         localStorage.setItem("jcoins_login_notice", sessionResetMessage(err.message));
         logout();
       }
+    } finally {
+      loadInFlightRef.current = false;
+      if (pendingLoadRef.current) {
+        pendingLoadRef.current = false;
+        window.setTimeout(load, 50);
+      }
     }
   }
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const scheduleRefresh = (delay = 900) => {
+      window.clearTimeout(realtimeTimerRef.current);
+      realtimeTimerRef.current = window.setTimeout(() => {
+        if (document.visibilityState === "visible") load();
+      }, delay);
+    };
+    const pollTimer = window.setInterval(() => scheduleRefresh(0), document.visibilityState === "visible" ? 60000 : 180000);
+    let source = null;
+    let reconnectTimer = null;
+    let cancelled = false;
+    const connectRealtime = () => {
+      request("/events/token").then(({ token }) => {
+        if (cancelled || !token) return;
+        if (source) source.close();
+        source = new EventSource(eventUrl(token));
+        source.addEventListener("ready", () => setLiveStatus("live"));
+        source.addEventListener("open", () => setLiveStatus("live"));
+        source.addEventListener("change", () => {
+          setLiveStatus("live");
+          scheduleRefresh();
+        });
+        source.addEventListener("error", () => {
+          setLiveStatus("reconnecting");
+          if (source) source.close();
+          window.clearTimeout(reconnectTimer);
+          reconnectTimer = window.setTimeout(() => {
+            if (!cancelled) connectRealtime();
+          }, 5000);
+        });
+      }).catch(() => {
+        setLiveStatus("polling");
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = window.setTimeout(() => {
+          if (!cancelled) connectRealtime();
+        }, 15000);
+      });
+    };
+    if (window.EventSource && localStorage.getItem("jcoins_token")) {
+      connectRealtime();
+    } else {
+      setLiveStatus("polling");
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") scheduleRefresh(0);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(realtimeTimerRef.current);
+      window.clearTimeout(reconnectTimer);
+      window.clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (source) source.close();
+    };
+  }, [session.user.id, session.user.role]);
   useEffect(() => {
     if (!message) return undefined;
     const timer = window.setTimeout(() => setMessage(""), 3000);
@@ -271,6 +344,7 @@ function RoleApp({ session, logout }) {
         <button className="hamburger" onClick={() => setNavOpen(!navOpen)}>{navOpen ? <X /> : <Menu />}</button>
         <GlobalSearch tabs={tabs} data={normalized} navigate={navigate} />
         <NotificationBell role={session.user.role} userId={session.user.id} data={normalized} navigate={navigate} />
+        <LiveStatus status={liveStatus} lastUpdated={lastUpdated} />
         <div className="nav-user"><span>{session.user.role}</span><button onClick={logout}><LogOut size={16} /> Logout</button></div>
       </header>
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
@@ -297,6 +371,15 @@ function RoleApp({ session, logout }) {
       </main>
     </div>
     {(session.user.role === "admin" || session.user.role === "teacher") && <FloatingAssistant />}
+  </div>;
+}
+
+function LiveStatus({ status, lastUpdated }) {
+  const label = status === "live" ? "Live" : status === "polling" ? "Backup" : "Reconnecting";
+  return <div className={`live-status ${status}`}>
+    <i />
+    <span>{label}</span>
+    {lastUpdated && <small>{lastUpdated}</small>}
   </div>;
 }
 

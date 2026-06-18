@@ -29,7 +29,9 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "25mb" }));
+const eventClients = new Map();
+const eventTokens = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -410,6 +412,24 @@ function tx(studentId, type, amount, note, createdAt = now(), createdBy = "syste
   return { id: randomUUID(), studentId, type, amount: Number(amount || 0), note: note || "", createdAt, createdBy, meta };
 }
 
+function sendEvent(res, event, data) {
+  try {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function broadcastChange(reason = "data_changed") {
+  if (!eventClients.size) return;
+  const payload = { reason, changedAt: now() };
+  for (const [id, res] of eventClients.entries()) {
+    if (!sendEvent(res, "change", payload)) eventClients.delete(id);
+  }
+}
+
 async function readDb() {
   await ensureDb();
   const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
@@ -524,9 +544,11 @@ async function writeDb(db) {
       .from(SUPABASE_STATE_TABLE)
       .upsert({ id: "main", state: db, updated_at: now() });
     if (error) throw supabaseSetupError(error);
+    broadcastChange();
     return;
   }
   await writeFile(dbPath, JSON.stringify(db, null, 2));
+  broadcastChange();
 }
 
 async function readSupabaseDb() {
@@ -1294,6 +1316,45 @@ app.get("/api/registration/options", async (req, res) => {
     sections: db.sections || [],
     subjects: db.subjects.map((subject) => ({ id: subject.id, name: subject.name }))
   });
+});
+
+app.get("/api/events", (req, res) => {
+  const token = String(req.query.token || "");
+  const entry = eventTokens.get(token);
+  if (!entry || entry.expiresAt < Date.now()) {
+    eventTokens.delete(token);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const user = entry.user;
+  const id = randomUUID();
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  sendEvent(res, "ready", { connectedAt: now(), role: user.role });
+  eventClients.set(id, res);
+  const heartbeat = setInterval(() => {
+    if (!sendEvent(res, "ping", { at: now() })) {
+      clearInterval(heartbeat);
+      eventClients.delete(id);
+    }
+  }, 25000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    eventClients.delete(id);
+  });
+});
+
+app.get("/api/events/token", auth, (req, res) => {
+  const token = randomUUID();
+  const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
+  eventTokens.set(token, { user: req.user, expiresAt });
+  for (const [key, entry] of eventTokens.entries()) {
+    if (entry.expiresAt < Date.now()) eventTokens.delete(key);
+  }
+  res.json({ token, expiresAt: new Date(expiresAt).toISOString() });
 });
 
 app.post("/api/auth/register-student", async (req, res) => {

@@ -43,6 +43,10 @@ export const put = (path, body) => request(path, { method: "PUT", body: JSON.str
 export const del = (path) => request(path, { method: "DELETE" });
 export const today = () => new Date().toISOString().slice(0, 10);
 
+export function eventUrl(token) {
+  return `${API}/events?token=${encodeURIComponent(token)}`;
+}
+
 export function postForm(path, formData) {
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
