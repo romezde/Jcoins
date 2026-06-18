@@ -84,7 +84,7 @@ export default function Settings({ data, run }) {
     <Panel title="Student Registration" defaultOpen={false}>
       <Select label="Student Registration" value={settings.registration?.enabled ? "on" : "off"} onChange={(value) => setSettings({ ...settings, registration: { ...(settings.registration || {}), enabled: value === "on" } })} options={[{ value: "off", label: "Off" }, { value: "on", label: "On" }]} />
       <Field label="Registration Code" value={settings.registration?.code || ""} onChange={(code) => setSettings({ ...settings, registration: { ...(settings.registration || {}), code } })} />
-      <p className="muted-line">Students need this code before they can submit a registration request.</p>
+      <p className="muted-line">Students need this code before they can create their account.</p>
     </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [

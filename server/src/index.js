@@ -1263,33 +1263,16 @@ app.post("/api/auth/register-student", async (req, res) => {
   if (!username || username === ".") return res.status(400).json({ error: "Enter a valid surname and first name." });
   const duplicateUser = db.users.some((user) => user.username.toLowerCase() === username.toLowerCase());
   const duplicateStudent = db.students.some((student) => student.name.toLowerCase() === fullName.toLowerCase());
-  const duplicatePending = db.requests.some((request) => request.type === "registration" && request.status === "pending" && (
-    String(request.payload?.username || "").toLowerCase() === username.toLowerCase()
-    || String(request.payload?.fullName || "").toLowerCase() === fullName.toLowerCase()
+  if (duplicateUser || duplicateStudent) return res.status(409).json({ error: "This student already has an account." });
+  const student = { id: randomUUID(), name: fullName, section, subjectIds, createdAt: now() };
+  db.students.push(student);
+  db.users.push({ id: randomUUID(), username, passwordHash: await bcrypt.hash(password, 10), role: "student", mustChangePassword: false, studentId: student.id, subjectIds: [], sectionIds: [] });
+  db.requests = db.requests.filter((request) => request.type !== "registration" || (
+    String(request.payload?.username || "").toLowerCase() !== username.toLowerCase()
+    && String(request.payload?.fullName || "").toLowerCase() !== fullName.toLowerCase()
   ));
-  if (duplicateUser || duplicateStudent || duplicatePending) return res.status(409).json({ error: "This student already has an account or pending registration." });
-  const request = {
-    id: randomUUID(),
-    type: "registration",
-    status: "pending",
-    studentId: "",
-    payload: {
-      surname: surname.toUpperCase(),
-      firstName: firstName.toUpperCase(),
-      middleName: middleName.toUpperCase(),
-      fullName,
-      username,
-      passwordHash: await bcrypt.hash(password, 10),
-      section,
-      subjectIds
-    },
-    remarks: `Student registration for ${fullName}`,
-    createdAt: now(),
-    createdBy: "self-registration"
-  };
-  db.requests.push(request);
   await writeDb(db);
-  res.status(201).json({ username, fullName, status: "pending" });
+  res.status(201).json({ username, fullName, status: "created" });
 });
 
 app.get("/api/leaderboard", async (req, res) => {

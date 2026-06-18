@@ -82,7 +82,7 @@ function StudentRegistrationModal({ options, onClose, onSubmitted }) {
     setBusy(true);
     try {
       const result = await post("/auth/register-student", form);
-      onSubmitted(`Registration submitted. Your username will be ${result.username}. Wait for teacher approval before logging in.`);
+      onSubmitted(`Account created. Your username is ${result.username}. You can log in now.`);
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -109,7 +109,7 @@ function StudentRegistrationModal({ options, onClose, onSubmitted }) {
         <div className="notice">Username: {username || "surname.firstname"}</div>
         <p className="muted-line">Name will be saved as {fullName || "SURNAME, FIRST NAME MIDDLE NAME"}.</p>
         {error && <div className="error">{error}</div>}
-        <button disabled={busy || !form.surname.trim() || !form.firstName.trim() || form.password.length < 6 || !form.section || !form.subjectIds.length}>{busy ? "Submitting..." : "Submit Registration"}</button>
+        <button disabled={busy || !form.surname.trim() || !form.firstName.trim() || form.password.length < 6 || !form.section || !form.subjectIds.length}>{busy ? "Creating..." : "Create Account"}</button>
       </form>
     </section>
   </div>;
