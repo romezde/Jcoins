@@ -3430,6 +3430,23 @@ td button {
   .trait-4 { left: 25%; top: 6%; }
   .trait-5 { left: 24%; bottom: 5%; }
   .leaderboard-search { grid-template-columns: 1fr; }
+  .leaderboard {
+    padding: 14px;
+  }
+  .leaderboard .section-head {
+    align-items: stretch;
+  }
+  .leaderboard .section-head select {
+    width: 100%;
+  }
+  .leaderboard-search {
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .leaderboard-search span {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
   .wheel-stage {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -3437,18 +3454,62 @@ td button {
   .wheel-pointer {
     left: 50%;
   }
-  .podium { grid-template-columns: 1fr; }
-  .student-row { grid-template-columns: 54px 44px 1fr; }
+  .podium {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .rows {
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .student-row {
+    grid-template-columns: 42px 38px 1fr auto;
+    gap: 8px;
+    padding: 10px;
+  }
   .student-row.list-place-1,
   .student-row.list-place-2,
   .student-row.list-place-3 {
-    grid-template-columns: 58px 48px 1fr;
+    grid-template-columns: 44px 40px 1fr auto;
     min-height: auto;
+    padding: 10px;
   }
-  .student-row.list-place-1 .student-name { font-size: 24px; }
-  .student-row.list-place-2 .student-name { font-size: 22px; }
-  .student-row.list-place-3 .student-name { font-size: 20px; }
-  .coin-count, .progress-block { grid-column: 3; }
+  .student-row.list-place-1 .place,
+  .student-row.list-place-2 .place,
+  .student-row.list-place-3 .place,
+  .place {
+    font-size: 17px;
+  }
+  .student-row.list-place-1 .student-name,
+  .student-row.list-place-2 .student-name,
+  .student-row.list-place-3 .student-name,
+  .student-name {
+    font-size: 15px;
+    line-height: 1.16;
+  }
+  .student-name .cosmetic-badge {
+    margin-top: 3px;
+  }
+  .coin-count,
+  .student-row.list-place-1 .coin-count,
+  .student-row.list-place-2 .coin-count,
+  .student-row.list-place-3 .coin-count {
+    align-self: center;
+    justify-self: end;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .progress-block {
+    grid-column: 3 / -1;
+  }
+  .progress-label {
+    font-size: 10px;
+  }
+  .bar {
+    height: 8px;
+    margin-top: 5px;
+  }
   .pagination-bar {
     align-items: stretch;
     flex-direction: column;
@@ -3540,58 +3601,79 @@ td button {
     font-size: 17px;
   }
   .student-row {
-    grid-template-columns: 46px 38px 1fr;
-    gap: 8px;
-    padding: 10px;
+    grid-template-columns: 34px 34px 1fr;
+    gap: 7px;
+    padding: 8px;
   }
   .student-row.list-place-1,
   .student-row.list-place-2,
   .student-row.list-place-3 {
-    grid-template-columns: 48px 42px 1fr;
-    padding: 12px;
+    grid-template-columns: 36px 34px 1fr;
+    padding: 9px;
   }
   .leaderboard-avatar,
   .student-row.list-place-1 .leaderboard-avatar,
   .student-row.list-place-2 .leaderboard-avatar,
   .student-row.list-place-3 .leaderboard-avatar {
-    width: 36px;
-    height: 36px;
-    font-size: 13px;
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
   }
   .student-row.list-place-1 .place,
   .student-row.list-place-2 .place,
   .student-row.list-place-3 .place {
-    font-size: 21px;
+    font-size: 16px;
   }
   .student-row.list-place-1 .student-name,
   .student-row.list-place-2 .student-name,
   .student-row.list-place-3 .student-name {
-    font-size: 20px;
+    font-size: 14px;
   }
   .coin-count,
   .student-row.list-place-1 .coin-count,
   .student-row.list-place-2 .coin-count,
   .student-row.list-place-3 .coin-count {
-    font-size: 18px;
+    grid-column: 3;
+    justify-self: start;
+    font-size: 13px;
   }
   .champion-card,
   .champion-card.place-1,
   .champion-card.place-2,
   .champion-card.place-3 {
     min-height: auto;
-    padding: 16px;
+    padding: 11px;
+    border-radius: 11px;
+  }
+  .medal {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+  .champion-avatar,
+  .champion-avatar.has-equipped-avatar-icon {
+    width: 46px;
+    height: 46px;
+    font-size: 20px;
   }
   .champion-card h3,
   .champion-card.place-1 h3,
   .champion-card.place-2 h3,
   .champion-card.place-3 h3 {
-    font-size: 24px;
+    margin: 8px 0 5px;
+    font-size: 18px;
+    line-height: 1.12;
   }
   .champion-card.place-1 strong,
   .champion-card.place-2 strong,
   .champion-card.place-3 strong,
   .champion-card strong {
-    font-size: 20px;
+    font-size: 15px;
+  }
+  .champion-card span {
+    margin-top: 5px;
+    padding: 5px 8px;
+    font-size: 11px;
   }
   td {
     grid-template-columns: 1fr;
