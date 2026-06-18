@@ -243,6 +243,15 @@ function assignGuild(db, affinities, student) {
   })[0].id;
 }
 
+function shuffleList(list) {
+  const items = [...list];
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
+  }
+  return items;
+}
+
 function guildTraitPreview(affinities = {}) {
   return [...guilds]
     .sort((a, b) => Number(affinities[b.id] || 0) - Number(affinities[a.id] || 0))
@@ -1377,6 +1386,45 @@ app.post("/api/admin/guild/reset", auth, requireRole("admin"), async (req, res) 
   db.guildSystem = defaultGuildSystem();
   await writeDb(db);
   res.json({ guildSystem: guildSystemView(db, req.user) });
+});
+
+app.post("/api/admin/guild/random-distribute", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  const section = String(req.body.section || "").trim();
+  if (!section) return res.status(400).json({ error: "Choose a section." });
+  if (!canUseSection(req.user, section === "No section" ? "" : section)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
+  const scopedIds = scopedStudentIds(db, req.user);
+  const sectionStudents = db.students
+    .filter((student) => scopedIds.has(student.id) && guildSection(student) === section)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (!sectionStudents.length) return res.status(400).json({ error: "No students found in that section." });
+
+  const studentIds = new Set(sectionStudents.map((student) => student.id));
+  db.guildSystem.responses = db.guildSystem.responses.filter((response) => !studentIds.has(response.studentId));
+  const assignedAt = now();
+  const shuffledStudents = shuffleList(sectionStudents);
+  const shuffledGuildIds = shuffleList(guilds.map((guild) => guild.id));
+  const assignments = shuffledStudents.map((student, index) => {
+    const assignedGuildId = shuffledGuildIds[index % shuffledGuildIds.length];
+    const response = {
+      id: randomUUID(),
+      studentId: student.id,
+      answers: [],
+      affinities: Object.fromEntries(guilds.map((guild) => [guild.id, 0])),
+      assignedGuildId,
+      revealed: false,
+      submittedAt: assignedAt,
+      revealedAt: "",
+      source: "random_distribution",
+      assignedBy: req.user.id,
+      assignedAt
+    };
+    db.guildSystem.responses.push(response);
+    return { studentId: student.id, studentName: student.name, section: student.section || "", guild: publicGuild(assignedGuildId) };
+  });
+  await writeDb(db);
+  res.json({ section, assignedCount: assignments.length, assignments });
 });
 
 app.get("/api/admin/guild/students/:id/preview", auth, requireRole("admin", "teacher"), async (req, res) => {

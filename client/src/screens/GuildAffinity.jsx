@@ -99,6 +99,8 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
   const [search, setSearch] = useState("");
   const [ceremony, setCeremony] = useState(null);
   const [assignTarget, setAssignTarget] = useState(null);
+  const [randomOpen, setRandomOpen] = useState(false);
+  const [randomResult, setRandomResult] = useState(null);
   const [bulkReveal, setBulkReveal] = useState(null);
   const [loadingReveal, setLoadingReveal] = useState(false);
   const revealMs = clamp(Number(revealSeconds || 10), 3, 60) * 1000;
@@ -162,6 +164,7 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
         <button type="button" className="soft" onClick={() => run(() => post("/admin/guild/lock-assessment", {}), "Guild assessment locked")}><Lock size={16} /> End / Lock</button>
         <button type="button" className="soft" onClick={() => run(() => post("/admin/guild/start-ceremony", {}), "Sorting Ceremony started")}><Wand2 size={16} /> Start Ceremony</button>
         <button type="button" className="soft" disabled={guild.status !== "ceremony_active" || !readyStudents.length} onClick={revealAll}>Reveal All</button>
+        <button type="button" className="soft" onClick={() => setRandomOpen(true)}>Random by Section</button>
       </div>
     </section>
     <div className="guild-stat-grid">
@@ -188,6 +191,13 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
       run={run}
       onClose={() => setAssignTarget(null)}
     />}
+    {randomOpen && <RandomGuildModal
+      guild={guild}
+      run={run}
+      onClose={() => setRandomOpen(false)}
+      onDone={(result) => setRandomResult(result)}
+    />}
+    {randomResult && <GuildAssignmentResult result={randomResult} onClose={() => setRandomResult(null)} />}
     {bulkReveal && <div className="modal-backdrop guild-result-backdrop" role="dialog" aria-modal="true">
       <GuildConfetti />
       <section className="modal-card modal-card-wide guild-bulk-reveal-modal">
@@ -248,6 +258,56 @@ function AssignGuildModal({ guild, student, run, onClose }) {
         <Select label="Guild" value={guildId} onChange={setGuildId} options={options} />
         <p className="muted-line">This stays hidden from the student until the Sorting Ceremony reveal.</p>
         <button type="button" disabled={!guildId} onClick={save}>Save Guild Assignment</button>
+      </div>
+    </section>
+  </div>;
+}
+
+function RandomGuildModal({ guild, run, onClose, onDone }) {
+  const sections = (guild.distributionBySection || [])
+    .map((item) => item.section)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  const [section, setSection] = useState(sections[0] || "");
+  async function distribute() {
+    if (!section) return;
+    if (!confirm(`Randomly distribute ${section} into guilds? Existing guild assignments for this section will be replaced.`)) return;
+    const result = await run(() => post("/admin/guild/random-distribute", { section }), "Guilds distributed");
+    if (result) {
+      onDone(result);
+      onClose();
+    }
+  }
+  return <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <section className="modal-card">
+      <div className="section-head">
+        <div className="section-title">Random Guild Distribution</div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      <div className="guild-assign-body">
+        <Select label="Section" value={section} onChange={setSection} options={sections.map((item) => ({ value: item, label: item }))} />
+        <p className="muted-line">This skips the personality test and evenly shuffles the selected section across all guilds.</p>
+        <button type="button" disabled={!section} onClick={distribute}>Distribute Randomly</button>
+      </div>
+    </section>
+  </div>;
+}
+
+function GuildAssignmentResult({ result, onClose }) {
+  return <div className="modal-backdrop guild-result-backdrop" role="dialog" aria-modal="true">
+    <GuildConfetti />
+    <section className="modal-card modal-card-wide guild-bulk-reveal-modal">
+      <div className="section-head">
+        <div className="section-title">Random Guilds Assigned</div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      <p className="muted-line">{result.assignedCount || 0} student{result.assignedCount === 1 ? "" : "s"} assigned in {result.section || "section"}.</p>
+      <div className="guild-bulk-list">
+        {(result.assignments || []).map((item) => <div className="guild-bulk-card" key={item.studentId}>
+          <strong>{item.studentName}</strong>
+          <span>{item.section || "No section"}</span>
+          <b>{item.guild?.name || "Guild"}</b>
+        </div>)}
       </div>
     </section>
   </div>;
