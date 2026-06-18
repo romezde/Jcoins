@@ -464,7 +464,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Subjects") return <Subjects data={data} run={run} />;
   if (tab === "Attendance") return <Attendance data={assistantData} run={run} role={role} />;
   if (tab === "Recitation") return <Recitation data={assistantData} run={run} />;
-  if (tab === "Activities") return role === "student" ? <StudentActivities data={data} /> : <Activities data={data} run={run} />;
+  if (tab === "Activities") return role === "student" ? <StudentActivities data={data} run={run} /> : <Activities data={data} run={run} />;
   if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
   if (tab === "Transactions") return <Transactions data={assistantData} run={run} role={role} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;

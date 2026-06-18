@@ -846,6 +846,47 @@ function activityBase(db, type) {
   return db.settings.activities.types.find((t) => t.name === type)?.points ?? Number(type || 0) ?? 0;
 }
 
+function parseActivityDateTime(value, endOfDay = false) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date(`${text}T${endOfDay ? "23:59:59" : "00:00:00"}+08:00`);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)) return new Date(`${text}:00+08:00`);
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function activityDaysLate(deadline, submittedAt) {
+  const due = parseActivityDateTime(deadline, true);
+  const submitted = parseActivityDateTime(submittedAt);
+  if (!due || !submitted || submitted <= due) return 0;
+  return Math.max(1, Math.ceil((submitted - due) / 86400000));
+}
+
+function activityMaxScoreAllowed(daysLateValue) {
+  return Math.max(0, 100 - Number(daysLateValue || 0) * 10);
+}
+
+function normalizeActivityDeadline(value) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return `${text}T23:59`;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return text.slice(0, 16);
+  return `${today()}T23:59`;
+}
+
+function cleanActivityFile(file = {}) {
+  const fileName = String(file.fileName || "").trim().slice(0, 180);
+  const fileType = String(file.fileType || "").trim().slice(0, 120);
+  const fileData = String(file.fileData || "");
+  const fileSize = Number(file.fileSize || 0);
+  const extension = fileName.split(".").pop()?.toLowerCase() || "";
+  const allowedExtensions = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
+  if (!fileName || !fileData) throw new Error("Upload a school-related file.");
+  if (!allowedExtensions.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+  if (fileSize > 5 * 1024 * 1024 || fileData.length > 7000000) throw new Error("File is too large. Maximum upload is 5 MB.");
+  if (!/^data:[^;]+;base64,/i.test(fileData)) throw new Error("File upload was not readable. Please try again.");
+  return { fileName, fileType, fileSize, fileData };
+}
+
 function quizRewardValue(db, difficulty) {
   return db.settings.quizzes.difficulties.find((item) => item.name === difficulty)?.points ?? 0;
 }
@@ -1010,26 +1051,38 @@ function hydrateQuizzes(db, user) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
-function daysLate(deadline, submittedDate) {
-  if (!deadline || !submittedDate) return 0;
-  const toDay = (value) => {
-    const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
-    return Date.UTC(year, month - 1, day);
-  };
-  const diff = Math.floor((toDay(submittedDate) - toDay(deadline)) / 86400000);
-  return Math.max(0, diff);
-}
-
 function hydrateActivities(db) {
   return db.activities.map((a) => {
-    a.maxScore = Number(a.maxScore || 0);
+    a.deadline = normalizeActivityDeadline(a.deadline);
+    a.maxScore = 100;
     const base = activityBase(db, a.type);
     const submissions = a.submissions || [];
     const rows = db.students.filter((s) => (s.subjectIds || []).includes(a.subjectId)).map((s) => {
       const sub = submissions.find((x) => x.studentId === s.id) || {};
-      const late = sub.submitted ? daysLate(a.deadline, sub.dateSubmitted) : 0;
+      const submittedAt = sub.submittedAt || sub.dateSubmitted || "";
+      const late = sub.submitted ? activityDaysLate(a.deadline, submittedAt) : 0;
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
-      return { studentId: s.id, studentName: s.name, submitted: !!sub.submitted, dateSubmitted: sub.dateSubmitted || "", daysLate: late, earned, score: sub.score ?? "", remarks: sub.remarks || "" };
+      const maxScoreAllowed = activityMaxScoreAllowed(late);
+      const score = sub.score === "" || sub.score == null ? "" : Math.max(0, Math.min(Number(sub.score || 0), maxScoreAllowed));
+      const file = sub.file || null;
+      return {
+        studentId: s.id,
+        studentName: s.name,
+        submitted: !!sub.submitted,
+        status: sub.submitted ? late ? "Late" : "Submitted" : "Missing",
+        dateSubmitted: submittedAt,
+        submittedAt,
+        daysLate: late,
+        maxScoreAllowed,
+        earned,
+        score,
+        remarks: sub.remarks || "",
+        studentNote: sub.studentNote || "",
+        fileName: file?.fileName || "",
+        fileType: file?.fileType || "",
+        fileSize: file?.fileSize || 0,
+        fileData: file?.fileData || ""
+      };
     });
     return { ...a, subjectName: subjectName(db, a.subjectId), basePoints: base, tracker: `${rows.filter((r) => r.submitted).length}/${rows.length}`, rows };
   });
@@ -1864,7 +1917,7 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
 app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
-  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, dateCreated: req.body.dateCreated || today(), deadline: req.body.deadline || today(), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", maxScore: Math.max(0, Number(req.body.maxScore || 0)), remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
+  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, dateCreated: req.body.dateCreated || today(), deadline: normalizeActivityDeadline(req.body.deadline), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", maxScore: 100, remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
   db.activities.push(activity);
   await writeDb(db);
   res.status(201).json({ activity });
@@ -1893,8 +1946,11 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
     activity.submissions.push(sub);
   }
   sub.submitted = !!req.body.submitted;
-  sub.dateSubmitted = req.body.dateSubmitted || (sub.submitted ? today() : "");
-  const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), Number(activity.maxScore || Infinity)));
+  sub.submittedAt = req.body.submittedAt || req.body.dateSubmitted || (sub.submitted ? now() : "");
+  sub.dateSubmitted = sub.submittedAt;
+  const late = sub.submitted ? activityDaysLate(activity.deadline, sub.submittedAt) : 0;
+  const maxScoreAllowed = activityMaxScoreAllowed(late);
+  const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
   sub.score = Number.isFinite(score) || score === "" ? score : "";
   sub.remarks = req.body.remarks || "";
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
@@ -1911,6 +1967,45 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
   await writeDb(db);
   res.json({ submission: sub });
+});
+
+app.post("/api/student/activities/:id/submit", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  const student = db.students.find((s) => s.id === req.user.studentId);
+  if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(403).json({ error: "This activity is not assigned to you." });
+  let file;
+  try {
+    file = cleanActivityFile(req.body.file);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  let sub = activity.submissions.find((item) => item.studentId === req.user.studentId);
+  if (!sub) {
+    sub = { studentId: req.user.studentId };
+    activity.submissions.push(sub);
+  }
+  const submittedAt = now();
+  sub.submitted = true;
+  sub.submittedAt = submittedAt;
+  sub.dateSubmitted = submittedAt;
+  sub.studentNote = String(req.body.studentNote || "").slice(0, 500);
+  sub.file = { ...file, uploadedAt: submittedAt };
+  const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
+  const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);
+  sub.snapshot = {
+    type: activity.type,
+    basePoints: hydrated.basePoints,
+    latePenaltyPerDay: Number(db.settings.activities.latePenaltyPerDay || 0),
+    daysLate: row.daysLate,
+    earned: row.earned
+  };
+  const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === req.user.studentId);
+  if (existing) existing.amount = row.earned;
+  else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+  await writeDb(db);
+  res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileName: file.fileName } });
 });
 
 function quizFromBody(db, body, user, existing = {}) {

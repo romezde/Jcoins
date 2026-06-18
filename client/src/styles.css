@@ -2451,6 +2451,18 @@ td button {
   min-height: 38px;
   padding: 8px 10px;
 }
+.activity-upload-box {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+.activity-upload-box input {
+  min-width: 0;
+}
+.file-view-link {
+  max-width: 180px;
+  overflow-wrap: anywhere;
+}
 .champion-avatar {
   width: 58px;
   height: 58px;

@@ -39,24 +39,75 @@ export function StudentProfile({ data, run }) {
   </div>;
 }
 
-export function StudentActivities({ data }) {
+export function StudentActivities({ data, run }) {
   const [search, setSearch] = useState("");
+  const [notes, setNotes] = useState({});
   const q = search.trim().toLowerCase();
   const rows = data.activities.flatMap((activity) => activity.rows.filter((row) => row.studentId === data.student.id).map((row) => ({
+    id: activity.id,
     activity: activity.title,
     subject: activity.subjectName,
     deadline: activity.deadline,
-    status: row.submitted ? "Submitted" : "Pending",
+    status: row.status || (row.submitted ? "Submitted" : "Missing"),
+    submittedAt: row.submittedAt,
     daysLate: row.daysLate,
-    earned: row.earned
+    maxScoreAllowed: row.maxScoreAllowed,
+    score: row.score,
+    earned: row.earned,
+    fileName: row.fileName,
+    fileData: row.fileData,
+    studentNote: row.studentNote
   }))).filter((row) => !q || Object.values(row).some((value) => String(value || "").toLowerCase().includes(q)));
+  async function uploadSubmission(activityId, file) {
+    if (!file) return;
+    await run(async () => {
+      const upload = await fileToActivityUpload(file);
+      return post(`/student/activities/${activityId}/submit`, { file: upload, studentNote: notes[activityId] || "" });
+    }, "Activity submitted");
+  }
   return <Panel title="My Activities" wide defaultOpen>
     <div className="filter-bar">
       <Field label="Search Activities" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} activit{rows.length === 1 ? "y" : "ies"}</div>
     </div>
-    <Table columns={["Activity", "Subject", "Deadline", "Submitted", "Days Late", "Earned"]} rows={rows.map((row) => [row.activity, row.subject, row.deadline, row.status, row.daysLate, row.earned])} />
+    <Table columns={["Activity", "Subject", "Deadline", "Status", "Submitted At", "Late", "Max Score", "Score", "File", "Upload"]} rows={rows.map((row) => [
+      row.activity,
+      row.subject,
+      formatActivityDateTime(row.deadline),
+      row.status,
+      row.submittedAt ? formatActivityDateTime(row.submittedAt) : "-",
+      row.daysLate,
+      row.maxScoreAllowed,
+      row.score === "" || row.score == null ? "-" : row.score,
+      row.fileName ? <a className="soft file-view-link" href={row.fileData} download={row.fileName} target="_blank" rel="noreferrer">{row.fileName}</a> : "-",
+      <div className="activity-upload-box">
+        <input value={notes[row.id] ?? row.studentNote ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Optional note" />
+        <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} onChange={(e) => uploadSubmission(row.id, e.target.files?.[0])} /></label>
+      </div>
+    ])} />
   </Panel>;
+}
+
+const activityFileAccept = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv";
+
+function fileToActivityUpload(file) {
+  const allowed = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!allowed.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("File is too large. Maximum upload is 5 MB.");
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ fileName: file.name, fileType: file.type || "application/octet-stream", fileSize: file.size, fileData: reader.result });
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatActivityDateTime(value) {
+  const text = String(value || "");
+  if (!text) return "-";
+  const date = new Date(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text) ? `${text}:00+08:00` : text);
+  return Number.isNaN(date.getTime()) ? text : date.toLocaleString();
 }
 
 export function StudentHistory({ data }) {
