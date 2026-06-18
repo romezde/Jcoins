@@ -120,6 +120,7 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
         ? <button type="button" className="soft" disabled={guild.status !== "ceremony_active" || loadingReveal} onClick={() => setCeremony({ phase: "ready", student })}>Reveal</button>
         : null}
       {role === "admin" && <button type="button" className="soft" onClick={() => setAssignTarget(student)}>Assign</button>}
+      {role === "admin" && student.submitted && <button type="button" className="danger" onClick={() => removeGuild(student)}>Remove</button>}
     </div>;
     return [
     student.studentName,
@@ -151,6 +152,11 @@ function StaffGuildCeremony({ guild, run, role, revealSeconds = 10 }) {
     if (!confirm(`Reveal all ${readyStudents.length} ready student${readyStudents.length === 1 ? "" : "s"}?`)) return;
     const result = await run(() => post("/admin/guild/reveal-all", {}), "All ready guilds revealed");
     if (result?.revealed) setBulkReveal(result.revealed);
+  }
+
+  async function removeGuild(student) {
+    if (!confirm(`Remove guild assignment for ${student.studentName}?`)) return;
+    await run(() => post(`/admin/guild/students/${student.studentId}/remove`, {}), "Guild removed");
   }
 
   return <>

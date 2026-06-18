@@ -1503,6 +1503,17 @@ app.post("/api/admin/guild/students/:id/assign", auth, requireRole("admin"), asy
   res.json({ studentId: student.id, studentName: student.name, guild: publicGuild(guild.id) });
 });
 
+app.post("/api/admin/guild/students/:id/remove", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  db.guildSystem = normalizeGuildSystem(db.guildSystem);
+  const student = db.students.find((item) => item.id === req.params.id);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const before = db.guildSystem.responses.length;
+  db.guildSystem.responses = db.guildSystem.responses.filter((response) => response.studentId !== student.id);
+  await writeDb(db);
+  res.json({ studentId: student.id, studentName: student.name, removed: before !== db.guildSystem.responses.length });
+});
+
 app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, res) => {
   const db = await readDb();
   db.guildSystem = normalizeGuildSystem(db.guildSystem);
