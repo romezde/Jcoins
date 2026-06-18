@@ -41,7 +41,7 @@ export default function Activities({ data, run }) {
 function ActivityCard({ activity, run }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
-  const rows = activity.rows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.score, row.remarks, row.fileName, row.status].some((value) => String(value || "").toLowerCase().includes(q)));
+  const rows = activity.rows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.score, row.remarks, row.fileNames, row.fileName, row.status].some((value) => String(value || "").toLowerCase().includes(q)));
   return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{activity.tracker} submitted</strong><button type="button" className="soft" onClick={() => exportActivity(activity)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
     <p className="muted-line">{activity.subjectName} | {activity.type} | deadline {formatActivityDateTime(activity.deadline)} | base {activity.basePoints} JC | actual score 0-100</p>
     <div className="filter-bar">
@@ -55,7 +55,7 @@ function ActivityCard({ activity, run }) {
       r.daysLate,
       r.maxScoreAllowed,
       <input className="score-input" type="number" min="0" max={r.maxScoreAllowed} defaultValue={r.score ?? ""} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: e.target.value, remarks: r.remarks }), "Score saved")} />,
-      r.fileName ? <a className="soft file-view-link" href={r.fileData} download={r.fileName} target="_blank" rel="noreferrer">{r.fileName}</a> : "-",
+      <ActivityFileLinks files={r.files?.length ? r.files : r.fileName ? [{ fileName: r.fileName, fileData: r.fileData }] : []} />,
       r.earned,
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
@@ -99,10 +99,18 @@ function exportActivity(activity) {
     row.daysLate,
     row.maxScoreAllowed,
     row.score ?? "",
-    row.fileName || "",
+    row.fileNames || row.fileName || "",
     row.remarks || "",
     row.earned
   ]), activity.title);
+}
+
+function ActivityFileLinks({ files }) {
+  const list = (files || []).filter((file) => file.fileName && file.fileData);
+  if (!list.length) return "-";
+  return <div className="activity-file-list">
+    {list.map((file, index) => <a className="soft file-view-link" href={file.fileData} download={file.fileName} target="_blank" rel="noreferrer" key={`${file.fileName}-${index}`}>{file.fileName}</a>)}
+  </div>;
 }
 
 function toDatetimeLocal(value) {

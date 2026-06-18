@@ -56,13 +56,15 @@ export function StudentActivities({ data, run }) {
     earned: row.earned,
     fileName: row.fileName,
     fileData: row.fileData,
+    files: row.files || [],
     studentNote: row.studentNote
   }))).filter((row) => !q || Object.values(row).some((value) => String(value || "").toLowerCase().includes(q)));
-  async function uploadSubmission(activityId, file) {
-    if (!file) return;
+  async function uploadSubmission(activityId, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
     await run(async () => {
-      const upload = await fileToActivityUpload(file);
-      return post(`/student/activities/${activityId}/submit`, { file: upload, studentNote: notes[activityId] || "" });
+      const upload = await filesToActivityUpload(files);
+      return post(`/student/activities/${activityId}/submit`, { files: upload, studentNote: notes[activityId] || "" });
     }, "Activity submitted");
   }
   return <Panel title="My Activities" wide defaultOpen>
@@ -79,10 +81,10 @@ export function StudentActivities({ data, run }) {
       row.daysLate,
       row.maxScoreAllowed,
       row.score === "" || row.score == null ? "-" : row.score,
-      row.fileName ? <a className="soft file-view-link" href={row.fileData} download={row.fileName} target="_blank" rel="noreferrer">{row.fileName}</a> : "-",
+      <ActivityFileLinks files={row.files?.length ? row.files : row.fileName ? [{ fileName: row.fileName, fileData: row.fileData }] : []} />,
       <div className="activity-upload-box">
         <input value={notes[row.id] ?? row.studentNote ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Optional note" />
-        <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} onChange={(e) => uploadSubmission(row.id, e.target.files?.[0])} /></label>
+        <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple onChange={(e) => uploadSubmission(row.id, e.target.files)} /></label>
       </div>
     ])} />
   </Panel>;
@@ -90,17 +92,33 @@ export function StudentActivities({ data, run }) {
 
 const activityFileAccept = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv";
 
-function fileToActivityUpload(file) {
+async function filesToActivityUpload(files) {
   const allowed = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
-  const extension = file.name.split(".").pop()?.toLowerCase() || "";
-  if (!allowed.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("File is too large. Maximum upload is 5 MB.");
+  if (files.length > 10) throw new Error("Upload up to 10 photos at a time.");
+  const imageExtensions = ["jpg", "jpeg", "png", "webp"];
+  const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase() || "");
+  if (extensions.some((extension) => !allowed.includes(extension))) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+  if (files.length > 1 && extensions.some((extension) => !imageExtensions.includes(extension))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
+  if (files.some((file) => file.size > 5 * 1024 * 1024)) throw new Error("Each file must be 5 MB or less.");
+  if (files.reduce((sum, file) => sum + file.size, 0) > 15 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 15 MB.");
+  return Promise.all(files.map(fileToActivityUpload));
+}
+
+function fileToActivityUpload(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({ fileName: file.name, fileType: file.type || "application/octet-stream", fileSize: file.size, fileData: reader.result });
     reader.onerror = () => reject(new Error("Could not read that file."));
     reader.readAsDataURL(file);
   });
+}
+
+function ActivityFileLinks({ files }) {
+  const list = (files || []).filter((file) => file.fileName && file.fileData);
+  if (!list.length) return "-";
+  return <div className="activity-file-list">
+    {list.map((file, index) => <a className="soft file-view-link" href={file.fileData} download={file.fileName} target="_blank" rel="noreferrer" key={`${file.fileName}-${index}`}>{file.fileName}</a>)}
+  </div>;
 }
 
 function formatActivityDateTime(value) {

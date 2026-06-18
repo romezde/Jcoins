@@ -911,6 +911,23 @@ function cleanActivityFile(file = {}) {
   return { fileName, fileType, fileSize, fileData };
 }
 
+function activityFileIsImage(file = {}) {
+  const extension = String(file.fileName || "").split(".").pop()?.toLowerCase() || "";
+  return ["jpg", "jpeg", "png", "webp"].includes(extension) || String(file.fileType || "").toLowerCase().startsWith("image/");
+}
+
+function cleanActivityFiles(body = {}) {
+  const incoming = Array.isArray(body.files) && body.files.length ? body.files : [body.file].filter(Boolean);
+  if (!incoming.length) throw new Error("Upload a school-related file.");
+  if (incoming.length > 10) throw new Error("Upload up to 10 photos at a time.");
+  const files = incoming.map(cleanActivityFile);
+  if (files.length > 1 && files.some((file) => !activityFileIsImage(file))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
+  const totalSize = files.reduce((sum, file) => sum + Number(file.fileSize || 0), 0);
+  const totalData = files.reduce((sum, file) => sum + String(file.fileData || "").length, 0);
+  if (totalSize > 15 * 1024 * 1024 || totalData > 21000000) throw new Error("Photos are too large together. Maximum total upload is 15 MB.");
+  return files;
+}
+
 function quizRewardValue(db, difficulty) {
   return db.settings.quizzes.difficulties.find((item) => item.name === difficulty)?.points ?? 0;
 }
@@ -1088,7 +1105,8 @@ function hydrateActivities(db) {
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
       const maxScoreAllowed = activityMaxScoreAllowed(late);
       const score = sub.score === "" || sub.score == null ? "" : Math.max(0, Math.min(Number(sub.score || 0), maxScoreAllowed));
-      const file = sub.file || null;
+      const files = Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
+      const file = files[0] || null;
       return {
         studentId: s.id,
         studentName: s.name,
@@ -1105,7 +1123,9 @@ function hydrateActivities(db) {
         fileName: file?.fileName || "",
         fileType: file?.fileType || "",
         fileSize: file?.fileSize || 0,
-        fileData: file?.fileData || ""
+        fileData: file?.fileData || "",
+        files,
+        fileNames: files.map((item) => item.fileName).filter(Boolean).join(", ")
       };
     });
     return { ...a, subjectName: subjectName(db, a.subjectId), basePoints: base, tracker: `${rows.filter((r) => r.submitted).length}/${rows.length}`, rows };
@@ -2068,9 +2088,9 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), asy
   if (!activity) return res.status(404).json({ error: "Activity not found." });
   const student = db.students.find((s) => s.id === req.user.studentId);
   if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(403).json({ error: "This activity is not assigned to you." });
-  let file;
+  let files;
   try {
-    file = cleanActivityFile(req.body.file);
+    files = cleanActivityFiles(req.body);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -2084,7 +2104,8 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), asy
   sub.submittedAt = submittedAt;
   sub.dateSubmitted = submittedAt;
   sub.studentNote = String(req.body.studentNote || "").slice(0, 500);
-  sub.file = { ...file, uploadedAt: submittedAt };
+  sub.files = files.map((file) => ({ ...file, uploadedAt: submittedAt }));
+  sub.file = sub.files[0] || null;
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
   const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);
   sub.snapshot = {
@@ -2098,7 +2119,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), asy
   if (existing) existing.amount = row.earned;
   else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
   await writeDb(db);
-  res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileName: file.fileName } });
+  res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileNames: files.map((file) => file.fileName) } });
 });
 
 function quizFromBody(db, body, user, existing = {}) {
