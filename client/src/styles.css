@@ -345,6 +345,16 @@ input::placeholder {
   font-size: 10px;
   font-weight: 900;
 }
+.install-button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.install-tip-card {
+  max-width: min(380px, calc(100vw - 28px));
+}
 .notification-wrap {
   position: relative;
   flex: 0 0 auto;
@@ -3267,20 +3277,25 @@ td button {
     flex: 0 0 auto;
   }
   .notification-wrap {
-    order: 2;
+    order: 3;
     flex: 0 0 auto;
   }
+  .install-button {
+    order: 2;
+    min-height: 42px;
+    padding: 0 10px;
+  }
   .live-status {
-    order: 3;
+    order: 4;
     flex: 0 0 auto;
     padding: 6px 8px;
   }
   .nav-user {
-    order: 4;
+    order: 5;
     margin-left: auto;
   }
   .global-search {
-    order: 5;
+    order: 6;
     flex-basis: 100%;
     max-width: none;
     min-width: 0;

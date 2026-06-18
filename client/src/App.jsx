@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bell, CheckCircle2, LogOut, Menu, Search, Shield, X } from "lucide-react";
+import { Bell, CheckCircle2, Download, LogOut, Menu, Search, Shield, X } from "lucide-react";
 import { adminTabs, eventUrl, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { DropdownChecklist, Field, Select } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
@@ -363,6 +363,7 @@ function RoleApp({ session, logout }) {
       <header className="topbar">
         <button className="hamburger" onClick={() => setNavOpen(!navOpen)}>{navOpen ? <X /> : <Menu />}</button>
         <GlobalSearch tabs={tabs} data={normalized} navigate={navigate} />
+        <InstallAppButton />
         <NotificationBell role={session.user.role} userId={session.user.id} data={normalized} navigate={navigate} />
         <LiveStatus status={liveStatus} lastUpdated={lastUpdated} />
         <div className="nav-user"><span>{session.user.role}</span><button onClick={logout}><LogOut size={16} /> Logout</button></div>
@@ -401,6 +402,73 @@ function LiveStatus({ status, lastUpdated }) {
     <span>{label}</span>
     {lastUpdated && <small>{lastUpdated}</small>}
   </div>;
+}
+
+function InstallAppButton() {
+  const [promptEvent, setPromptEvent] = useState(null);
+  const [visible, setVisible] = useState(() => !isStandaloneApp());
+  const [tip, setTip] = useState("");
+
+  useEffect(() => {
+    const onPrompt = (event) => {
+      event.preventDefault();
+      setPromptEvent(event);
+      setVisible(!isStandaloneApp());
+    };
+    const onInstalled = () => {
+      setPromptEvent(null);
+      setVisible(false);
+      setTip("");
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  if (!visible) return null;
+
+  async function install() {
+    if (isStandaloneApp()) {
+      setVisible(false);
+      return;
+    }
+    if (promptEvent) {
+      promptEvent.prompt();
+      const choice = await promptEvent.userChoice.catch(() => null);
+      setPromptEvent(null);
+      if (choice?.outcome === "accepted") setVisible(false);
+      return;
+    }
+    setTip(isIOSDevice()
+      ? "On iPhone or iPad: tap Share, then choose Add to Home Screen."
+      : "Use your browser menu, then choose Install app or Add to Home Screen.");
+  }
+
+  return <>
+    <button type="button" className="soft install-button" onClick={install} title="Install JCoins">
+      <Download size={16} />
+      <span>Install</span>
+    </button>
+    {tip && <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <section className="modal-card install-tip-card">
+        <div className="section-title">Install JCoins</div>
+        <p>{tip}</p>
+        <button type="button" onClick={() => setTip("")}>OK</button>
+      </section>
+    </div>}
+  </>;
+}
+
+function isStandaloneApp() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function isIOSDevice() {
+  const platform = window.navigator.platform || "";
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent) || (platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
 }
 
 function shouldClearSession(message = "") {
