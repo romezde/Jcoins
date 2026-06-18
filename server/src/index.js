@@ -702,6 +702,21 @@ function studentCoins(db, studentId) {
   return db.transactions.filter((t) => t.studentId === studentId).reduce((sum, t) => sum + Number(t.amount || 0), 0);
 }
 
+function studentSurnameFromName(name) {
+  const text = String(name || "").trim();
+  if (!text) return "student assistant";
+  if (text.includes(",")) return text.split(",")[0].trim() || "student assistant";
+  return text.split(/\s+/)[0] || "student assistant";
+}
+
+function assistantCreditRemark(db, user, remarks = "") {
+  const base = String(remarks || "").trim();
+  if (user.role !== "student") return base;
+  const assistant = db.students.find((student) => student.id === user.studentId);
+  const credit = `given by ${studentSurnameFromName(assistant?.name)}`;
+  return base ? `${base} | ${credit}` : credit;
+}
+
 function equippedAppearance(db, studentId) {
   const equipped = db.appearanceEquipped?.[studentId] || {};
   const entries = Object.fromEntries(appearanceTypes.map((type) => {
@@ -1119,28 +1134,39 @@ function recitationBonus(db, studentId, week) {
   return dates.every((date) => db.recitations.some((r) => r.subjectId === week.subjectId && r.studentId === studentId && r.date === date));
 }
 
-function syncAttendanceTransaction(db, record, week, userId = "system") {
+function syncAttendanceTransaction(db, record, week, userId = "system", noteSuffix = "") {
   const existing = db.transactions.find((t) => t.meta?.kind === "attendance" && t.meta.recordId === record.id);
   const amount = record.status === "check" ? db.settings.attendance.onTimePoints : record.status === "late" ? db.settings.attendance.latePoints : 0;
-  if (existing) existing.amount = amount;
-  else if (amount) db.transactions.push(tx(record.studentId, "attendance", amount, `${subjectName(db, week?.subjectId)} attendance ${record.date}`, now(), userId, { kind: "attendance", recordId: record.id, weekId: record.weekId, date: record.date }));
+  const baseNote = `${subjectName(db, week?.subjectId)} attendance ${record.date}`;
+  const transactionNote = noteSuffix ? `${baseNote} | ${noteSuffix}` : baseNote;
+  if (existing) {
+    existing.amount = amount;
+    existing.note = transactionNote;
+  } else if (amount) {
+    db.transactions.push(tx(record.studentId, "attendance", amount, transactionNote, now(), userId, { kind: "attendance", recordId: record.id, weekId: record.weekId, date: record.date }));
+  }
 }
 
-function syncWeekBonus(db, studentId, week, kind, earned, amount, userId = "system") {
+function syncWeekBonus(db, studentId, week, kind, earned, amount, userId = "system", noteSuffix = "") {
   const existing = db.transactions.find((t) => t.meta?.kind === kind && t.meta.weekId === week.id && t.studentId === studentId);
+  const note = `${subjectName(db, week.subjectId)} ${week.title} bonus${noteSuffix ? ` | ${noteSuffix}` : ""}`;
   if (earned) {
-    if (existing) existing.amount = amount;
-    else db.transactions.push(tx(studentId, kind === "attendance-week-bonus" ? "attendance_bonus" : "recitation_bonus", amount, `${subjectName(db, week.subjectId)} ${week.title} bonus`, now(), userId, { kind, weekId: week.id, subjectId: week.subjectId }));
+    if (existing) {
+      existing.amount = amount;
+      existing.note = note;
+    } else {
+      db.transactions.push(tx(studentId, kind === "attendance-week-bonus" ? "attendance_bonus" : "recitation_bonus", amount, note, now(), userId, { kind, weekId: week.id, subjectId: week.subjectId }));
+    }
   } else if (existing) {
     existing.amount = 0;
   }
 }
 
-function syncWeekBonuses(db, week, userId = "system") {
+function syncWeekBonuses(db, week, userId = "system", noteSuffix = "") {
   const students = db.students.filter((student) => (student.subjectIds || []).includes(week.subjectId));
   students.forEach((student) => {
-    syncWeekBonus(db, student.id, week, "attendance-week-bonus", attendanceBonus(db, student.id, week), Number(db.settings.attendance.weeklyBonus || 0), userId);
-    syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), userId);
+    syncWeekBonus(db, student.id, week, "attendance-week-bonus", attendanceBonus(db, student.id, week), Number(db.settings.attendance.weeklyBonus || 0), userId, noteSuffix);
+    syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), userId, noteSuffix);
   });
 }
 
@@ -1900,6 +1926,7 @@ app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (r
   const db = await readDb();
   let assistantAssignment = null;
   try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  const assistantCredit = assistantCreditRemark(db, req.user);
   const { weekId, date, studentId, status } = req.body;
   if (!assistantCanUseDate(req.user, assistantAssignment, date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
@@ -1914,8 +1941,8 @@ app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (r
     db.attendanceRecords.push(record);
   }
   record.status = status;
-  syncAttendanceTransaction(db, record, week, req.user.id);
-  if (week) syncWeekBonuses(db, week, req.user.id);
+  syncAttendanceTransaction(db, record, week, req.user.id, assistantCredit);
+  if (week) syncWeekBonuses(db, week, req.user.id, assistantCredit);
   await writeDb(db);
   res.json({ record });
 });
@@ -1924,6 +1951,7 @@ app.post("/api/admin/attendance/check-all", auth, requireStaffOrAssistant, async
   const db = await readDb();
   let assistantAssignment = null;
   try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  const assistantCredit = assistantCreditRemark(db, req.user);
   if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const week = db.attendanceWeeks.find((w) => w.id === req.body.weekId);
   if (!week) return res.status(404).json({ error: "Week not found." });
@@ -1935,9 +1963,9 @@ app.post("/api/admin/attendance/check-all", auth, requireStaffOrAssistant, async
       db.attendanceRecords.push(record);
     }
     record.status = req.body.status ?? "check";
-    syncAttendanceTransaction(db, record, week, req.user.id);
+    syncAttendanceTransaction(db, record, week, req.user.id, assistantCredit);
   });
-  syncWeekBonuses(db, week, req.user.id);
+  syncWeekBonuses(db, week, req.user.id, assistantCredit);
   await writeDb(db);
   res.json({ ok: true });
 });
@@ -1946,6 +1974,8 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
   const db = await readDb();
   let assistantAssignment = null;
   try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
+  const assistantCredit = assistantCreditRemark(db, req.user);
+  const remarks = assistantCreditRemark(db, req.user, req.body.remarks);
   if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date || today())) return res.status(403).json({ error: "Student assistants can only add recitations inside their assigned week." });
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
   if (!canUseSubjectForAction(db, req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
@@ -1962,7 +1992,7 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
     subjectId: req.body.subjectId,
     date: req.body.date || today(),
     amount,
-    remarks: req.body.remarks || "",
+    remarks,
     createdAt,
     createdBy: req.user.id
   }));
@@ -1971,7 +2001,7 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
     db.transactions.push(tx(recitation.studentId, "recitation", amount, `Recitation: ${recitation.remarks || subjectName(db, recitation.subjectId)}`, recitation.createdAt, req.user.id, { kind: "recitation", recitationId: recitation.id, subjectId: recitation.subjectId }));
   });
   db.attendanceWeeks.filter((week) => week.subjectId === req.body.subjectId && (week.dates || []).includes(req.body.date || today())).forEach((week) => {
-    students.forEach((student) => syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), req.user.id));
+    students.forEach((student) => syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), req.user.id, assistantCredit));
   });
   await writeDb(db);
   res.status(201).json({ createdCount: recitations.length, recitations });
@@ -2219,6 +2249,7 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
   const type = req.body.type || "adjustment";
   if (req.user.role === "student" && !["bonus", "adjustment", "penalty"].includes(type)) return res.status(403).json({ error: "Student assistants can only add bonus, adjustment, or penalty transactions." });
+  const assistantTransactionRemark = assistantCreditRemark(db, req.user, req.body.remarks);
   if (type === "trade") {
     if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
     if (!allowedStudentIds.has(req.body.fromStudentId)) return res.status(403).json({ error: "The trade source student is outside your assigned class scope." });
@@ -2237,8 +2268,9 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
     } else {
       const sign = type === "penalty" ? -1 : 1;
       const amount = sign * Number(req.body.amount || 0);
+      const note = req.user.role === "student" ? assistantTransactionRemark : req.body.remarks || type;
       targetIds.forEach((studentId) => {
-        db.transactions.push(tx(studentId, type, amount, req.body.remarks || type, now(), req.user.id));
+        db.transactions.push(tx(studentId, type, amount, note, now(), req.user.id));
       });
     }
   }
