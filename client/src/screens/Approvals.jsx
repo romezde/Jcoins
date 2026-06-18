@@ -12,7 +12,7 @@ export default function Approvals({ data, run }) {
     r.status === "pending" ? <div className="inline">
       <button onClick={() => run(() => post(`/admin/requests/${r.id}/resolve`, { status: "approved" }), "Request approved")}>Approve</button>
       <button className="danger" onClick={() => run(() => post(`/admin/requests/${r.id}/resolve`, { status: "rejected" }), "Request rejected")}>Reject</button>
-    </div> : "Done"
+    </div> : r.type === "registration" && r.status === "created" ? "No approval needed" : "Done"
   ])} />;
 }
 

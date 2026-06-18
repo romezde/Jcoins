@@ -381,11 +381,11 @@ function notificationItems(role, data) {
   const requests = data?.requests || [];
   if (role === "admin" || role === "teacher") {
     const requestItems = requests
-      .filter((request) => request.status === "pending")
+      .filter((request) => request.status === "pending" || (request.type === "registration" && request.status === "created"))
       .map((request) => ({
         id: request.id,
         tab: "Approvals",
-        title: `${request.type} request`,
+        title: request.type === "registration" && request.status === "created" ? "Student registered" : `${request.type} request`,
         detail: `${request.studentName || "Student"}${request.itemName ? ` - ${request.itemName}` : request.toStudentName ? ` - Trade with ${request.toStudentName}` : ""}`,
         date: new Date(request.createdAt).toLocaleString()
       }));
