@@ -24,6 +24,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
@@ -729,7 +730,7 @@ function purgeOrphanStudentUsers(db) {
 }
 
 function sign(user) {
-  return jwt.sign(publicUser(user), JWT_SECRET, { expiresIn: "12h" });
+  return jwt.sign(publicUser(user), JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
 function auth(req, res, next) {

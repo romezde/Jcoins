@@ -472,16 +472,12 @@ function isIOSDevice() {
 }
 
 function shouldClearSession(message = "") {
-  return ["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message)
-    || message.includes("Server took too long")
-    || message.includes("Failed to fetch")
-    || message.includes("NetworkError")
-    || message.includes("Load failed");
+  return ["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message);
 }
 
 function sessionResetMessage(message = "") {
   if (["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message)) return "Your session expired. Please log in again.";
-  return "The backend was offline or still waking up, so the app cleared the stuck session. Refresh after a few seconds, then log in again.";
+  return "The app could not reach the server. Refresh after a few seconds and try again.";
 }
 
 function GlobalSearch({ tabs, data, navigate }) {
