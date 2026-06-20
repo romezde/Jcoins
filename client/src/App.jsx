@@ -195,19 +195,26 @@ function RoleApp({ session, logout }) {
   const busyRef = useRef(false);
   const loadInFlightRef = useRef(false);
   const pendingLoadRef = useRef(false);
+  const pendingModulesRef = useRef(new Set());
   const realtimeTimerRef = useRef(null);
+  const loadedModulesRef = useRef(new Set());
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
 
-  async function load() {
+  async function load(modules = []) {
     if (loadInFlightRef.current) {
       pendingLoadRef.current = true;
+      modules.forEach((module) => pendingModulesRef.current.add(module));
       return;
     }
     loadInFlightRef.current = true;
     try {
       setLoadError("");
-      setData(await request(session.user.role === "student" ? "/student/me" : session.user.role === "display" ? "/leaderboard" : "/admin/overview"));
+      const nextModules = new Set([...loadedModulesRef.current, ...modules]);
+      const query = nextModules.size ? `?modules=${encodeURIComponent([...nextModules].join(","))}` : "";
+      const path = session.user.role === "student" ? `/student/me${query}` : session.user.role === "display" ? "/leaderboard" : `/admin/overview${query}`;
+      setData(await request(path));
+      loadedModulesRef.current = nextModules;
       setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (err) {
       setLoadError(err.message);
@@ -218,13 +225,19 @@ function RoleApp({ session, logout }) {
     } finally {
       loadInFlightRef.current = false;
       if (pendingLoadRef.current) {
+        const pendingModules = [...pendingModulesRef.current];
+        pendingModulesRef.current = new Set();
         pendingLoadRef.current = false;
-        window.setTimeout(load, 50);
+        window.setTimeout(() => load(pendingModules), 50);
       }
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(requiredModulesForTab(active, session.user.role)); }, []);
+  useEffect(() => {
+    const needed = requiredModulesForTab(active, session.user.role);
+    if (needed.some((module) => !loadedModulesRef.current.has(module))) load(needed);
+  }, [active, session.user.role]);
   useEffect(() => {
     const scheduleRefresh = (delay = 900) => {
       window.clearTimeout(realtimeTimerRef.current);
@@ -333,7 +346,7 @@ function RoleApp({ session, logout }) {
     setSuccessModal("");
     try {
       const result = await fn();
-      await load();
+      await load(requiredModulesForTab(active, session.user.role));
       window.dispatchEvent(new CustomEvent("jcoins:action-success"));
       setSuccessModal(ok);
       return result ?? true;
@@ -619,6 +632,32 @@ function buildSearchResults(tabs, data) {
   (data?.schedules || []).forEach((schedule) => add(list, "Schedule", `${schedule.subjectName} ${schedule.day}`, "Schedule", `${schedule.section} ${schedule.startTime} ${schedule.endTime} ${schedule.room} ${schedule.type}`));
   (data?.guildSystem?.students || []).forEach((student) => add(list, "Guild", student.studentName, "Guild Affinity", `${student.section} ${student.status}`));
   return list;
+}
+
+function requiredModulesForTab(tab, role) {
+  if (role === "display") return [];
+  if (tab === "Leaderboard" && role === "student") return ["guild"];
+  const map = {
+    Dashboard: ["dashboard"],
+    Schedule: ["schedule"],
+    "Guild Affinity": ["guild"],
+    People: ["people"],
+    Attendance: ["attendance"],
+    Recitation: ["recitations"],
+    Activities: ["activities"],
+    Quizzes: ["quizzes"],
+    Transactions: ["transactions"],
+    Shop: ["shop"],
+    "Trade Requests": ["shop"],
+    "Appearance Shop": ["appearance"],
+    Approvals: ["requests"],
+    Feedback: ["feedback"],
+    Settings: ["settings", "guild"],
+    History: ["transactions"],
+    Profile: role === "student" ? ["profile", "transactions"] : [],
+    Reports: ["transactions", "recitations", "activities"]
+  };
+  return map[tab] || [];
 }
 
 function Screen({ role, tab, data, run }) {

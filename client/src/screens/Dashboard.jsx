@@ -21,9 +21,15 @@ export default function Dashboard({ data }) {
   const todaysTransactions = (data.transactions || []).filter((transaction) => String(transaction.createdAt || "").startsWith(today));
   const todaysRecitations = (data.recitations || []).filter((recitation) => recitation.date === today);
   const pendingRequests = (data.requests || []).filter((request) => request.status === "pending");
-  const submittedRows = (data.activities || []).flatMap((activity) => activity.rows || []).filter((row) => row.submitted);
-  const totalActivityRows = (data.activities || []).reduce((sum, activity) => sum + (activity.rows?.length || 0), 0);
-  const submittedPercent = totalActivityRows ? Math.round((submittedRows.length / totalActivityRows) * 100) : 0;
+  const submittedActivityCount = (data.activities || []).reduce((sum, activity) => {
+    if (Number.isFinite(Number(activity.submittedCount))) return sum + Number(activity.submittedCount);
+    return sum + (activity.rows || []).filter((row) => row.submitted).length;
+  }, 0);
+  const totalActivityRows = (data.activities || []).reduce((sum, activity) => {
+    if (Number.isFinite(Number(activity.totalRows))) return sum + Number(activity.totalRows);
+    return sum + (activity.rows?.length || 0);
+  }, 0);
+  const submittedPercent = totalActivityRows ? Math.round((submittedActivityCount / totalActivityRows) * 100) : 0;
   const roleLabel = data.user?.role === "teacher" ? "My Students" : "All Students";
   const jcoinDaily = dailyJCoins(data.transactions || []);
   const recitationDaily = dailyCounts(data.recitations || [], (recitation) => recitation.date, "recitations");

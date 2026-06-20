@@ -1288,6 +1288,32 @@ function hydrateActivities(db) {
   });
 }
 
+function hydrateActivitySummaries(db, visibleStudents = null, subjectIds = null) {
+  const studentPool = visibleStudents || db.students;
+  return db.activities
+    .filter((activity) => !subjectIds || subjectIds.has(activity.subjectId))
+    .map((activity) => {
+      activity.deadline = normalizeActivityDeadline(activity.deadline);
+      const students = studentPool.filter((student) => (student.subjectIds || []).includes(activity.subjectId));
+      const submittedCount = students.filter((student) => (activity.submissions || []).some((submission) => submission.studentId === student.id && submission.submitted)).length;
+      return {
+        id: activity.id,
+        title: activity.title,
+        subjectId: activity.subjectId,
+        subjectName: subjectName(db, activity.subjectId),
+        dateCreated: activity.dateCreated,
+        deadline: activity.deadline,
+        type: activity.type,
+        remarks: activity.remarks || "",
+        basePoints: activityBase(db, activity.type),
+        submittedCount,
+        totalRows: students.length,
+        tracker: `${submittedCount}/${students.length}`,
+        rows: []
+      };
+    });
+}
+
 function activeShopPrice(db, itemId, date = today()) {
   const item = db.shopItems.find((x) => x.id === itemId);
   if (!item) return null;
@@ -1356,7 +1382,17 @@ function removeAttendanceWeek(db, weekId) {
   });
 }
 
-function filteredOverview(db, user) {
+function overviewModules(req, defaults = []) {
+  const raw = String(req.query.modules || "").trim();
+  if (!raw) return null;
+  return new Set([...defaults, ...raw.split(",").map((item) => item.trim()).filter(Boolean)]);
+}
+
+function wantsModule(modules, name) {
+  return !modules || modules.has(name) || modules.has("all");
+}
+
+function filteredOverview(db, user, modules = null) {
   const students = scopeStudents(db, user);
   const studentIds = new Set(students.map((s) => s.id));
   const subjectIds = user.role === "teacher" ? new Set(user.subjectIds || []) : null;
@@ -1372,30 +1408,43 @@ function filteredOverview(db, user) {
     }
     return false;
   });
-  const activities = hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity);
-  const quizzes = hydrateQuizzes(db, user);
-  const transactions = db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc);
+  const includeDashboard = wantsModule(modules, "dashboard");
+  const includeActivities = wantsModule(modules, "activities");
+  const includeQuizzes = wantsModule(modules, "quizzes");
+  const includeTransactions = wantsModule(modules, "transactions") || includeDashboard;
+  const includeAttendance = wantsModule(modules, "attendance") || includeDashboard;
+  const includeRecitations = wantsModule(modules, "recitations") || includeDashboard;
+  const includeShop = wantsModule(modules, "shop") || wantsModule(modules, "transactions") || includeDashboard;
+  const includeAppearance = wantsModule(modules, "appearance");
+  const includeRequests = wantsModule(modules, "requests") || includeDashboard || includeShop;
+  const includeFeedback = wantsModule(modules, "feedback") || includeDashboard;
+  const includeSchedules = wantsModule(modules, "schedule");
+  const includeGuild = wantsModule(modules, "guild") || wantsModule(modules, "settings");
+  const includePeople = wantsModule(modules, "people");
+  const fullActivities = includeActivities ? hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity) : [];
+  const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds) : fullActivities;
+  const transactions = includeTransactions ? db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc) : [];
   return {
     user,
     settings: db.settings,
     subjects: user.role === "teacher" ? db.subjects.filter((subject) => subjectIds.has(subject.id)) : db.subjects,
     sections: db.sections,
     students,
-    users: user.role === "admin" ? db.users.map((u) => userWithStudent(u, db)) : [],
+    users: includePeople && user.role === "admin" ? db.users.map((u) => userWithStudent(u, db)) : [],
     transactions,
-    attendanceWeeks: db.attendanceWeeks.filter((w) => !subjectIds || subjectIds.has(w.subjectId)).map((w) => ({ ...w, subjectName: subjectName(db, w.subjectId) })),
-    attendanceRecords: db.attendanceRecords.filter((r) => studentIds.has(r.studentId)),
-    recitations: db.recitations.filter((r) => studentIds.has(r.studentId)).map((r) => ({ ...r, studentName: studentName(db, r.studentId), subjectName: subjectName(db, r.subjectId) })).sort(byDateDesc),
-    activities,
-    quizzes,
-    shopItems: db.shopItems.map((item) => activeShopPrice(db, item.id)),
-    sales: db.sales,
-    appearanceItems: db.appearanceItems,
-    appearanceGifts: user.role === "admin" ? appearanceGiftRows(db) : [],
-    requests: requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request)).sort(byDateDesc)),
-    feedback: feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))),
-    schedules: scheduleRows(db, visibleScheduleRows),
-    guildSystem: guildSystemView(db, user)
+    attendanceWeeks: includeAttendance ? db.attendanceWeeks.filter((w) => !subjectIds || subjectIds.has(w.subjectId)).map((w) => ({ ...w, subjectName: subjectName(db, w.subjectId) })) : [],
+    attendanceRecords: includeAttendance ? db.attendanceRecords.filter((r) => studentIds.has(r.studentId)) : [],
+    recitations: includeRecitations ? db.recitations.filter((r) => studentIds.has(r.studentId)).map((r) => ({ ...r, studentName: studentName(db, r.studentId), subjectName: subjectName(db, r.subjectId) })).sort(byDateDesc) : [],
+    activities: includeActivities ? fullActivities : activitySummaries,
+    quizzes: includeQuizzes ? hydrateQuizzes(db, user) : [],
+    shopItems: includeShop ? db.shopItems.map((item) => activeShopPrice(db, item.id)) : [],
+    sales: includeShop ? db.sales : [],
+    appearanceItems: includeAppearance ? db.appearanceItems : [],
+    appearanceGifts: includeAppearance && user.role === "admin" ? appearanceGiftRows(db) : [],
+    requests: includeRequests ? requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request)).sort(byDateDesc)) : [],
+    feedback: includeFeedback ? feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))) : [],
+    schedules: includeSchedules ? scheduleRows(db, visibleScheduleRows) : [],
+    guildSystem: includeGuild ? guildSystemView(db, user) : {}
   };
 }
 
@@ -1553,25 +1602,28 @@ app.get("/api/leaderboard", async (req, res) => {
 
 app.get("/api/me", auth, async (req, res) => {
   const db = await readDb();
-  res.json(filteredOverview(db, req.user));
+  res.json(filteredOverview(db, req.user, overviewModules(req)));
 });
 
 app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
   const db = await readDb();
-  const overview = filteredOverview(db, req.user);
+  const modules = overviewModules(req, ["leaderboard"]);
+  const overview = filteredOverview(db, req.user, modules);
   const student = overview.students[0];
   const allStudents = hideProfilePhotos(hydrateStudents(db));
-  const inventory = db.appearanceInventory
+  const includeProfile = wantsModule(modules, "profile");
+  const includeAppearance = wantsModule(modules, "appearance");
+  const inventory = includeAppearance ? db.appearanceInventory
     .filter((entry) => entry.studentId === student.id)
     .map((entry) => ({ ...entry, item: appearanceItem(db, entry.itemId) }))
-    .filter((entry) => entry.item);
-  const gifts = appearanceGiftRows(db, student.id);
-  const weeks = db.attendanceWeeks.filter((w) => (student.subjectIds || []).includes(w.subjectId)).map((w) => ({
+    .filter((entry) => entry.item) : [];
+  const gifts = includeAppearance ? appearanceGiftRows(db, student.id) : [];
+  const weeks = includeProfile ? db.attendanceWeeks.filter((w) => (student.subjectIds || []).includes(w.subjectId)).map((w) => ({
     ...w,
     subjectName: subjectName(db, w.subjectId),
     attendanceBonus: attendanceBonus(db, student.id, w),
     recitationBonus: recitationBonus(db, student.id, w)
-  }));
+  })) : [];
   res.json({ ...overview, students: allStudents, student, appearanceInventory: inventory, appearanceGifts: gifts, weeks, assistantAccess: studentAssistantAccess(db, req.user) });
 });
 
@@ -1590,8 +1642,9 @@ app.post("/api/student/profile-photo", auth, requireRole("student"), async (req,
 
 app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
-  const overview = filteredOverview(db, req.user);
-  res.json({ ...overview, students: hideProfilePhotos(overview.students), studentAssistants: assistantAssignmentRows(db, req.user) });
+  const modules = overviewModules(req, ["dashboard"]);
+  const overview = filteredOverview(db, req.user, modules);
+  res.json({ ...overview, students: hideProfilePhotos(overview.students), studentAssistants: wantsModule(modules, "people") ? assistantAssignmentRows(db, req.user) : [] });
 });
 
 app.post("/api/admin/guild/start-assessment", auth, requireRole("admin", "teacher"), async (req, res) => {
