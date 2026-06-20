@@ -1233,6 +1233,20 @@ function hydrateQuizzes(db, user) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+function activitySubmissionFiles(sub = {}) {
+  return Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
+}
+
+function publicActivityFile(file, index) {
+  return {
+    fileIndex: index,
+    fileName: file?.fileName || "",
+    fileType: file?.fileType || "",
+    fileSize: file?.fileSize || 0,
+    uploadedAt: file?.uploadedAt || ""
+  };
+}
+
 function hydrateActivities(db) {
   return db.activities.map((a) => {
     a.deadline = normalizeActivityDeadline(a.deadline);
@@ -1246,7 +1260,8 @@ function hydrateActivities(db) {
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
       const maxScoreAllowed = activityMaxScoreAllowed(late);
       const score = sub.score === "" || sub.score == null ? "" : Math.max(0, Math.min(Number(sub.score || 0), maxScoreAllowed));
-      const files = Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
+      const files = activitySubmissionFiles(sub);
+      const publicFiles = files.map(publicActivityFile);
       const file = files[0] || null;
       return {
         studentId: s.id,
@@ -1264,8 +1279,8 @@ function hydrateActivities(db) {
         fileName: file?.fileName || "",
         fileType: file?.fileType || "",
         fileSize: file?.fileSize || 0,
-        fileData: file?.fileData || "",
-        files,
+        fileData: "",
+        files: publicFiles,
         fileNames: files.map((item) => item.fileName).filter(Boolean).join(", ")
       };
     });
@@ -2260,6 +2275,28 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
   await writeDb(db);
   res.json({ submission: sub });
+});
+
+app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  const student = db.students.find((s) => s.id === req.params.studentId);
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const staffAllowed = (req.user.role === "admin" || req.user.role === "teacher")
+    && canUseSubject(req.user, activity.subjectId)
+    && scopedStudentIds(db, req.user).has(student.id);
+  const studentAllowed = req.user.role === "student"
+    && req.user.studentId === student.id
+    && (student.subjectIds || []).includes(activity.subjectId);
+  if (!staffAllowed && !studentAllowed) return res.status(403).json({ error: "This activity file is outside your class scope." });
+  const sub = (activity.submissions || []).find((submission) => submission.studentId === student.id);
+  const files = activitySubmissionFiles(sub);
+  const fileIndex = Number(req.params.fileIndex);
+  if (!Number.isInteger(fileIndex) || fileIndex < 0 || fileIndex >= files.length) return res.status(404).json({ error: "File not found." });
+  const file = files[fileIndex];
+  if (!file?.fileData) return res.status(404).json({ error: "File data not found." });
+  res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData } });
 });
 
 app.post("/api/student/activities/:id/submit", auth, requireRole("student"), async (req, res) => {

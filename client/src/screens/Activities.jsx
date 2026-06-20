@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { del, post, put, today } from "../api.js";
+import { del, post, put, request, today } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
@@ -55,7 +55,7 @@ function ActivityCard({ activity, run }) {
       r.daysLate,
       r.maxScoreAllowed,
       <input className="score-input" type="number" min="0" max={r.maxScoreAllowed} defaultValue={r.score ?? ""} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: e.target.value, remarks: r.remarks }), "Score saved")} />,
-      <ActivityFileLinks files={r.files?.length ? r.files : r.fileName ? [{ fileName: r.fileName, fileData: r.fileData }] : []} />,
+      <ActivityFileLinks activityId={activity.id} studentId={r.studentId} files={r.files?.length ? r.files : r.fileName ? [{ fileIndex: 0, fileName: r.fileName }] : []} />,
       r.earned,
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
@@ -105,12 +105,40 @@ function exportActivity(activity) {
   ]), activity.title);
 }
 
-function ActivityFileLinks({ files }) {
-  const list = (files || []).filter((file) => file.fileName && file.fileData);
+function ActivityFileLinks({ activityId, studentId, files }) {
+  const [loading, setLoading] = useState("");
+  const [error, setError] = useState("");
+  const list = (files || []).filter((file) => file.fileName);
   if (!list.length) return "-";
+  async function openFile(file, index) {
+    setError("");
+    setLoading(file.fileName);
+    try {
+      const fileIndex = Number.isInteger(file.fileIndex) ? file.fileIndex : index;
+      const data = await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`);
+      downloadActivityFile(data.file);
+    } catch (err) {
+      setError(err.message || "Could not open file.");
+    } finally {
+      setLoading("");
+    }
+  }
   return <div className="activity-file-list">
-    {list.map((file, index) => <a className="soft file-view-link" href={file.fileData} download={file.fileName} target="_blank" rel="noreferrer" key={`${file.fileName}-${index}`}>{file.fileName}</a>)}
+    {list.map((file, index) => <button type="button" className="soft file-view-link" onClick={() => openFile(file, index)} disabled={loading === file.fileName} key={`${file.fileName}-${index}`}>{loading === file.fileName ? "Opening..." : file.fileName}</button>)}
+    {error && <span className="inline-error">{error}</span>}
   </div>;
+}
+
+function downloadActivityFile(file) {
+  if (!file?.fileData) return;
+  const link = document.createElement("a");
+  link.href = file.fileData;
+  link.download = file.fileName || "activity-file";
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function toDatetimeLocal(value) {

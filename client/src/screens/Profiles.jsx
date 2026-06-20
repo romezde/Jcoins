@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
-import { post } from "../api.js";
+import { post, request } from "../api.js";
 import CosmeticFx from "../components/CosmeticFx.jsx";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { DataTable, Field, Panel, Stat, Table } from "../components/ui.jsx";
@@ -55,7 +55,6 @@ export function StudentActivities({ data, run }) {
     score: row.score,
     earned: row.earned,
     fileName: row.fileName,
-    fileData: row.fileData,
     files: row.files || [],
     studentNote: row.studentNote
   }))).filter((row) => !q || Object.values(row).some((value) => String(value || "").toLowerCase().includes(q)));
@@ -81,7 +80,7 @@ export function StudentActivities({ data, run }) {
       row.daysLate,
       row.maxScoreAllowed,
       row.score === "" || row.score == null ? "-" : row.score,
-      <ActivityFileLinks files={row.files?.length ? row.files : row.fileName ? [{ fileName: row.fileName, fileData: row.fileData }] : []} />,
+      <ActivityFileLinks activityId={row.id} studentId={data.student.id} files={row.files?.length ? row.files : row.fileName ? [{ fileIndex: 0, fileName: row.fileName }] : []} />,
       <div className="activity-upload-box">
         <input value={notes[row.id] ?? row.studentNote ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Optional note" />
         <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple onChange={(e) => uploadSubmission(row.id, e.target.files)} /></label>
@@ -113,12 +112,40 @@ function fileToActivityUpload(file) {
   });
 }
 
-function ActivityFileLinks({ files }) {
-  const list = (files || []).filter((file) => file.fileName && file.fileData);
+function ActivityFileLinks({ activityId, studentId, files }) {
+  const [loading, setLoading] = useState("");
+  const [error, setError] = useState("");
+  const list = (files || []).filter((file) => file.fileName);
   if (!list.length) return "-";
+  async function openFile(file, index) {
+    setError("");
+    setLoading(file.fileName);
+    try {
+      const fileIndex = Number.isInteger(file.fileIndex) ? file.fileIndex : index;
+      const data = await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`);
+      downloadActivityFile(data.file);
+    } catch (err) {
+      setError(err.message || "Could not open file.");
+    } finally {
+      setLoading("");
+    }
+  }
   return <div className="activity-file-list">
-    {list.map((file, index) => <a className="soft file-view-link" href={file.fileData} download={file.fileName} target="_blank" rel="noreferrer" key={`${file.fileName}-${index}`}>{file.fileName}</a>)}
+    {list.map((file, index) => <button type="button" className="soft file-view-link" onClick={() => openFile(file, index)} disabled={loading === file.fileName} key={`${file.fileName}-${index}`}>{loading === file.fileName ? "Opening..." : file.fileName}</button>)}
+    {error && <span className="inline-error">{error}</span>}
   </div>;
+}
+
+function downloadActivityFile(file) {
+  if (!file?.fileData) return;
+  const link = document.createElement("a");
+  link.href = file.fileData;
+  link.download = file.fileName || "activity-file";
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function formatActivityDateTime(value) {
