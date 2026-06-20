@@ -40,6 +40,17 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on("finish", () => {
+    if (!req.path.startsWith("/api")) return;
+    const duration = Date.now() - started;
+    if (duration >= 500 || req.path.includes("overview") || req.path.includes("/student/me")) {
+      console.info(`[api] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+    }
+  });
+  next();
+});
 const eventClients = new Map();
 const eventTokens = new Map();
 
@@ -1314,6 +1325,78 @@ function hydrateActivitySummaries(db, visibleStudents = null, subjectIds = null)
     });
 }
 
+function lastNDays(days = 14) {
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (days - index - 1));
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function emptyDailyMap(key) {
+  return Object.fromEntries(lastNDays().map((date) => [date, { date, [key]: 0 }]));
+}
+
+function dashboardSummary(db, user, students, studentIds, activitySummaries) {
+  const todayText = today();
+  const teacherSubjectIds = user.role === "teacher" ? new Set(user.subjectIds || []) : null;
+  const scopedTransactions = db.transactions.filter((transaction) => studentIds.has(transaction.studentId));
+  const scopedRecitations = db.recitations.filter((recitation) => studentIds.has(recitation.studentId));
+  const scopedAttendance = db.attendanceRecords.filter((record) => studentIds.has(record.studentId));
+  const visibleAttendanceWeeks = db.attendanceWeeks.filter((week) => !teacherSubjectIds || teacherSubjectIds.has(week.subjectId));
+  const pendingRequests = requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request) && request.status === "pending").sort(byDateDesc));
+  const jcoinDailyMap = Object.fromEntries(lastNDays().map((date) => [date, { date, given: 0, removed: 0 }]));
+  const transactionDailyMap = emptyDailyMap("transactions");
+  const recitationDailyMap = emptyDailyMap("recitations");
+  const attendanceDailyMap = Object.fromEntries(lastNDays().map((date) => [date, { date, onTime: 0, late: 0, absent: 0 }]));
+  let produced = 0;
+  let removed = 0;
+  let todaysTransactionsCount = 0;
+  scopedTransactions.forEach((transaction) => {
+    const amount = Number(transaction.amount || 0);
+    if (amount >= 0) produced += amount;
+    else removed += Math.abs(amount);
+    const date = String(transaction.createdAt || "").slice(0, 10);
+    if (date === todayText) todaysTransactionsCount += 1;
+    if (jcoinDailyMap[date]) {
+      if (amount >= 0) jcoinDailyMap[date].given += amount;
+      else jcoinDailyMap[date].removed += Math.abs(amount);
+    }
+    if (transactionDailyMap[date]) transactionDailyMap[date].transactions += 1;
+  });
+  scopedRecitations.forEach((recitation) => {
+    if (recitationDailyMap[recitation.date]) recitationDailyMap[recitation.date].recitations += 1;
+  });
+  scopedAttendance.forEach((record) => {
+    if (!attendanceDailyMap[record.date]) return;
+    if (record.status === "check") attendanceDailyMap[record.date].onTime += 1;
+    else if (record.status === "late") attendanceDailyMap[record.date].late += 1;
+    else attendanceDailyMap[record.date].absent += 1;
+  });
+  const submittedCount = activitySummaries.reduce((sum, activity) => sum + Number(activity.submittedCount || 0), 0);
+  const totalRows = activitySummaries.reduce((sum, activity) => sum + Number(activity.totalRows || 0), 0);
+  return {
+    circulation: students.reduce((sum, student) => sum + Number(student.currentJCoins || 0), 0),
+    produced,
+    removed,
+    todaysTransactionsCount,
+    todaysRecitationsCount: scopedRecitations.filter((recitation) => recitation.date === todayText).length,
+    pendingRequestsCount: pendingRequests.length,
+    submittedPercent: totalRows ? Math.round((submittedCount / totalRows) * 100) : 0,
+    attendanceWeeksCount: visibleAttendanceWeeks.length,
+    shopItemsCount: db.shopItems.length,
+    topThree: [...students].sort((a, b) => b.currentJCoins - a.currentJCoins).slice(0, 3),
+    jcoinDaily: Object.values(jcoinDailyMap),
+    recitationDaily: Object.values(recitationDailyMap),
+    transactionDaily: Object.values(transactionDailyMap),
+    attendanceDaily: Object.values(attendanceDailyMap),
+    activityMonitor: activitySummaries.slice(0, 8),
+    recentTransactions: scopedTransactions.map((transaction) => ({ ...transaction, studentName: studentName(db, transaction.studentId) })).sort(byDateDesc).slice(0, 10),
+    recentRecitations: scopedRecitations.map((recitation) => ({ ...recitation, studentName: studentName(db, recitation.studentId), subjectName: subjectName(db, recitation.subjectId) })).sort(byDateDesc).slice(0, 10),
+    pendingRequests: pendingRequests.slice(0, 10)
+  };
+}
+
 function activeShopPrice(db, itemId, date = today()) {
   const item = db.shopItems.find((x) => x.id === itemId);
   if (!item) return null;
@@ -1411,21 +1494,23 @@ function filteredOverview(db, user, modules = null) {
   const includeDashboard = wantsModule(modules, "dashboard");
   const includeActivities = wantsModule(modules, "activities");
   const includeQuizzes = wantsModule(modules, "quizzes");
-  const includeTransactions = wantsModule(modules, "transactions") || includeDashboard;
-  const includeAttendance = wantsModule(modules, "attendance") || includeDashboard;
-  const includeRecitations = wantsModule(modules, "recitations") || includeDashboard;
-  const includeShop = wantsModule(modules, "shop") || wantsModule(modules, "transactions") || includeDashboard;
+  const includeTransactions = wantsModule(modules, "transactions");
+  const includeAttendance = wantsModule(modules, "attendance");
+  const includeRecitations = wantsModule(modules, "recitations");
+  const includeShop = wantsModule(modules, "shop") || wantsModule(modules, "transactions");
   const includeAppearance = wantsModule(modules, "appearance");
-  const includeRequests = wantsModule(modules, "requests") || includeDashboard || includeShop;
-  const includeFeedback = wantsModule(modules, "feedback") || includeDashboard;
+  const includeRequests = wantsModule(modules, "requests") || includeShop;
+  const includeFeedback = wantsModule(modules, "feedback");
   const includeSchedules = wantsModule(modules, "schedule");
   const includeGuild = wantsModule(modules, "guild") || wantsModule(modules, "settings");
   const includePeople = wantsModule(modules, "people");
   const fullActivities = includeActivities ? hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity) : [];
   const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds) : fullActivities;
   const transactions = includeTransactions ? db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc) : [];
+  const dashboard = includeDashboard ? dashboardSummary(db, user, students, studentIds, includeActivities ? fullActivities : activitySummaries) : null;
   return {
     user,
+    dashboard,
     settings: db.settings,
     subjects: user.role === "teacher" ? db.subjects.filter((subject) => subjectIds.has(subject.id)) : db.subjects,
     sections: db.sections,
@@ -1441,8 +1526,16 @@ function filteredOverview(db, user, modules = null) {
     sales: includeShop ? db.sales : [],
     appearanceItems: includeAppearance ? db.appearanceItems : [],
     appearanceGifts: includeAppearance && user.role === "admin" ? appearanceGiftRows(db) : [],
-    requests: includeRequests ? requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request)).sort(byDateDesc)) : [],
-    feedback: includeFeedback ? feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId))) : [],
+    requests: includeRequests
+      ? requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request)).sort(byDateDesc))
+      : includeDashboard
+        ? requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request) && (request.status === "pending" || (request.type === "registration" && request.status === "created"))).sort(byDateDesc)).slice(0, 20)
+        : [],
+    feedback: includeFeedback
+      ? feedbackRows(db, (db.feedback || []).filter((entry) => user.role === "admin" || studentIds.has(entry.studentId)))
+      : includeDashboard
+        ? feedbackRows(db, (db.feedback || []).filter((entry) => entry.status === "New" && (user.role === "admin" || studentIds.has(entry.studentId)))).slice(0, 20)
+        : [],
     schedules: includeSchedules ? scheduleRows(db, visibleScheduleRows) : [],
     guildSystem: includeGuild ? guildSystemView(db, user) : {}
   };

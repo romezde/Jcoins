@@ -14,9 +14,10 @@ import {
 import { DataTable } from "../components/ui.jsx";
 
 export default function Dashboard({ data }) {
-  const circulation = (data.students || []).reduce((sum, student) => sum + student.currentJCoins, 0);
-  const produced = (data.transactions || []).reduce((sum, transaction) => sum + Math.max(0, Number(transaction.amount || 0)), 0);
-  const removed = (data.transactions || []).reduce((sum, transaction) => sum + Math.abs(Math.min(0, Number(transaction.amount || 0))), 0);
+  const summary = data.dashboard || {};
+  const circulation = summary.circulation ?? (data.students || []).reduce((sum, student) => sum + student.currentJCoins, 0);
+  const produced = summary.produced ?? (data.transactions || []).reduce((sum, transaction) => sum + Math.max(0, Number(transaction.amount || 0)), 0);
+  const removed = summary.removed ?? (data.transactions || []).reduce((sum, transaction) => sum + Math.abs(Math.min(0, Number(transaction.amount || 0))), 0);
   const today = new Date().toISOString().slice(0, 10);
   const todaysTransactions = (data.transactions || []).filter((transaction) => String(transaction.createdAt || "").startsWith(today));
   const todaysRecitations = (data.recitations || []).filter((recitation) => recitation.date === today);
@@ -29,24 +30,28 @@ export default function Dashboard({ data }) {
     if (Number.isFinite(Number(activity.totalRows))) return sum + Number(activity.totalRows);
     return sum + (activity.rows?.length || 0);
   }, 0);
-  const submittedPercent = totalActivityRows ? Math.round((submittedActivityCount / totalActivityRows) * 100) : 0;
+  const submittedPercent = summary.submittedPercent ?? (totalActivityRows ? Math.round((submittedActivityCount / totalActivityRows) * 100) : 0);
   const roleLabel = data.user?.role === "teacher" ? "My Students" : "All Students";
-  const jcoinDaily = dailyJCoins(data.transactions || []);
-  const recitationDaily = dailyCounts(data.recitations || [], (recitation) => recitation.date, "recitations");
-  const transactionDaily = dailyCounts(data.transactions || [], (transaction) => String(transaction.createdAt || "").slice(0, 10), "transactions");
-  const attendanceDaily = dailyAttendance(data.attendanceRecords || []);
-  const topThree = [...(data.students || [])].sort((a, b) => b.currentJCoins - a.currentJCoins).slice(0, 3);
+  const jcoinDaily = summary.jcoinDaily || dailyJCoins(data.transactions || []);
+  const recitationDaily = summary.recitationDaily || dailyCounts(data.recitations || [], (recitation) => recitation.date, "recitations");
+  const transactionDaily = summary.transactionDaily || dailyCounts(data.transactions || [], (transaction) => String(transaction.createdAt || "").slice(0, 10), "transactions");
+  const attendanceDaily = summary.attendanceDaily || dailyAttendance(data.attendanceRecords || []);
+  const topThree = summary.topThree || [...(data.students || [])].sort((a, b) => b.currentJCoins - a.currentJCoins).slice(0, 3);
+  const activityMonitor = summary.activityMonitor || (data.activities || []).slice(0, 8);
+  const recentTransactions = summary.recentTransactions || (data.transactions || []).slice(0, 10);
+  const recentRecitations = summary.recentRecitations || (data.recitations || []).slice(0, 10);
+  const dashboardPendingRequests = summary.pendingRequests || pendingRequests.slice(0, 10);
   const metrics = [
     { label: roleLabel, value: data.students.length },
     { label: "Subjects", value: (data.user?.role === "teacher" ? data.user.subjectIds || [] : data.subjects || []).length },
     { label: "Sections", value: (data.sections || []).length },
     { label: "Activities", value: (data.activities || []).length },
     { label: "Submitted", value: `${submittedPercent}%` },
-    { label: "Recitations Today", value: todaysRecitations.length },
-    { label: "Transactions Today", value: todaysTransactions.length },
-    { label: "Attendance Weeks", value: (data.attendanceWeeks || []).length },
-    { label: "Pending Requests", value: pendingRequests.length },
-    { label: "Shop Items", value: (data.shopItems || []).length }
+    { label: "Recitations Today", value: summary.todaysRecitationsCount ?? todaysRecitations.length },
+    { label: "Transactions Today", value: summary.todaysTransactionsCount ?? todaysTransactions.length },
+    { label: "Attendance Weeks", value: summary.attendanceWeeksCount ?? (data.attendanceWeeks || []).length },
+    { label: "Pending Requests", value: summary.pendingRequestsCount ?? pendingRequests.length },
+    { label: "Shop Items", value: summary.shopItemsCount ?? (data.shopItems || []).length }
   ];
 
   return <div className="dashboard-grid">
@@ -105,10 +110,10 @@ export default function Dashboard({ data }) {
       </ResponsiveContainer>
     </ChartPanel>
 
-    <DataTable title="Activity Monitor" defaultOpen columns={["Activity", "Subject", "Tracker", "Deadline", "Type"]} rows={(data.activities || []).slice(0, 8).map((activity) => [activity.title, activity.subjectName, activity.tracker, activity.deadline, activity.type])} />
-    <DataTable title="Recent Transactions" defaultOpen columns={["Date", "Student", "Type", "Amount", "Remarks"]} rows={(data.transactions || []).slice(0, 10).map((transaction) => [new Date(transaction.createdAt).toLocaleString(), transaction.studentName, transaction.type, transaction.amount, transaction.note])} />
-    <DataTable title="Recent Recitations" columns={["Date", "Student", "Subject", "Amount", "Remarks"]} rows={(data.recitations || []).slice(0, 10).map((recitation) => [recitation.date, recitation.studentName, recitation.subjectName, recitation.amount, recitation.remarks])} />
-    <DataTable title="Pending Requests" columns={["Date", "Type", "Student", "Remarks"]} rows={pendingRequests.slice(0, 10).map((request) => [new Date(request.createdAt).toLocaleString(), request.type, request.studentId || "-", request.remarks])} />
+    <DataTable title="Activity Monitor" defaultOpen columns={["Activity", "Subject", "Tracker", "Deadline", "Type"]} rows={activityMonitor.map((activity) => [activity.title, activity.subjectName, activity.tracker, activity.deadline, activity.type])} />
+    <DataTable title="Recent Transactions" defaultOpen columns={["Date", "Student", "Type", "Amount", "Remarks"]} rows={recentTransactions.map((transaction) => [new Date(transaction.createdAt).toLocaleString(), transaction.studentName, transaction.type, transaction.amount, transaction.note])} />
+    <DataTable title="Recent Recitations" columns={["Date", "Student", "Subject", "Amount", "Remarks"]} rows={recentRecitations.map((recitation) => [recitation.date, recitation.studentName, recitation.subjectName, recitation.amount, recitation.remarks])} />
+    <DataTable title="Pending Requests" columns={["Date", "Type", "Student", "Remarks"]} rows={dashboardPendingRequests.map((request) => [new Date(request.createdAt).toLocaleString(), request.type, request.studentId || "-", request.remarks])} />
   </div>;
 }
 
