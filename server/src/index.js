@@ -32,6 +32,8 @@ const ACTIVITY_ROW_PREFIX = "activity:";
 const QUIZ_ROW_PREFIX = "quiz:";
 const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
+const SCHEDULE_ROW_PREFIX = "schedule:";
+const ATTENDANCE_WEEK_ROW_PREFIX = "attendance-week:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -72,6 +74,8 @@ const persistedActivityHashes = new Map();
 const persistedQuizHashes = new Map();
 const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
+const persistedScheduleHashes = new Map();
+const persistedAttendanceWeekHashes = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -572,7 +576,9 @@ async function readSupplementalStorageRows() {
     ACTIVITY_ROW_PREFIX,
     QUIZ_ROW_PREFIX,
     REQUEST_ROW_PREFIX,
-    FEEDBACK_ROW_PREFIX
+    FEEDBACK_ROW_PREFIX,
+    SCHEDULE_ROW_PREFIX,
+    ATTENDANCE_WEEK_ROW_PREFIX
   ];
   const rows = [];
   for (const prefix of prefixes) {
@@ -725,6 +731,8 @@ async function writeDb(db) {
     const quizzes = extractEntityRows(dbToStore, "quizzes", QUIZ_ROW_PREFIX);
     const requests = extractEntityRows(dbToStore, "requests", REQUEST_ROW_PREFIX);
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
+    const schedules = extractEntityRows(dbToStore, "schedules", SCHEDULE_ROW_PREFIX);
+    const attendanceWeeks = extractEntityRows(dbToStore, "attendanceWeeks", ATTENDANCE_WEEK_ROW_PREFIX);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
     await syncEntityRows(students.items, students.rowIds, STUDENT_ROW_PREFIX, persistedStudentHashes);
@@ -735,6 +743,8 @@ async function writeDb(db) {
     await syncEntityRows(quizzes.items, quizzes.rowIds, QUIZ_ROW_PREFIX, persistedQuizHashes);
     await syncEntityRows(requests.items, requests.rowIds, REQUEST_ROW_PREFIX, persistedRequestHashes);
     await syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes);
+    await syncEntityRows(schedules.items, schedules.rowIds, SCHEDULE_ROW_PREFIX, persistedScheduleHashes);
+    await syncEntityRows(attendanceWeeks.items, attendanceWeeks.rowIds, ATTENDANCE_WEEK_ROW_PREFIX, persistedAttendanceWeekHashes);
     await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -759,6 +769,8 @@ async function readSupabaseDb() {
   db.quizzes = await readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes);
   db.requests = await readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes);
   db.feedback = await readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes);
+  db.schedules = await readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes);
+  db.attendanceWeeks = await readEntityRows(ATTENDANCE_WEEK_ROW_PREFIX, db.attendanceWeeks || [], persistedAttendanceWeekHashes);
   db.transactions = await readTransactionRows(db.transactions || []);
   return db;
 }
