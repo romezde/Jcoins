@@ -29,6 +29,13 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   : null;
 
 const app = express();
+["get", "post", "put", "delete", "patch"].forEach((method) => {
+  const original = app[method].bind(app);
+  app[method] = (path, ...handlers) => original(path, ...handlers.map((handler) => {
+    if (typeof handler !== "function" || handler.length === 4) return handler;
+    return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+  }));
+});
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
@@ -3005,4 +3012,10 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
 });
 
 scheduleDailyBackup();
+app.use((err, req, res, _next) => {
+  console.error("API error:", err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: err.message || "Server error" });
+});
+
 app.listen(PORT, () => console.log(`JCoins API running at http://localhost:${PORT}`));
