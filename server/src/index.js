@@ -34,6 +34,14 @@ const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
 const SCHEDULE_ROW_PREFIX = "schedule:";
 const ATTENDANCE_WEEK_ROW_PREFIX = "attendance-week:";
+const SUBJECT_ROW_PREFIX = "subject:";
+const STUDENT_ASSISTANT_ROW_PREFIX = "student-assistant:";
+const SHOP_ITEM_ROW_PREFIX = "shop-item:";
+const SALE_ROW_PREFIX = "sale:";
+const APPEARANCE_ITEM_ROW_PREFIX = "appearance-item:";
+const APPEARANCE_INVENTORY_ROW_PREFIX = "appearance-inventory:";
+const APPEARANCE_GIFT_ROW_PREFIX = "appearance-gift:";
+const GUILD_RESPONSE_ROW_PREFIX = "guild-response:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -76,6 +84,14 @@ const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
 const persistedScheduleHashes = new Map();
 const persistedAttendanceWeekHashes = new Map();
+const persistedSubjectHashes = new Map();
+const persistedStudentAssistantHashes = new Map();
+const persistedShopItemHashes = new Map();
+const persistedSaleHashes = new Map();
+const persistedAppearanceItemHashes = new Map();
+const persistedAppearanceInventoryHashes = new Map();
+const persistedAppearanceGiftHashes = new Map();
+const persistedGuildResponseHashes = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -578,7 +594,15 @@ async function readSupplementalStorageRows() {
     REQUEST_ROW_PREFIX,
     FEEDBACK_ROW_PREFIX,
     SCHEDULE_ROW_PREFIX,
-    ATTENDANCE_WEEK_ROW_PREFIX
+    ATTENDANCE_WEEK_ROW_PREFIX,
+    SUBJECT_ROW_PREFIX,
+    STUDENT_ASSISTANT_ROW_PREFIX,
+    SHOP_ITEM_ROW_PREFIX,
+    SALE_ROW_PREFIX,
+    APPEARANCE_ITEM_ROW_PREFIX,
+    APPEARANCE_INVENTORY_ROW_PREFIX,
+    APPEARANCE_GIFT_ROW_PREFIX,
+    GUILD_RESPONSE_ROW_PREFIX
   ];
   const rows = [];
   for (const prefix of prefixes) {
@@ -728,6 +752,14 @@ async function writeDb(db) {
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
     const schedules = extractEntityRows(dbToStore, "schedules", SCHEDULE_ROW_PREFIX);
     const attendanceWeeks = extractEntityRows(dbToStore, "attendanceWeeks", ATTENDANCE_WEEK_ROW_PREFIX);
+    const subjects = extractEntityRows(dbToStore, "subjects", SUBJECT_ROW_PREFIX);
+    const studentAssistants = extractEntityRows(dbToStore, "studentAssistants", STUDENT_ASSISTANT_ROW_PREFIX);
+    const shopItems = extractEntityRows(dbToStore, "shopItems", SHOP_ITEM_ROW_PREFIX);
+    const sales = extractEntityRows(dbToStore, "sales", SALE_ROW_PREFIX);
+    const appearanceItems = extractEntityRows(dbToStore, "appearanceItems", APPEARANCE_ITEM_ROW_PREFIX);
+    const appearanceInventory = extractEntityRows(dbToStore, "appearanceInventory", APPEARANCE_INVENTORY_ROW_PREFIX);
+    const appearanceGifts = extractEntityRows(dbToStore, "appearanceGifts", APPEARANCE_GIFT_ROW_PREFIX);
+    const guildResponses = extractGuildResponseRows(dbToStore);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
     await syncEntityRows(students.items, students.rowIds, STUDENT_ROW_PREFIX, persistedStudentHashes);
@@ -740,6 +772,14 @@ async function writeDb(db) {
     await syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes);
     await syncEntityRows(schedules.items, schedules.rowIds, SCHEDULE_ROW_PREFIX, persistedScheduleHashes);
     await syncEntityRows(attendanceWeeks.items, attendanceWeeks.rowIds, ATTENDANCE_WEEK_ROW_PREFIX, persistedAttendanceWeekHashes);
+    await syncEntityRows(subjects.items, subjects.rowIds, SUBJECT_ROW_PREFIX, persistedSubjectHashes);
+    await syncEntityRows(studentAssistants.items, studentAssistants.rowIds, STUDENT_ASSISTANT_ROW_PREFIX, persistedStudentAssistantHashes);
+    await syncEntityRows(shopItems.items, shopItems.rowIds, SHOP_ITEM_ROW_PREFIX, persistedShopItemHashes);
+    await syncEntityRows(sales.items, sales.rowIds, SALE_ROW_PREFIX, persistedSaleHashes);
+    await syncEntityRows(appearanceItems.items, appearanceItems.rowIds, APPEARANCE_ITEM_ROW_PREFIX, persistedAppearanceItemHashes);
+    await syncEntityRows(appearanceInventory.items, appearanceInventory.rowIds, APPEARANCE_INVENTORY_ROW_PREFIX, persistedAppearanceInventoryHashes);
+    await syncEntityRows(appearanceGifts.items, appearanceGifts.rowIds, APPEARANCE_GIFT_ROW_PREFIX, persistedAppearanceGiftHashes);
+    await syncGuildResponseRows(guildResponses.items, guildResponses.rowIds);
     await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -766,6 +806,14 @@ async function readSupabaseDb() {
   db.feedback = await readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes);
   db.schedules = await readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes);
   db.attendanceWeeks = await readEntityRows(ATTENDANCE_WEEK_ROW_PREFIX, db.attendanceWeeks || [], persistedAttendanceWeekHashes);
+  db.subjects = await readEntityRows(SUBJECT_ROW_PREFIX, db.subjects || [], persistedSubjectHashes);
+  db.studentAssistants = await readEntityRows(STUDENT_ASSISTANT_ROW_PREFIX, db.studentAssistants || [], persistedStudentAssistantHashes);
+  db.shopItems = await readEntityRows(SHOP_ITEM_ROW_PREFIX, db.shopItems || [], persistedShopItemHashes);
+  db.sales = await readEntityRows(SALE_ROW_PREFIX, db.sales || [], persistedSaleHashes);
+  db.appearanceItems = await readEntityRows(APPEARANCE_ITEM_ROW_PREFIX, db.appearanceItems || [], persistedAppearanceItemHashes);
+  db.appearanceInventory = await readEntityRows(APPEARANCE_INVENTORY_ROW_PREFIX, db.appearanceInventory || [], persistedAppearanceInventoryHashes);
+  db.appearanceGifts = await readEntityRows(APPEARANCE_GIFT_ROW_PREFIX, db.appearanceGifts || [], persistedAppearanceGiftHashes);
+  db.guildSystem = await readGuildResponseRows(db.guildSystem);
   db.transactions = await readTransactionRows(db.transactions || []);
   return db;
 }
@@ -858,6 +906,17 @@ function extractEntityRows(dbToStore, key, prefix) {
   return { items, rowIds };
 }
 
+function guildResponseRowId(studentId) {
+  return `${GUILD_RESPONSE_ROW_PREFIX}${studentId}`;
+}
+
+function extractGuildResponseRows(dbToStore) {
+  const responses = (dbToStore.guildSystem?.responses || []).filter((response) => response?.studentId);
+  const rowIds = new Set(responses.map((response) => guildResponseRowId(response.studentId)));
+  if (dbToStore.guildSystem) dbToStore.guildSystem.responses = [];
+  return { items: responses, rowIds };
+}
+
 async function readEntityRows(prefix, mainItems = [], hashStore) {
   if (!supabase) return mainItems;
   const rows = await readStorageRowsByPrefix(prefix);
@@ -899,6 +958,50 @@ async function syncEntityRows(items, currentRowIds, prefix, hashStore) {
       .in("id", batch);
     if (error) throw supabaseSetupError(error);
     batch.forEach((id) => hashStore.delete(id));
+  }
+}
+
+async function readGuildResponseRows(guildSystem = defaultGuildSystem()) {
+  if (!supabase) return guildSystem;
+  const rows = await readStorageRowsByPrefix(GUILD_RESPONSE_ROW_PREFIX);
+  const responseMap = new Map();
+  persistedGuildResponseHashes.clear();
+  rows.forEach((row) => {
+    if (!row.state?.studentId) return;
+    responseMap.set(row.state.studentId, row.state);
+    persistedGuildResponseHashes.set(row.id, entityHash(row.state));
+  });
+  (guildSystem?.responses || []).forEach((response) => {
+    if (response?.studentId && !responseMap.has(response.studentId)) responseMap.set(response.studentId, response);
+  });
+  return { ...(guildSystem || defaultGuildSystem()), responses: [...responseMap.values()] };
+}
+
+async function syncGuildResponseRows(responses, currentRowIds) {
+  if (!supabase) return;
+  const changedRows = [];
+  responses.forEach((response) => {
+    const id = guildResponseRowId(response.studentId);
+    const hash = entityHash(response);
+    if (persistedGuildResponseHashes.get(id) === hash) return;
+    changedRows.push({ id, state: response, updated_at: now() });
+    persistedGuildResponseHashes.set(id, hash);
+  });
+  for (let index = 0; index < changedRows.length; index += 100) {
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .upsert(changedRows.slice(index, index + 100));
+    if (error) throw supabaseSetupError(error);
+  }
+  const staleIds = [...persistedGuildResponseHashes.keys()].filter((id) => !currentRowIds.has(id));
+  for (let index = 0; index < staleIds.length; index += 100) {
+    const batch = staleIds.slice(index, index + 100);
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .delete()
+      .in("id", batch);
+    if (error) throw supabaseSetupError(error);
+    batch.forEach((id) => persistedGuildResponseHashes.delete(id));
   }
 }
 
