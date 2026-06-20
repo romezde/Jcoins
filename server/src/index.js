@@ -23,6 +23,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
 const ACTIVITY_FILE_ROW_PREFIX = "activity-file:";
+const TRANSACTION_ROW_PREFIX = "transaction:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -54,6 +55,7 @@ app.use((req, res, next) => {
 });
 const eventClients = new Map();
 const eventTokens = new Map();
+const persistedTransactionHashes = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -673,7 +675,9 @@ async function readDb() {
 async function writeDb(db) {
   if (supabase) {
     const { db: dbToStore, files } = extractActivityFileRows(db);
+    const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
+    await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
       .upsert({ id: "main", state: dbToStore, updated_at: now() });
@@ -688,7 +692,9 @@ async function writeDb(db) {
 async function readSupabaseDb() {
   const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", "main").single();
   if (error) throw supabaseSetupError(error);
-  return data.state;
+  const db = data.state;
+  db.transactions = await readTransactionRows(db.transactions || []);
+  return db;
 }
 
 function activityFileRowId(activityId, studentId, fileIndex) {
@@ -744,6 +750,70 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
     .maybeSingle();
   if (error) throw supabaseSetupError(error);
   return data?.state || null;
+}
+
+function transactionRowId(transactionId) {
+  return `${TRANSACTION_ROW_PREFIX}${transactionId}`;
+}
+
+function transactionHash(transaction) {
+  return JSON.stringify(transaction);
+}
+
+function extractTransactionRows(dbToStore) {
+  const transactions = (dbToStore.transactions || []).filter((transaction) => transaction?.id);
+  const transactionRowIds = new Set(transactions.map((transaction) => transactionRowId(transaction.id)));
+  dbToStore.transactions = [];
+  return { transactions, transactionRowIds };
+}
+
+async function readTransactionRows(mainTransactions = []) {
+  if (!supabase) return mainTransactions;
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id,state")
+    .like("id", `${TRANSACTION_ROW_PREFIX}%`);
+  if (error) throw supabaseSetupError(error);
+  const rows = data || [];
+  const transactionMap = new Map();
+  persistedTransactionHashes.clear();
+  rows.forEach((row) => {
+    if (!row.state?.id) return;
+    transactionMap.set(row.state.id, row.state);
+    persistedTransactionHashes.set(row.id, transactionHash(row.state));
+  });
+  (mainTransactions || []).forEach((transaction) => {
+    if (transaction?.id && !transactionMap.has(transaction.id)) transactionMap.set(transaction.id, transaction);
+  });
+  return [...transactionMap.values()];
+}
+
+async function syncTransactionRows(transactions, currentRowIds) {
+  if (!supabase) return;
+  const changedRows = [];
+  transactions.forEach((transaction) => {
+    const id = transactionRowId(transaction.id);
+    const hash = transactionHash(transaction);
+    if (persistedTransactionHashes.get(id) === hash) return;
+    changedRows.push({ id, state: transaction, updated_at: now() });
+    persistedTransactionHashes.set(id, hash);
+  });
+  for (let index = 0; index < changedRows.length; index += 100) {
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .upsert(changedRows.slice(index, index + 100));
+    if (error) throw supabaseSetupError(error);
+  }
+  const staleIds = [...persistedTransactionHashes.keys()].filter((id) => !currentRowIds.has(id));
+  for (let index = 0; index < staleIds.length; index += 100) {
+    const batch = staleIds.slice(index, index + 100);
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .delete()
+      .in("id", batch);
+    if (error) throw supabaseSetupError(error);
+    batch.forEach((id) => persistedTransactionHashes.delete(id));
+  }
 }
 
 function publicUser(user) {
