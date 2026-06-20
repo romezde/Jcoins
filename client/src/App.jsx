@@ -33,6 +33,7 @@ function useSession() {
   function logout() {
     localStorage.removeItem("jcoins_token");
     localStorage.removeItem("jcoins_session");
+    clearOverviewCaches();
     setSession(null);
     window.history.pushState({}, "", "/");
   }
@@ -183,8 +184,9 @@ function PublicLeaderboard({ onLogin }) {
 function RoleApp({ session, logout }) {
   const baseTabs = session.user.role === "student" ? studentTabs : session.user.role === "teacher" ? teacherTabs : session.user.role === "display" ? ["Leaderboard"] : adminTabs;
   const fallback = session.user.role === "teacher" ? "Schedule" : session.user.role === "student" || session.user.role === "display" ? "Leaderboard" : "Dashboard";
+  const initialCacheRef = useRef(readOverviewCache(session.user));
   const [active, setActive] = useState(() => tabFromPath(baseTabs, fallback));
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => initialCacheRef.current?.data || null);
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [successModal, setSuccessModal] = useState("");
@@ -197,7 +199,7 @@ function RoleApp({ session, logout }) {
   const pendingLoadRef = useRef(false);
   const pendingModulesRef = useRef(new Set());
   const realtimeTimerRef = useRef(null);
-  const loadedModulesRef = useRef(new Set());
+  const loadedModulesRef = useRef(new Set(initialCacheRef.current?.modules || []));
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
 
@@ -213,8 +215,10 @@ function RoleApp({ session, logout }) {
       const nextModules = new Set([...loadedModulesRef.current, ...modules]);
       const query = nextModules.size ? `?modules=${encodeURIComponent([...nextModules].join(","))}` : "";
       const path = session.user.role === "student" ? `/student/me${query}` : session.user.role === "display" ? "/leaderboard" : `/admin/overview${query}`;
-      setData(await request(path));
+      const freshData = await request(path);
+      setData(freshData);
       loadedModulesRef.current = nextModules;
+      writeOverviewCache(session.user, freshData, nextModules);
       setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (err) {
       setLoadError(err.message);
@@ -491,6 +495,38 @@ function shouldClearSession(message = "") {
 function sessionResetMessage(message = "") {
   if (["Invalid token", "Missing token", "Unauthorized", "Forbidden"].includes(message)) return "Your session expired. Please log in again.";
   return "The app could not reach the server. Refresh after a few seconds and try again.";
+}
+
+function overviewCacheKey(user) {
+  return `jcoins_overview_cache_${user?.id || "unknown"}_${user?.role || "role"}`;
+}
+
+function readOverviewCache(user) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(overviewCacheKey(user)) || "null");
+    if (!cached?.data || Date.now() - Number(cached.savedAt || 0) > 12 * 60 * 60 * 1000) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeOverviewCache(user, data, modules) {
+  try {
+    localStorage.setItem(overviewCacheKey(user), JSON.stringify({
+      savedAt: Date.now(),
+      modules: [...modules],
+      data
+    }));
+  } catch {
+    // Ignore storage quota errors; the live API remains the source of truth.
+  }
+}
+
+function clearOverviewCaches() {
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith("jcoins_overview_cache_"))
+    .forEach((key) => localStorage.removeItem(key));
 }
 
 function GlobalSearch({ tabs, data, navigate }) {
