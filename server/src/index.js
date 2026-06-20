@@ -28,6 +28,8 @@ const STUDENT_ROW_PREFIX = "student:";
 const USER_ROW_PREFIX = "user:";
 const ATTENDANCE_RECORD_ROW_PREFIX = "attendance-record:";
 const RECITATION_ROW_PREFIX = "recitation:";
+const ACTIVITY_ROW_PREFIX = "activity:";
+const QUIZ_ROW_PREFIX = "quiz:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -64,6 +66,8 @@ const persistedStudentHashes = new Map();
 const persistedUserHashes = new Map();
 const persistedAttendanceRecordHashes = new Map();
 const persistedRecitationHashes = new Map();
+const persistedActivityHashes = new Map();
+const persistedQuizHashes = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -554,7 +558,16 @@ async function createDailyBackup(reason = "scheduled") {
 
 async function readSupplementalStorageRows() {
   if (!supabase) return [];
-  const prefixes = [ACTIVITY_FILE_ROW_PREFIX, TRANSACTION_ROW_PREFIX, STUDENT_ROW_PREFIX, USER_ROW_PREFIX, ATTENDANCE_RECORD_ROW_PREFIX, RECITATION_ROW_PREFIX];
+  const prefixes = [
+    ACTIVITY_FILE_ROW_PREFIX,
+    TRANSACTION_ROW_PREFIX,
+    STUDENT_ROW_PREFIX,
+    USER_ROW_PREFIX,
+    ATTENDANCE_RECORD_ROW_PREFIX,
+    RECITATION_ROW_PREFIX,
+    ACTIVITY_ROW_PREFIX,
+    QUIZ_ROW_PREFIX
+  ];
   const rows = [];
   for (const prefix of prefixes) {
     const { data, error } = await supabase
@@ -702,12 +715,16 @@ async function writeDb(db) {
     const users = extractEntityRows(dbToStore, "users", USER_ROW_PREFIX);
     const attendanceRecords = extractEntityRows(dbToStore, "attendanceRecords", ATTENDANCE_RECORD_ROW_PREFIX);
     const recitations = extractEntityRows(dbToStore, "recitations", RECITATION_ROW_PREFIX);
+    const activities = extractEntityRows(dbToStore, "activities", ACTIVITY_ROW_PREFIX);
+    const quizzes = extractEntityRows(dbToStore, "quizzes", QUIZ_ROW_PREFIX);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
     await syncEntityRows(students.items, students.rowIds, STUDENT_ROW_PREFIX, persistedStudentHashes);
     await syncEntityRows(users.items, users.rowIds, USER_ROW_PREFIX, persistedUserHashes);
     await syncEntityRows(attendanceRecords.items, attendanceRecords.rowIds, ATTENDANCE_RECORD_ROW_PREFIX, persistedAttendanceRecordHashes);
     await syncEntityRows(recitations.items, recitations.rowIds, RECITATION_ROW_PREFIX, persistedRecitationHashes);
+    await syncEntityRows(activities.items, activities.rowIds, ACTIVITY_ROW_PREFIX, persistedActivityHashes);
+    await syncEntityRows(quizzes.items, quizzes.rowIds, QUIZ_ROW_PREFIX, persistedQuizHashes);
     await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -728,6 +745,8 @@ async function readSupabaseDb() {
   db.users = await readEntityRows(USER_ROW_PREFIX, db.users || [], persistedUserHashes);
   db.attendanceRecords = await readEntityRows(ATTENDANCE_RECORD_ROW_PREFIX, db.attendanceRecords || [], persistedAttendanceRecordHashes);
   db.recitations = await readEntityRows(RECITATION_ROW_PREFIX, db.recitations || [], persistedRecitationHashes);
+  db.activities = await readEntityRows(ACTIVITY_ROW_PREFIX, db.activities || [], persistedActivityHashes);
+  db.quizzes = await readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes);
   db.transactions = await readTransactionRows(db.transactions || []);
   return db;
 }
