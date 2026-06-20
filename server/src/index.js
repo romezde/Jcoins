@@ -582,12 +582,7 @@ async function readSupplementalStorageRows() {
   ];
   const rows = [];
   for (const prefix of prefixes) {
-    const { data, error } = await supabase
-      .from(SUPABASE_STATE_TABLE)
-      .select("id,state,updated_at")
-      .like("id", `${prefix}%`);
-    if (error) throw supabaseSetupError(error);
-    rows.push(...(data || []));
+    rows.push(...await readStorageRowsByPrefix(prefix, "id,state,updated_at"));
   }
   return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
@@ -830,6 +825,24 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
   return data?.state || null;
 }
 
+async function readStorageRowsByPrefix(prefix, fields = "id,state") {
+  if (!supabase) return [];
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .select(fields)
+      .like("id", `${prefix}%`)
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw supabaseSetupError(error);
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
 function entityRowId(prefix, id) {
   return `${prefix}${id}`;
 }
@@ -847,14 +860,10 @@ function extractEntityRows(dbToStore, key, prefix) {
 
 async function readEntityRows(prefix, mainItems = [], hashStore) {
   if (!supabase) return mainItems;
-  const { data, error } = await supabase
-    .from(SUPABASE_STATE_TABLE)
-    .select("id,state")
-    .like("id", `${prefix}%`);
-  if (error) throw supabaseSetupError(error);
+  const rows = await readStorageRowsByPrefix(prefix);
   const itemMap = new Map();
   hashStore.clear();
-  (data || []).forEach((row) => {
+  rows.forEach((row) => {
     if (!row.state?.id) return;
     itemMap.set(row.state.id, row.state);
     hashStore.set(row.id, entityHash(row.state));
@@ -910,12 +919,7 @@ function extractTransactionRows(dbToStore) {
 
 async function readTransactionRows(mainTransactions = []) {
   if (!supabase) return mainTransactions;
-  const { data, error } = await supabase
-    .from(SUPABASE_STATE_TABLE)
-    .select("id,state")
-    .like("id", `${TRANSACTION_ROW_PREFIX}%`);
-  if (error) throw supabaseSetupError(error);
-  const rows = data || [];
+  const rows = await readStorageRowsByPrefix(TRANSACTION_ROW_PREFIX);
   const transactionMap = new Map();
   persistedTransactionHashes.clear();
   rows.forEach((row) => {
