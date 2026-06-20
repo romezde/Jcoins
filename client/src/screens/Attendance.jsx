@@ -27,14 +27,14 @@ export default function Attendance({ data, run, role }) {
         <button>Add Week</button>
       </form>
     </ActionModal>}
-    {monthGroups.length > 0 && <section className="panel wide attendance-month-panel">
+    {data.attendanceWeeks.length > 0 && <section className="panel wide attendance-month-panel">
       <div className="section-head">
         <div className="section-title">Attendance Month</div>
         <span className="filter-count">{visibleWeeks.length} week{visibleWeeks.length === 1 ? "" : "s"}</span>
       </div>
-      <div className="tabs attendance-month-tabs">
+      {monthGroups.length > 0 && <div className="tabs attendance-month-tabs">
         {monthGroups.map((group) => <button type="button" key={group.key} className={currentMonth === group.key ? "active" : ""} onClick={() => setActiveMonth(group.key)}>{group.label}</button>)}
-      </div>
+      </div>}
       <div className="filter-bar transaction-filter-bar">
         <Select label="Show Subject" value={weekFilter.subjectId} onChange={(subjectId) => setWeekFilter({ ...weekFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
         <Select label="Show Section" value={weekFilter.section} onChange={(section) => setWeekFilter({ ...weekFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
@@ -43,7 +43,7 @@ export default function Attendance({ data, run, role }) {
       <div className="filter-bar transaction-filter-bar">
         <Select label="Export Subject" value={exportFilter.subjectId} onChange={(subjectId) => setExportFilter({ ...exportFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
         <Select label="Export Section" value={exportFilter.section} onChange={(section) => setExportFilter({ ...exportFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
-        <button type="button" onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
+        <button type="button" disabled={!currentGroup} onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
       </div>
     </section>}
     {visibleWeeks.map((w, index) => <Panel title={attendanceWeekTitle(w)} wide defaultOpen={index === 0} key={w.id} actions={canManageWeeks ? <div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div> : null}>
