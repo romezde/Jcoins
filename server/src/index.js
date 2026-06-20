@@ -22,6 +22,7 @@ const PORT = Number(process.env.PORT || 4000);
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
+const ACTIVITY_FILE_ROW_PREFIX = "activity-file:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -356,10 +357,11 @@ async function ensureDb() {
 }
 
 function supabaseSetupError(error) {
-  const message = [
-    `Supabase storage error: ${error.message}`,
-    `Make sure the ${SUPABASE_STATE_TABLE} table exists. Run server/supabase/schema.sql in Supabase SQL Editor.`
-  ].join(" ");
+  const text = String(error.message || "");
+  const setupHint = /does not exist|schema cache|relation/i.test(text)
+    ? ` Make sure the ${SUPABASE_STATE_TABLE} table exists. Run server/supabase/schema.sql in Supabase SQL Editor.`
+    : "";
+  const message = `Supabase storage error: ${text}.${setupHint}`;
   const wrapped = new Error(message);
   wrapped.cause = error;
   return wrapped;
@@ -670,9 +672,11 @@ async function readDb() {
 
 async function writeDb(db) {
   if (supabase) {
+    const { db: dbToStore, files } = extractActivityFileRows(db);
+    await upsertActivityFileRows(files);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
-      .upsert({ id: "main", state: db, updated_at: now() });
+      .upsert({ id: "main", state: dbToStore, updated_at: now() });
     if (error) throw supabaseSetupError(error);
     broadcastChange();
     return;
@@ -685,6 +689,61 @@ async function readSupabaseDb() {
   const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", "main").single();
   if (error) throw supabaseSetupError(error);
   return data.state;
+}
+
+function activityFileRowId(activityId, studentId, fileIndex) {
+  return `${ACTIVITY_FILE_ROW_PREFIX}${activityId}:${studentId}:${fileIndex}`;
+}
+
+function extractActivityFileRows(db) {
+  const dbToStore = structuredClone(db);
+  const files = [];
+  (dbToStore.activities || []).forEach((activity) => {
+    (activity.submissions || []).forEach((submission) => {
+      const submissionFiles = activitySubmissionFiles(submission);
+      submissionFiles.forEach((file, fileIndex) => {
+        if (!file?.fileData) return;
+        files.push({
+          id: activityFileRowId(activity.id, submission.studentId, fileIndex),
+          state: {
+            kind: "activity-file",
+            activityId: activity.id,
+            studentId: submission.studentId,
+            fileIndex,
+            fileName: file.fileName || "",
+            fileType: file.fileType || "",
+            fileSize: file.fileSize || 0,
+            uploadedAt: file.uploadedAt || "",
+            fileData: file.fileData
+          }
+        });
+        delete file.fileData;
+      });
+      if (submission.file?.fileData) delete submission.file.fileData;
+    });
+  });
+  return { db: dbToStore, files };
+}
+
+async function upsertActivityFileRows(files) {
+  if (!supabase || !files.length) return;
+  for (const file of files) {
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .upsert({ ...file, updated_at: now() });
+    if (error) throw supabaseSetupError(error);
+  }
+}
+
+async function readActivityFileRow(activityId, studentId, fileIndex) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("state")
+    .eq("id", activityFileRowId(activityId, studentId, fileIndex))
+    .maybeSingle();
+  if (error) throw supabaseSetupError(error);
+  return data?.state || null;
 }
 
 function publicUser(user) {
@@ -2440,7 +2499,11 @@ app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, asy
   const files = activitySubmissionFiles(sub);
   const fileIndex = Number(req.params.fileIndex);
   if (!Number.isInteger(fileIndex) || fileIndex < 0 || fileIndex >= files.length) return res.status(404).json({ error: "File not found." });
-  const file = files[fileIndex];
+  let file = files[fileIndex];
+  if (!file?.fileData) {
+    const storedFile = await readActivityFileRow(activity.id, student.id, fileIndex);
+    if (storedFile) file = { ...file, ...storedFile };
+  }
   if (!file?.fileData) return res.status(404).json({ error: "File data not found." });
   res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData } });
 });
