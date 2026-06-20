@@ -24,6 +24,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
 const ACTIVITY_FILE_ROW_PREFIX = "activity-file:";
 const TRANSACTION_ROW_PREFIX = "transaction:";
+const STUDENT_ROW_PREFIX = "student:";
+const USER_ROW_PREFIX = "user:";
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -56,6 +58,8 @@ app.use((req, res, next) => {
 const eventClients = new Map();
 const eventTokens = new Map();
 const persistedTransactionHashes = new Map();
+const persistedStudentHashes = new Map();
+const persistedUserHashes = new Map();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -488,11 +492,11 @@ async function backupExists(date = localDate()) {
   }
   const { data, error } = await supabase
     .from(SUPABASE_STATE_TABLE)
-    .select("id")
+    .select("id,state")
     .eq("id", backupRowId(date))
     .maybeSingle();
   if (error) throw supabaseSetupError(error);
-  return !!data;
+  return !!data && Array.isArray(data.state?.storageRows);
 }
 
 async function pruneLocalBackups() {
@@ -528,7 +532,7 @@ async function createDailyBackup(reason = "scheduled") {
   const date = localDate();
   if (await backupExists(date)) return false;
   const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
-  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db };
+  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: supabase ? await readSupplementalStorageRows() : [] };
   if (supabase) {
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -542,6 +546,21 @@ async function createDailyBackup(reason = "scheduled") {
   await writeFile(path.join(backupDir, `${backupRowId(date)}.json`), JSON.stringify(backup, null, 2));
   await pruneLocalBackups();
   return true;
+}
+
+async function readSupplementalStorageRows() {
+  if (!supabase) return [];
+  const prefixes = [ACTIVITY_FILE_ROW_PREFIX, TRANSACTION_ROW_PREFIX, STUDENT_ROW_PREFIX, USER_ROW_PREFIX];
+  const rows = [];
+  for (const prefix of prefixes) {
+    const { data, error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .select("id,state,updated_at")
+      .like("id", `${prefix}%`);
+    if (error) throw supabaseSetupError(error);
+    rows.push(...(data || []));
+  }
+  return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
 function scheduleDailyBackup() {
@@ -675,8 +694,12 @@ async function readDb() {
 async function writeDb(db) {
   if (supabase) {
     const { db: dbToStore, files } = extractActivityFileRows(db);
+    const students = extractEntityRows(dbToStore, "students", STUDENT_ROW_PREFIX);
+    const users = extractEntityRows(dbToStore, "users", USER_ROW_PREFIX);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
+    await syncEntityRows(students.items, students.rowIds, STUDENT_ROW_PREFIX, persistedStudentHashes);
+    await syncEntityRows(users.items, users.rowIds, USER_ROW_PREFIX, persistedUserHashes);
     await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -693,6 +716,8 @@ async function readSupabaseDb() {
   const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", "main").single();
   if (error) throw supabaseSetupError(error);
   const db = data.state;
+  db.students = await readEntityRows(STUDENT_ROW_PREFIX, db.students || [], persistedStudentHashes);
+  db.users = await readEntityRows(USER_ROW_PREFIX, db.users || [], persistedUserHashes);
   db.transactions = await readTransactionRows(db.transactions || []);
   return db;
 }
@@ -750,6 +775,69 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
     .maybeSingle();
   if (error) throw supabaseSetupError(error);
   return data?.state || null;
+}
+
+function entityRowId(prefix, id) {
+  return `${prefix}${id}`;
+}
+
+function entityHash(item) {
+  return JSON.stringify(item);
+}
+
+function extractEntityRows(dbToStore, key, prefix) {
+  const items = (dbToStore[key] || []).filter((item) => item?.id);
+  const rowIds = new Set(items.map((item) => entityRowId(prefix, item.id)));
+  dbToStore[key] = [];
+  return { items, rowIds };
+}
+
+async function readEntityRows(prefix, mainItems = [], hashStore) {
+  if (!supabase) return mainItems;
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id,state")
+    .like("id", `${prefix}%`);
+  if (error) throw supabaseSetupError(error);
+  const itemMap = new Map();
+  hashStore.clear();
+  (data || []).forEach((row) => {
+    if (!row.state?.id) return;
+    itemMap.set(row.state.id, row.state);
+    hashStore.set(row.id, entityHash(row.state));
+  });
+  (mainItems || []).forEach((item) => {
+    if (item?.id && !itemMap.has(item.id)) itemMap.set(item.id, item);
+  });
+  return [...itemMap.values()];
+}
+
+async function syncEntityRows(items, currentRowIds, prefix, hashStore) {
+  if (!supabase) return;
+  const changedRows = [];
+  items.forEach((item) => {
+    const id = entityRowId(prefix, item.id);
+    const hash = entityHash(item);
+    if (hashStore.get(id) === hash) return;
+    changedRows.push({ id, state: item, updated_at: now() });
+    hashStore.set(id, hash);
+  });
+  for (let index = 0; index < changedRows.length; index += 100) {
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .upsert(changedRows.slice(index, index + 100));
+    if (error) throw supabaseSetupError(error);
+  }
+  const staleIds = [...hashStore.keys()].filter((id) => id.startsWith(prefix) && !currentRowIds.has(id));
+  for (let index = 0; index < staleIds.length; index += 100) {
+    const batch = staleIds.slice(index, index + 100);
+    const { error } = await supabase
+      .from(SUPABASE_STATE_TABLE)
+      .delete()
+      .in("id", batch);
+    if (error) throw supabaseSetupError(error);
+    batch.forEach((id) => hashStore.delete(id));
+  }
 }
 
 function transactionRowId(transactionId) {
