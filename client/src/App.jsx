@@ -325,8 +325,11 @@ function RoleApp({ session, logout }) {
   }, [tabs.join("|"), fallback]);
   useEffect(() => {
     const group = navGroupForTab(tabs, active, session.user.role);
-    if (!group || openNavGroups[group.id]) return;
-    setOpenNavGroups((current) => saveNavGroups(session.user.role, { ...current, [group.id]: true }));
+    if (!group) return;
+    setOpenNavGroups((current) => {
+      const next = { [group.id]: true };
+      return JSON.stringify(current) === JSON.stringify(next) ? current : saveNavGroups(session.user.role, next);
+    });
   }, [active, tabs.join("|"), session.user.role]);
 
   function navigate(tab) {
@@ -335,7 +338,7 @@ function RoleApp({ session, logout }) {
     window.history.pushState({}, "", `/${slug(tab)}`);
   }
   function toggleNavGroup(id) {
-    setOpenNavGroups((current) => saveNavGroups(session.user.role, { ...current, [id]: !current[id] }));
+    setOpenNavGroups((current) => saveNavGroups(session.user.role, current[id] ? {} : { [id]: true }));
   }
 
   useEffect(() => {
