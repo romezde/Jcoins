@@ -150,7 +150,6 @@ app.use((req, res, next) => {
   const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
   const bypassQueue = req.path === "/api/auth/login"
     || req.path === "/api/events/token"
-    || req.path === "/api/push/test"
     || req.path === "/api/assistant/chat";
   if (!isMutation || !req.path.startsWith("/api") || bypassQueue) return next();
 
@@ -1673,30 +1672,6 @@ function queuePushToUsers(db, userIds, notification) {
   }, 0);
 }
 
-async function sendPushTest(db, userId) {
-  const subscriptions = (db.pushSubscriptions || []).filter((subscription) => subscription.userId === userId);
-  if (!subscriptions.length) return { subscriptions: 0, sent: 0 };
-  if (!await getPushConfig()) throw new Error("Push notifications are not configured yet.");
-  const payload = JSON.stringify({
-    title: "JCoins test notification",
-    body: "Push notifications are working on this device.",
-    url: "/dashboard",
-    tag: `jcoins-test-${Date.now()}`
-  });
-  const results = await Promise.allSettled(subscriptions.map((subscription) => (
-    webpush.sendNotification(subscription, payload, { TTL: 60, urgency: "high" })
-  )));
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") return;
-    const subscription = subscriptions[index];
-    if (result.reason?.statusCode === 404 || result.reason?.statusCode === 410) stalePushSubscriptionIds.add(subscription.id);
-  });
-  return {
-    subscriptions: subscriptions.length,
-    sent: results.filter((result) => result.status === "fulfilled").length
-  };
-}
-
 function userIdsForStudents(db, studentIds) {
   const targets = new Set(studentIds || []);
   return db.users.filter((user) => user.studentId && targets.has(user.studentId)).map((user) => user.id);
@@ -2759,20 +2734,6 @@ app.post("/api/push/unsubscribe", auth, async (req, res) => {
   db.pushSubscriptions = db.pushSubscriptions.filter((item) => item.userId !== req.user.id || item.endpoint !== endpoint);
   await writeDb(db);
   res.json({ subscribed: false });
-});
-
-app.post("/api/push/test", auth, async (req, res) => {
-  const db = await readDb();
-  let result;
-  try {
-    result = await sendPushTest(db, req.user.id);
-  } catch (error) {
-    console.error(`Push test failed [${req.user.id}]:`, error.message);
-    return res.status(502).json({ error: "The push service rejected the test notification. Disable and enable push, then try again." });
-  }
-  if (!result.subscriptions) return res.status(404).json({ error: "No push-enabled device was found for this account." });
-  if (!result.sent) return res.status(502).json({ error: "The push service rejected every registered device. Disable and enable push, then try again." });
-  res.json(result);
 });
 
 app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
