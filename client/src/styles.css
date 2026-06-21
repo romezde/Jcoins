@@ -411,6 +411,40 @@ input::placeholder {
   font-size: 10px;
   font-weight: 900;
 }
+.save-queue-status {
+  position: fixed;
+  right: 20px;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 66;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid rgba(34,211,238,.42);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #cffafe;
+  background: rgba(15,23,42,.96);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  font-size: 12px;
+  font-weight: 900;
+}
+.save-queue-status.saved {
+  border-color: rgba(34,197,94,.5);
+  color: #bbf7d0;
+}
+.save-queue-status.error {
+  border-color: rgba(251,113,133,.56);
+  color: #fecdd3;
+}
+.save-queue-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(207,250,254,.3);
+  border-top-color: #67e8f9;
+  border-radius: 999px;
+  animation: spin .7s linear infinite;
+}
 .install-button {
   flex: 0 0 auto;
   min-height: 42px;
@@ -3481,6 +3515,14 @@ td button {
     left: max(12px, env(safe-area-inset-left));
     width: auto;
     max-height: min(440px, calc(100dvh - 86px - env(safe-area-inset-top)));
+  }
+  .save-queue-status {
+    right: auto;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: 50%;
+    max-width: calc(100vw - 28px);
+    transform: translateX(-50%);
+    font-size: 11px;
   }
   .scrim {
     display: block;

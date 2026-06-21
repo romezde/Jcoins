@@ -190,13 +190,15 @@ function RoleApp({ session, logout }) {
   const [data, setData] = useState(() => initialCacheRef.current?.data || null);
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
-  const [successModal, setSuccessModal] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
+  const [saveState, setSaveState] = useState({ status: "idle", pending: 0, label: "" });
   const [navOpen, setNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState(() => readNavGroups(session.user.role));
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
+  const actionQueueRef = useRef(Promise.resolve());
+  const pendingActionsRef = useRef(0);
+  const actionRefreshTimerRef = useRef(null);
+  const saveStatusTimerRef = useRef(null);
   const loadInFlightRef = useRef(false);
   const pendingLoadRef = useRef(false);
   const pendingModulesRef = useRef(new Set());
@@ -319,6 +321,19 @@ function RoleApp({ session, logout }) {
     return () => window.clearTimeout(timer);
   }, [message]);
   useEffect(() => {
+    const warnBeforeLeaving = (event) => {
+      if (pendingActionsRef.current < 1) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeLeaving);
+      window.clearTimeout(actionRefreshTimerRef.current);
+      window.clearTimeout(saveStatusTimerRef.current);
+    };
+  }, []);
+  useEffect(() => {
     const onPop = () => setActive(tabFromPath(tabs, fallback));
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -355,29 +370,43 @@ function RoleApp({ session, logout }) {
     return () => window.removeEventListener("jcoins:open-module-action", openModuleAction);
   }, [tabs.join("|")]);
 
-  async function run(fn, ok = "Saved") {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setMessage("");
-    setSuccessModal("");
-    try {
-      const result = await fn();
-      await load(requiredModulesForTab(active, session.user.role));
-      window.dispatchEvent(new CustomEvent("jcoins:action-success"));
-      setSuccessModal(ok);
-      return result ?? true;
-    } catch (err) {
-      setMessage(err.message);
-      return false;
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
+  function run(fn, ok = "Saved") {
+    pendingActionsRef.current += 1;
+    window.clearTimeout(saveStatusTimerRef.current);
+    setSaveState({ status: "saving", pending: pendingActionsRef.current, label: "Saving changes" });
+    const task = actionQueueRef.current.catch(() => {}).then(async () => {
+      setMessage("");
+      try {
+        const result = await fn();
+        window.dispatchEvent(new CustomEvent("jcoins:action-success"));
+        pendingActionsRef.current -= 1;
+        if (pendingActionsRef.current > 0) {
+          setSaveState({ status: "saving", pending: pendingActionsRef.current, label: "Saving changes" });
+        } else {
+          setSaveState({ status: "saved", pending: 0, label: ok });
+          window.clearTimeout(actionRefreshTimerRef.current);
+          actionRefreshTimerRef.current = window.setTimeout(() => load(requiredModulesForTab(active, session.user.role)), 100);
+          saveStatusTimerRef.current = window.setTimeout(() => setSaveState({ status: "idle", pending: 0, label: "" }), 2500);
+        }
+        return result ?? true;
+      } catch (err) {
+        pendingActionsRef.current -= 1;
+        setMessage(err.message);
+        setSaveState({ status: "error", pending: pendingActionsRef.current, label: "Save failed" });
+        if (pendingActionsRef.current > 0) {
+          window.setTimeout(() => {
+            if (pendingActionsRef.current > 0) setSaveState({ status: "saving", pending: pendingActionsRef.current, label: "Saving changes" });
+          }, 1200);
+        }
+        return false;
+      }
+    });
+    actionQueueRef.current = task.then(() => undefined, () => undefined);
+    return task;
   }
 
   const home = fallback;
-  return <div className={`app-shell ${busy ? "is-busy" : ""}`} aria-busy={busy}>
+  return <div className="app-shell">
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <button className="nav-brand brand-button" onClick={() => navigate(home)}><JCoinLogo size={32} /> <span>JCoins</span></button>
       <GroupedNav tabs={tabs} active={active} role={session.user.role} data={normalized} openGroups={openNavGroups} toggleGroup={toggleNavGroup} navigate={navigate} />
@@ -394,27 +423,19 @@ function RoleApp({ session, logout }) {
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
       <main className="admin-shell">
         {message && <div className="notice">{message}</div>}
-        {successModal && <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <section className="modal-card success-modal">
-            <CheckCircle2 size={54} />
-            <div className="section-title">Success</div>
-            <p>{successModal}</p>
-            <button type="button" onClick={() => setSuccessModal("")}>OK</button>
-          </section>
-        </div>}
-        {busy && <div className="modal-backdrop loading-backdrop" role="alert" aria-live="polite">
-          <section className="modal-card loading-card">
-            <div className="loading-spinner" />
-            <div>
-              <div className="section-title">Working...</div>
-              <p>Please wait while JCoins saves your change.</p>
-            </div>
-          </section>
-        </div>}
         {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
       </main>
     </div>
+    <SaveQueueStatus state={saveState} />
     {(session.user.role === "admin" || session.user.role === "teacher") && <FloatingAssistant />}
+  </div>;
+}
+
+function SaveQueueStatus({ state }) {
+  if (state.status === "idle") return null;
+  return <div className={`save-queue-status ${state.status}`} role="status" aria-live="polite">
+    {state.status === "saving" ? <span className="save-queue-spinner" /> : state.status === "error" ? <X size={17} /> : <CheckCircle2 size={17} />}
+    <span>{state.label}{state.pending > 1 ? ` (${state.pending} queued)` : ""}</span>
   </div>;
 }
 
