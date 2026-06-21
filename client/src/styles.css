@@ -192,6 +192,7 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   backdrop-filter: blur(12px);
   z-index: 8;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .brand-button {
   width: 100%;
@@ -205,6 +206,8 @@ form { display: grid; gap: 14px; margin-top: 22px; }
 .module-nav {
   display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .module-nav button,
 .nav-group-trigger {
@@ -214,6 +217,8 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
+  min-width: 0;
+  max-width: 100%;
 }
 .module-nav button span,
 .nav-group-label {
@@ -242,6 +247,8 @@ form { display: grid; gap: 14px; margin-top: 22px; }
 .nav-group {
   display: grid;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
 }
 .nav-group-trigger {
   width: 100%;
@@ -279,10 +286,13 @@ form { display: grid; gap: 14px; margin-top: 22px; }
 .nav-group-panel {
   display: grid;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   transition: max-height .22s ease;
 }
 .module-nav button.nested {
+  width: calc(100% - 10px);
   min-height: 38px;
   margin-left: 10px;
   padding: 8px 10px 8px 14px;
@@ -3541,6 +3551,7 @@ td button {
     font-size: 11px;
   }
   .module-nav button.nested {
+    width: calc(100% - 6px);
     min-height: 35px;
     margin-left: 6px;
     padding: 7px 9px 7px 13px;
