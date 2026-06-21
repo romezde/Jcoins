@@ -202,7 +202,8 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   display: grid;
   gap: 8px;
 }
-.module-nav button {
+.module-nav button,
+.nav-group-trigger {
   position: relative;
   justify-content: flex-start;
   justify-content: space-between;
@@ -210,7 +211,8 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   background: transparent;
   color: var(--muted);
 }
-.module-nav button span {
+.module-nav button span,
+.nav-group-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -229,6 +231,70 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   border-color: rgba(34,211,238,.42);
   background: linear-gradient(135deg, rgba(34,211,238,.2), rgba(167,139,250,.18));
   color: #f8fafc;
+}
+.grouped-module-nav {
+  gap: 6px;
+}
+.nav-group {
+  display: grid;
+  gap: 4px;
+}
+.nav-group-trigger {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border-color: rgba(148,163,184,.12);
+  border-radius: 10px;
+  background: rgba(15,23,42,.28);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.nav-group-trigger.active,
+.nav-group.open .nav-group-trigger {
+  border-color: rgba(34,211,238,.26);
+  color: #e0f2fe;
+  background: rgba(30,41,59,.54);
+}
+.nav-group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.nav-group-count {
+  flex: 0 0 auto;
+  min-width: 24px;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+.nav-group-panel {
+  display: grid;
+  gap: 4px;
+  overflow: hidden;
+  transition: max-height .22s ease;
+}
+.module-nav button.nested {
+  min-height: 38px;
+  margin-left: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  background: rgba(15,23,42,.2);
+}
+.module-nav button.nested::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 11px;
+  bottom: 11px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(148,163,184,.22);
 }
 .main-pane {
   min-width: 0;
@@ -3320,8 +3386,27 @@ td button {
     transition: transform .2s ease;
     width: min(82vw, 310px);
     max-width: 310px;
+    padding-inline: 10px;
   }
   .sidebar.open { transform: translateX(0); }
+  .brand-button {
+    padding-bottom: 10px;
+    font-size: 21px;
+  }
+  .module-nav {
+    gap: 5px;
+  }
+  .nav-group-trigger {
+    min-height: 38px;
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+  .module-nav button.nested {
+    min-height: 35px;
+    margin-left: 6px;
+    padding: 7px 9px 7px 13px;
+    font-size: 12px;
+  }
   .hamburger, .mobile-brand {
     display: inline-flex;
   }

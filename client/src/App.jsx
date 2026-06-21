@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bell, CheckCircle2, Download, LogOut, Menu, Search, Shield, X } from "lucide-react";
+import { Bell, BookOpenCheck, CheckCircle2, Coins, Download, Gamepad2, LogOut, Menu, Search, Settings2, Shield, UsersRound, X } from "lucide-react";
 import { adminTabs, eventUrl, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { DropdownChecklist, Field, Select } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
@@ -194,6 +194,7 @@ function RoleApp({ session, logout }) {
   const [lastUpdated, setLastUpdated] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
   const [navOpen, setNavOpen] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState(() => readNavGroups(session.user.role));
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const loadInFlightRef = useRef(false);
@@ -322,11 +323,19 @@ function RoleApp({ session, logout }) {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [tabs.join("|"), fallback]);
+  useEffect(() => {
+    const group = navGroupForTab(tabs, active, session.user.role);
+    if (!group || openNavGroups[group.id]) return;
+    setOpenNavGroups((current) => saveNavGroups(session.user.role, { ...current, [group.id]: true }));
+  }, [active, tabs.join("|"), session.user.role]);
 
   function navigate(tab) {
     setActive(tab);
     setNavOpen(false);
     window.history.pushState({}, "", `/${slug(tab)}`);
+  }
+  function toggleNavGroup(id) {
+    setOpenNavGroups((current) => saveNavGroups(session.user.role, { ...current, [id]: !current[id] }));
   }
 
   useEffect(() => {
@@ -368,14 +377,7 @@ function RoleApp({ session, logout }) {
   return <div className={`app-shell ${busy ? "is-busy" : ""}`} aria-busy={busy}>
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <button className="nav-brand brand-button" onClick={() => navigate(home)}><JCoinLogo size={32} /> <span>JCoins</span></button>
-      <nav className="module-nav">{tabs.map((tab) => {
-        const showDot = (tab === "Approvals" && pendingApprovalCount(normalized, session.user.role) > 0)
-          || (tab === "Feedback" && pendingFeedbackCount(normalized, session.user.role) > 0);
-        return <button key={tab} className={active === tab ? "active" : ""} onClick={() => navigate(tab)}>
-          <span>{tab}</span>
-          {showDot && <i className="nav-dot" aria-label="Pending requests" />}
-        </button>;
-      })}</nav>
+      <GroupedNav tabs={tabs} active={active} role={session.user.role} data={normalized} openGroups={openNavGroups} toggleGroup={toggleNavGroup} navigate={navigate} />
     </aside>
     <div className="main-pane">
       <header className="topbar">
@@ -420,6 +422,79 @@ function LiveStatus({ status, lastUpdated }) {
     <span>{label}</span>
     {lastUpdated && <small>{lastUpdated}</small>}
   </div>;
+}
+
+function GroupedNav({ tabs, active, role, data, openGroups, toggleGroup, navigate }) {
+  const groups = navGroupsForRole(role);
+  const groupedTabs = new Set(groups.flatMap((group) => group.tabs));
+  const topTabs = tabs.filter((tab) => !groupedTabs.has(tab));
+  return <nav className="module-nav grouped-module-nav">
+    {topTabs.map((tab) => <NavTabButton key={tab} tab={tab} active={active} data={data} role={role} navigate={navigate} />)}
+    {groups.map((group) => {
+      const items = group.tabs.filter((tab) => tabs.includes(tab));
+      if (!items.length) return null;
+      const Icon = group.icon;
+      const isActiveGroup = items.includes(active);
+      const isOpen = openGroups[group.id] || isActiveGroup;
+      return <section key={group.id} className={`nav-group ${isOpen ? "open" : ""}`}>
+        <button type="button" className={`nav-group-trigger ${isActiveGroup ? "active" : ""}`} onClick={() => toggleGroup(group.id)} aria-expanded={isOpen}>
+          <span className="nav-group-label"><Icon size={17} /> {group.label}</span>
+          <span className="nav-group-count">{items.length}</span>
+        </button>
+        <div className="nav-group-panel" style={{ maxHeight: isOpen ? `${items.length * 48 + 8}px` : "0px" }}>
+          {items.map((tab) => <NavTabButton key={tab} tab={tab} active={active} data={data} role={role} navigate={navigate} nested />)}
+        </div>
+      </section>;
+    })}
+  </nav>;
+}
+
+function NavTabButton({ tab, active, data, role, navigate, nested = false }) {
+  const showDot = (tab === "Approvals" && pendingApprovalCount(data, role) > 0)
+    || (tab === "Feedback" && pendingFeedbackCount(data, role) > 0);
+  return <button type="button" className={`${active === tab ? "active" : ""} ${nested ? "nested" : ""}`} onClick={() => navigate(tab)}>
+    <span>{tab}</span>
+    {showDot && <i className="nav-dot" aria-label="Pending requests" />}
+  </button>;
+}
+
+function navGroupsForRole(role) {
+  if (role === "student" || role === "display") {
+    return [
+      { id: "student-experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Profile", "History"] },
+      { id: "student-work", label: "Class Work", icon: BookOpenCheck, tabs: ["Activities", "Quizzes", "Schedule"] },
+      { id: "student-economy", label: "Economy", icon: Coins, tabs: ["Shop", "Trade Requests", "Appearance Shop"] },
+      { id: "student-admin", label: "Account", icon: Settings2, tabs: ["Feedback", "Account"] }
+    ];
+  }
+  return [
+    { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes"] },
+    { id: "people", label: "People Management", icon: UsersRound, tabs: ["People", "Subjects"] },
+    { id: "economy", label: "Economy", icon: Coins, tabs: ["Transactions", "Shop", "Appearance Shop", "Approvals"] },
+    { id: "experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Name Wheel", "Profile"] },
+    { id: "admin", label: "Administration", icon: Settings2, tabs: ["Reports", "Feedback", "Audit Logs", "Settings", "Account"] }
+  ];
+}
+
+function navGroupForTab(tabs, tab, role) {
+  return navGroupsForRole(role).find((group) => group.tabs.includes(tab) && group.tabs.some((item) => tabs.includes(item)));
+}
+
+function navGroupsKey(role) {
+  return `jcoins_nav_groups_${role || "default"}`;
+}
+
+function readNavGroups(role) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(navGroupsKey(role)) || "null");
+    if (saved && typeof saved === "object") return saved;
+  } catch {}
+  return role === "student" ? { "student-experience": true } : { academic: true, economy: true };
+}
+
+function saveNavGroups(role, groups) {
+  localStorage.setItem(navGroupsKey(role), JSON.stringify(groups));
+  return groups;
 }
 
 function InstallAppButton() {
