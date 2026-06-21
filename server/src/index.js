@@ -70,6 +70,7 @@ const STORAGE_ROW_TYPES = [
 ];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
+const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 60000));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -120,6 +121,10 @@ const persistedAppearanceInventoryHashes = new Map();
 const persistedAppearanceGiftHashes = new Map();
 const persistedAppearanceEquippedHashes = new Map();
 const persistedGuildResponseHashes = new Map();
+let cachedDb = null;
+let cachedDbAt = 0;
+let dbLoadPromise = null;
+let dbWriteQueue = Promise.resolve();
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -637,9 +642,38 @@ function scheduleDailyBackup() {
   scheduleNext();
 }
 
-async function readDb() {
+function cloneDb(db) {
+  return structuredClone(db);
+}
+
+function cacheDb(db) {
+  if (!DB_CACHE_TTL_MS) return;
+  cachedDb = cloneDb(db);
+  cachedDbAt = Date.now();
+}
+
+function cachedDbIsFresh() {
+  return !!cachedDb && !!DB_CACHE_TTL_MS && Date.now() - cachedDbAt <= DB_CACHE_TTL_MS;
+}
+
+async function readRawDb() {
+  await dbWriteQueue.catch(() => {});
   await ensureDb();
-  const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
+  if (cachedDbIsFresh()) return cloneDb(cachedDb);
+  if (!dbLoadPromise) {
+    dbLoadPromise = (async () => {
+      const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
+      cacheDb(db);
+      return db;
+    })().finally(() => {
+      dbLoadPromise = null;
+    });
+  }
+  return cloneDb(await dbLoadPromise);
+}
+
+async function readDb() {
+  const db = await readRawDb();
   let changed = false;
   const d = defaults();
   db.settings = { ...d.settings, ...(db.settings || {}) };
@@ -746,6 +780,12 @@ async function readDb() {
 }
 
 async function writeDb(db) {
+  const snapshot = cloneDb(db);
+  dbWriteQueue = dbWriteQueue.catch(() => {}).then(() => persistDb(snapshot));
+  return dbWriteQueue;
+}
+
+async function persistDb(db) {
   if (supabase) {
     const { db: dbToStore, files } = extractActivityFileRows(db);
     const students = extractEntityRows(dbToStore, "students", STUDENT_ROW_PREFIX);
@@ -795,10 +835,12 @@ async function writeDb(db) {
       .from(SUPABASE_STATE_TABLE)
       .upsert({ id: "main", state: dbToStore, updated_at: now() });
     if (error) throw supabaseSetupError(error);
+    cacheDb(db);
     broadcastChange();
     return;
   }
   await writeFile(dbPath, JSON.stringify(db, null, 2));
+  cacheDb(db);
   broadcastChange();
 }
 
@@ -806,27 +848,51 @@ async function readSupabaseDb() {
   const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", "main").single();
   if (error) throw supabaseSetupError(error);
   const db = data.state;
-  db.students = await readEntityRows(STUDENT_ROW_PREFIX, db.students || [], persistedStudentHashes);
-  db.users = await readEntityRows(USER_ROW_PREFIX, db.users || [], persistedUserHashes);
-  db.attendanceRecords = await readEntityRows(ATTENDANCE_RECORD_ROW_PREFIX, db.attendanceRecords || [], persistedAttendanceRecordHashes);
-  db.recitations = await readEntityRows(RECITATION_ROW_PREFIX, db.recitations || [], persistedRecitationHashes);
-  db.activities = await readEntityRows(ACTIVITY_ROW_PREFIX, db.activities || [], persistedActivityHashes);
-  db.quizzes = await readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes);
-  db.requests = await readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes);
-  db.feedback = await readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes);
-  db.schedules = await readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes);
-  db.attendanceWeeks = await readEntityRows(ATTENDANCE_WEEK_ROW_PREFIX, db.attendanceWeeks || [], persistedAttendanceWeekHashes);
-  db.subjects = await readEntityRows(SUBJECT_ROW_PREFIX, db.subjects || [], persistedSubjectHashes);
-  db.sections = await readStringRows(SECTION_ROW_PREFIX, db.sections || [], persistedSectionHashes);
-  db.studentAssistants = await readEntityRows(STUDENT_ASSISTANT_ROW_PREFIX, db.studentAssistants || [], persistedStudentAssistantHashes);
-  db.shopItems = await readEntityRows(SHOP_ITEM_ROW_PREFIX, db.shopItems || [], persistedShopItemHashes);
-  db.sales = await readEntityRows(SALE_ROW_PREFIX, db.sales || [], persistedSaleHashes);
-  db.appearanceItems = await readEntityRows(APPEARANCE_ITEM_ROW_PREFIX, db.appearanceItems || [], persistedAppearanceItemHashes);
-  db.appearanceInventory = await readEntityRows(APPEARANCE_INVENTORY_ROW_PREFIX, db.appearanceInventory || [], persistedAppearanceInventoryHashes);
-  db.appearanceGifts = await readEntityRows(APPEARANCE_GIFT_ROW_PREFIX, db.appearanceGifts || [], persistedAppearanceGiftHashes);
-  db.appearanceEquipped = await readObjectRows(APPEARANCE_EQUIPPED_ROW_PREFIX, db.appearanceEquipped || {}, persistedAppearanceEquippedHashes);
-  db.guildSystem = await readGuildResponseRows(db.guildSystem);
-  db.transactions = await readTransactionRows(db.transactions || []);
+  [
+    db.students,
+    db.users,
+    db.attendanceRecords,
+    db.recitations,
+    db.activities,
+    db.quizzes,
+    db.requests,
+    db.feedback,
+    db.schedules,
+    db.attendanceWeeks,
+    db.subjects,
+    db.sections,
+    db.studentAssistants,
+    db.shopItems,
+    db.sales,
+    db.appearanceItems,
+    db.appearanceInventory,
+    db.appearanceGifts,
+    db.appearanceEquipped,
+    db.guildSystem,
+    db.transactions
+  ] = await Promise.all([
+    readEntityRows(STUDENT_ROW_PREFIX, db.students || [], persistedStudentHashes),
+    readEntityRows(USER_ROW_PREFIX, db.users || [], persistedUserHashes),
+    readEntityRows(ATTENDANCE_RECORD_ROW_PREFIX, db.attendanceRecords || [], persistedAttendanceRecordHashes),
+    readEntityRows(RECITATION_ROW_PREFIX, db.recitations || [], persistedRecitationHashes),
+    readEntityRows(ACTIVITY_ROW_PREFIX, db.activities || [], persistedActivityHashes),
+    readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes),
+    readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes),
+    readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes),
+    readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes),
+    readEntityRows(ATTENDANCE_WEEK_ROW_PREFIX, db.attendanceWeeks || [], persistedAttendanceWeekHashes),
+    readEntityRows(SUBJECT_ROW_PREFIX, db.subjects || [], persistedSubjectHashes),
+    readStringRows(SECTION_ROW_PREFIX, db.sections || [], persistedSectionHashes),
+    readEntityRows(STUDENT_ASSISTANT_ROW_PREFIX, db.studentAssistants || [], persistedStudentAssistantHashes),
+    readEntityRows(SHOP_ITEM_ROW_PREFIX, db.shopItems || [], persistedShopItemHashes),
+    readEntityRows(SALE_ROW_PREFIX, db.sales || [], persistedSaleHashes),
+    readEntityRows(APPEARANCE_ITEM_ROW_PREFIX, db.appearanceItems || [], persistedAppearanceItemHashes),
+    readEntityRows(APPEARANCE_INVENTORY_ROW_PREFIX, db.appearanceInventory || [], persistedAppearanceInventoryHashes),
+    readEntityRows(APPEARANCE_GIFT_ROW_PREFIX, db.appearanceGifts || [], persistedAppearanceGiftHashes),
+    readObjectRows(APPEARANCE_EQUIPPED_ROW_PREFIX, db.appearanceEquipped || {}, persistedAppearanceEquippedHashes),
+    readGuildResponseRows(db.guildSystem),
+    readTransactionRows(db.transactions || [])
+  ]);
   return db;
 }
 
