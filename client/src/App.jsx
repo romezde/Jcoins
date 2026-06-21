@@ -424,7 +424,10 @@ function RoleApp({ session, logout }) {
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
       <main className="admin-shell">
         {message && <div className="notice">{message}</div>}
-        {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
+        {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <>
+          <ModuleHeader tab={active} data={normalized} />
+          <Screen role={session.user.role} tab={active} data={normalized} run={run} />
+        </>}
       </main>
     </div>
     <SaveQueueStatus state={saveState} />
@@ -840,6 +843,26 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Reports") return <Reports data={data} />;
   if (tab === "Account") return <Account data={data} role={role} />;
   return <section className="panel">Prototype screen coming next.</section>;
+}
+
+function ModuleHeader({ tab, data }) {
+  const counts = {
+    Students: data.students?.length,
+    Teachers: data.users?.filter((user) => user.role !== "student").length,
+    "Student Assistants": data.studentAssistants?.length,
+    Sections: data.sections?.length,
+    Subjects: data.subjects?.length,
+    Activities: data.activities?.length,
+    Quizzes: data.quizzes?.length,
+    Transactions: data.transactions?.length,
+    Approvals: data.requests?.filter((request) => request.status === "pending").length,
+    Feedback: data.feedback?.length
+  };
+  const count = counts[tab];
+  return <header className="module-header">
+    <div><span>JCoins Arena</span><h1>{tab}</h1></div>
+    {Number.isFinite(count) && <strong>{count.toLocaleString()}</strong>}
+  </header>;
 }
 
 function buildTabs(baseTabs, data, role) {

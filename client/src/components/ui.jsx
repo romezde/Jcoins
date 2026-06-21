@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Plus } from "lucide-react";
 
 export function Field({ label, value, onChange, type = "text", children }) {
   const [showPassword, setShowPassword] = useState(false);
@@ -19,7 +19,7 @@ export function Select({ label, value, onChange, options }) {
 
 export function Panel({ title, children, wide = false, defaultOpen = true, actions }) {
   const [open, setOpen] = useState(defaultOpen);
-  return <section className={`panel ${wide ? "wide" : ""}`}>
+  return <section className={`panel ${wide ? "wide" : ""} ${open ? "open" : ""}`}>
     <div className="section-head">
       <button type="button" className="ghost section-toggle" onClick={() => setOpen(!open)}>
         {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
@@ -47,7 +47,7 @@ export function ActionModal({ title, buttonLabel = title, children, openEvent })
   }, [open]);
   return <>
     <section className="action-modal-launch">
-      <button type="button" onClick={() => setOpen(true)}>{buttonLabel}</button>
+      <button type="button" onClick={() => setOpen(true)}><Plus size={16} />{buttonLabel}</button>
     </section>
     {open && <div className="modal-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card modal-card-wide">
