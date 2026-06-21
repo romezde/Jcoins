@@ -15,6 +15,7 @@ export function tabFromPath(tabs, fallback) {
 }
 
 export function request(path, options = {}) {
+  if (!navigator.onLine) return Promise.reject(new Error("You are offline. Reconnect before saving or refreshing."));
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 90000);
@@ -48,6 +49,7 @@ export function eventUrl(token) {
 }
 
 export function postForm(path, formData) {
+  if (!navigator.onLine) return Promise.reject(new Error("You are offline. Reconnect before uploading."));
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 90000);

@@ -445,6 +445,45 @@ input::placeholder {
   border-radius: 999px;
   animation: spin .7s linear infinite;
 }
+.pwa-runtime-status {
+  position: fixed;
+  bottom: max(66px, calc(env(safe-area-inset-bottom) + 54px));
+  left: 270px;
+  z-index: 67;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, calc(100vw - 290px));
+  min-height: 40px;
+  border: 1px solid rgba(250,204,21,.5);
+  border-radius: 999px;
+  padding: 7px 10px 7px 12px;
+  color: #fef3c7;
+  background: rgba(15,23,42,.97);
+  box-shadow: 0 12px 30px rgba(0,0,0,.38);
+  font-size: 12px;
+  font-weight: 900;
+}
+.pwa-runtime-status.offline {
+  border-color: rgba(251,146,60,.58);
+  color: #ffedd5;
+}
+.pwa-runtime-status span {
+  min-width: 0;
+}
+.pwa-runtime-status button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.pwa-runtime-status .pwa-status-close {
+  width: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+}
 .install-button {
   flex: 0 0 auto;
   min-height: 42px;
@@ -3521,6 +3560,15 @@ td button {
     bottom: max(14px, env(safe-area-inset-bottom));
     left: 50%;
     max-width: calc(100vw - 28px);
+    transform: translateX(-50%);
+    font-size: 11px;
+  }
+  .pwa-runtime-status {
+    right: auto;
+    bottom: max(62px, calc(env(safe-area-inset-bottom) + 48px));
+    left: 50%;
+    width: max-content;
+    max-width: calc(100vw - 24px);
     transform: translateX(-50%);
     font-size: 11px;
   }

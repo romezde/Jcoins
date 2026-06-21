@@ -1,11 +1,13 @@
 {
   "name": "JCoins Arena",
   "short_name": "JCoins",
+  "id": "/",
   "description": "Classroom JCoins dashboard, leaderboard, activities, quizzes, and shop.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "icons": [
@@ -28,5 +30,11 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["education", "productivity"]
+  "categories": ["education", "productivity"],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    { "name": "Dashboard", "short_name": "Dashboard", "url": "/dashboard", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Leaderboard", "short_name": "Leaderboard", "url": "/leaderboard", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Activities", "short_name": "Activities", "url": "/activities", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
 }
