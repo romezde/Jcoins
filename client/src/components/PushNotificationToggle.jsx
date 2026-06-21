@@ -69,7 +69,7 @@ export default function PushNotificationToggle() {
     setMessage("");
     try {
       const result = await post("/push/test", {});
-      setMessage(`Provider accepted ${result.encryptedSent} detailed and ${result.wakeSent} basic test${result.wakeSent === 1 ? "" : "s"}.`);
+      setMessage(`Test sent to ${result.sent} device${result.sent === 1 ? "" : "s"}.`);
     } catch (requestError) {
       setError(requestError.message || "Could not send a test notification.");
     } finally {

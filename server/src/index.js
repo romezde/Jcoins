@@ -1675,7 +1675,7 @@ function queuePushToUsers(db, userIds, notification) {
 
 async function sendPushTest(db, userId) {
   const subscriptions = (db.pushSubscriptions || []).filter((subscription) => subscription.userId === userId);
-  if (!subscriptions.length) return { subscriptions: 0, sent: 0, encryptedSent: 0, wakeSent: 0 };
+  if (!subscriptions.length) return { subscriptions: 0, sent: 0 };
   if (!await getPushConfig()) throw new Error("Push notifications are not configured yet.");
   const payload = JSON.stringify({
     title: "JCoins test notification",
@@ -1683,24 +1683,17 @@ async function sendPushTest(db, userId) {
     url: "/dashboard",
     tag: `jcoins-test-${Date.now()}`
   });
-  const encryptedResults = await Promise.allSettled(subscriptions.map((subscription) => (
+  const results = await Promise.allSettled(subscriptions.map((subscription) => (
     webpush.sendNotification(subscription, payload, { TTL: 60, urgency: "high" })
   )));
-  const wakeResults = await Promise.allSettled(subscriptions.map((subscription) => (
-    webpush.sendNotification(subscription, null, { TTL: 60, urgency: "high" })
-  )));
-  [...encryptedResults, ...wakeResults].forEach((result, index) => {
+  results.forEach((result, index) => {
     if (result.status === "fulfilled") return;
-    const subscription = subscriptions[index % subscriptions.length];
+    const subscription = subscriptions[index];
     if (result.reason?.statusCode === 404 || result.reason?.statusCode === 410) stalePushSubscriptionIds.add(subscription.id);
   });
-  const encryptedSent = encryptedResults.filter((result) => result.status === "fulfilled").length;
-  const wakeSent = wakeResults.filter((result) => result.status === "fulfilled").length;
   return {
     subscriptions: subscriptions.length,
-    sent: Math.max(encryptedSent, wakeSent),
-    encryptedSent,
-    wakeSent
+    sent: results.filter((result) => result.status === "fulfilled").length
   };
 }
 
