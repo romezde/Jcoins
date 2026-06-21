@@ -1,11 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { post, put } from "../api.js";
+import { post, put, request } from "../api.js";
 import { Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function Settings({ data, run }) {
   const [settings, setSettings] = useState(data.settings);
   const [guildResetConfirm, setGuildResetConfirm] = useState("");
+  const [storageHealth, setStorageHealth] = useState(null);
+  const [storageError, setStorageError] = useState("");
+  const [storageLoading, setStorageLoading] = useState(false);
   useEffect(() => setSettings(data.settings), [data.settings]);
+  useEffect(() => {
+    const refresh = () => loadStorageHealth(setStorageHealth, setStorageError, setStorageLoading);
+    refresh();
+    window.addEventListener("jcoins:action-success", refresh);
+    return () => window.removeEventListener("jcoins:action-success", refresh);
+  }, []);
   const set = (group, key, value) => setSettings({ ...settings, [group]: { ...(settings[group] || {}), [key]: Number(value) || value } });
   const saveAll = () => run(() => put("/admin/settings", { settings }), "Settings saved");
   const guildSystem = data.guildSystem || {};
@@ -86,6 +95,23 @@ export default function Settings({ data, run }) {
       <Field label="Registration Code" value={settings.registration?.code || ""} onChange={(code) => setSettings({ ...settings, registration: { ...(settings.registration || {}), code } })} />
       <p className="muted-line">Students need this code before they can create their account.</p>
     </Panel>
+    <Panel title="Database & Backups" wide defaultOpen={false} actions={<button type="button" className="soft" disabled={storageLoading} onClick={() => loadStorageHealth(setStorageHealth, setStorageError, setStorageLoading)}>{storageLoading ? "Checking..." : "Refresh"}</button>}>
+      {storageError && <div className="error">{storageError}</div>}
+      {storageHealth && <>
+        <div className="metric-strip">
+          <section className="metric-tile"><span>Storage</span><strong>{storageHealth.storage === "supabase" ? "Supabase" : "Local"}</strong></section>
+          <section className="metric-tile"><span>Integrity</span><strong>{storageHealth.healthy ? "Healthy" : "Check Required"}</strong></section>
+          <section className="metric-tile"><span>Latest Backup</span><strong>{storageHealth.backup?.available ? storageHealth.backup.date : "Not Found"}</strong></section>
+        </div>
+        <p className="muted-line">{storageHealth.note}</p>
+        <Table columns={["Data", "Stored Rows", "Visible Records", "Status"]} rows={(storageHealth.rows || []).map((row) => [
+          row.label,
+          row.rowCount,
+          row.visibleCount,
+          row.missingCount > 0 ? `Missing ${row.missingCount}` : row.rowCount > row.visibleCount ? `Retained +${row.rowCount - row.visibleCount}` : "OK"
+        ])} />
+      </>}
+    </Panel>
     <Panel title="Ranks" wide defaultOpen={false}>
       <Table columns={["Rank", "Minimum"]} rows={settings.ranks.map((r, i) => [
         <input value={r.name} onChange={(e) => setSettings({ ...settings, ranks: settings.ranks.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />,
@@ -97,6 +123,18 @@ export default function Settings({ data, run }) {
       </div>
     </Panel>
   </div>;
+}
+
+async function loadStorageHealth(setHealth, setError, setLoading) {
+  setLoading(true);
+  setError("");
+  try {
+    setHealth(await request("/admin/storage-health"));
+  } catch (error) {
+    setError(error.message || "Could not check database health.");
+  } finally {
+    setLoading(false);
+  }
 }
 
 function guildStatusLabel(status) {

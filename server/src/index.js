@@ -689,10 +689,8 @@ async function createDailyBackup(reason = "scheduled") {
 
 async function readSupplementalStorageRows() {
   if (!supabase) return [];
-  const rows = [];
-  for (const type of STORAGE_ROW_TYPES) {
-    rows.push(...await readStorageRowsByPrefix(type.prefix, "id,state,updated_at"));
-  }
+  const groups = await Promise.all(STORAGE_ROW_TYPES.map((type) => readStorageRowsByPrefix(type.prefix, "id,state,updated_at")));
+  const rows = groups.flat();
   return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
@@ -1100,25 +1098,54 @@ function reconstructedDataCounts(db) {
 
 async function storageHealthSummary(db) {
   const reconstructedCounts = reconstructedDataCounts(db);
-  const rows = [];
-  for (const type of STORAGE_ROW_TYPES) {
-    const rowCount = await countStorageRowsByPrefix(type.prefix);
-    rows.push({
+  const rowCounts = await Promise.all(STORAGE_ROW_TYPES.map((type) => countStorageRowsByPrefix(type.prefix)));
+  const rows = STORAGE_ROW_TYPES.map((type, index) => {
+    const visibleCount = reconstructedCounts[type.key] ?? null;
+    const rowCount = rowCounts[index];
+    return {
       key: type.key,
       label: type.label,
       prefix: type.prefix,
       rowCount,
-      visibleCount: reconstructedCounts[type.key] ?? null
-    });
-  }
+      visibleCount,
+      missingCount: visibleCount == null ? 0 : Math.max(0, visibleCount - rowCount)
+    };
+  });
+  const backup = await latestBackupSummary();
   return {
     storage: supabase ? "supabase" : "file",
     table: supabase ? SUPABASE_STATE_TABLE : null,
     generatedAt: now(),
     rows,
+    healthy: rows.every((row) => row.missingCount === 0),
+    backup,
     reconstructedCounts,
-    note: "visibleCount is what the app can currently read after rebuilding data from storage rows and main fallback."
+    note: "Stored rows are compared with records currently reconstructed by the app. Extra stored rows are retained data; only missing rows are flagged."
   };
+}
+
+async function latestBackupSummary() {
+  if (!supabase) {
+    try {
+      const files = (await readdir(path.join(dataDir, "backups")))
+        .filter((file) => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(file))
+        .sort()
+        .reverse();
+      return files.length ? { available: true, date: files[0].slice(7, 17), id: files[0].replace(/\.json$/, "") } : { available: false };
+    } catch {
+      return { available: false };
+    }
+  }
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id,updated_at")
+    .like("id", "backup-%")
+    .order("updated_at", { ascending: false });
+  if (error) throw supabaseSetupError(error);
+  const manifest = (data || []).find((row) => /^backup-\d{4}-\d{2}-\d{2}$/.test(row.id));
+  return manifest
+    ? { available: true, date: manifest.id.slice(7), id: manifest.id, updatedAt: manifest.updated_at }
+    : { available: false };
 }
 
 function entityRowId(prefix, id) {
