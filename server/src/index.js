@@ -2084,6 +2084,7 @@ function normalizeQuiz(quiz, db) {
   quiz.difficulty = quizDifficulties.includes(quiz.difficulty) ? quiz.difficulty : "Easy";
   quiz.rewardValue = Number.isFinite(Number(quiz.rewardValue)) ? Number(quiz.rewardValue) : quizRewardValue(db, quiz.difficulty);
   quiz.deadline ||= today();
+  quiz.timeLimitMinutes = Math.max(0, Math.min(240, Number(quiz.timeLimitMinutes || 0)));
   quiz.status = ["draft", "published", "closed"].includes(quiz.status) ? quiz.status : "draft";
   quiz.questions = (Array.isArray(quiz.questions) ? quiz.questions : []).map(cleanQuizQuestion);
   quiz.passingScore = Math.max(1, Math.min(Number(quiz.passingScore || Math.ceil(quiz.questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100) || 1), Math.max(1, quiz.questions.length)));
@@ -2098,6 +2099,7 @@ function normalizeQuiz(quiz, db) {
     submission.attempts = Array.isArray(submission.attempts) ? submission.attempts : [];
     submission.bestAwarded = Number(submission.bestAwarded || 0);
     submission.bestScore = Number(submission.bestScore || 0);
+    submission.activeAttempt = submission.activeAttempt && typeof submission.activeAttempt === "object" ? submission.activeAttempt : null;
   });
   quiz.source = quiz.source || "manual";
   quiz.createdAt ||= now();
@@ -2128,6 +2130,34 @@ function canRetakeQuiz(quiz, studentId, submission) {
   if (quiz.retakeMode === "all") return true;
   if (quiz.retakeMode === "selected") return (quiz.retakeStudentIds || []).includes(studentId);
   return false;
+}
+
+function quizAttemptExpired(attempt) {
+  return !!attempt?.dueAt && new Date(attempt.dueAt).getTime() <= Date.now();
+}
+
+function finishTimedOutQuizAttempt(quiz, submission) {
+  const active = submission.activeAttempt;
+  if (!active) return null;
+  const result = scoreQuiz(quiz, {});
+  const attempt = {
+    id: active.id || randomUUID(),
+    attemptNumber: active.attemptNumber || submission.attempts.length + 1,
+    answers: {},
+    correct: 0,
+    total: result.total,
+    passingScore: result.passingScore,
+    difficulty: quiz.difficulty,
+    rewardValue: result.rewardValue,
+    awarded: 0,
+    startedAt: active.startedAt,
+    dueAt: active.dueAt,
+    submittedAt: now(),
+    timedOut: true
+  };
+  submission.attempts.push(attempt);
+  submission.activeAttempt = null;
+  return attempt;
 }
 
 function canShowQuizAnswers(quiz) {
@@ -2174,12 +2204,13 @@ function publicQuiz(quiz, db, user) {
     rows
   };
   if (user.role === "student") {
+    const { submissions: privateSubmissions, ...studentBase } = base;
     const submission = submissions.find((item) => item.studentId === user.studentId);
     const latest = submission?.attempts?.at(-1);
     const showAnswers = canShowQuizAnswers(quiz);
     const visibleQuestions = quiz.shuffleQuestions ? [...quiz.questions].sort(() => Math.random() - 0.5) : quiz.questions;
     return {
-      ...base,
+      ...studentBase,
       rows: [],
       questions: visibleQuestions.map((question) => {
         const options = quiz.shuffleOptions && question.type === "multiple_choice" ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
@@ -2196,7 +2227,13 @@ function publicQuiz(quiz, db, user) {
         latest,
         bestScore: submission.bestScore,
         bestAwarded: submission.bestAwarded,
-        showAnswers
+        showAnswers,
+        activeAttempt: submission.activeAttempt ? {
+          id: submission.activeAttempt.id,
+          attemptNumber: submission.activeAttempt.attemptNumber,
+          startedAt: submission.activeAttempt.startedAt,
+          dueAt: submission.activeAttempt.dueAt
+        } : null
       } : null,
       canSubmit: quiz.status === "published" && isQuizDeadlineOpen(quiz) && canRetakeQuiz(quiz, user.studentId, submission)
     };
@@ -3558,6 +3595,9 @@ function quizFromBody(db, body, user, existing = {}) {
   if (!questions.length) throw new Error("Add at least one question.");
   const difficulty = quizDifficulties.includes(body.difficulty || existing.difficulty) ? body.difficulty || existing.difficulty : "Easy";
   const passingScore = Math.max(1, Math.min(Number(body.passingScore || existing.passingScore || Math.ceil(questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100)), questions.length));
+  const requestedTimeLimit = Number(body.timeLimitMinutes ?? existing.timeLimitMinutes ?? 30);
+  if (!Number.isFinite(requestedTimeLimit) || requestedTimeLimit < 1 || requestedTimeLimit > 240) throw new Error("Time limit must be between 1 and 240 minutes.");
+  const timeLimitMinutes = Math.round(requestedTimeLimit);
   return {
     title: String(body.title ?? existing.title ?? "Quiz").trim().slice(0, 120) || "Quiz",
     subjectId,
@@ -3565,6 +3605,7 @@ function quizFromBody(db, body, user, existing = {}) {
     difficulty,
     rewardValue: Number(existing.rewardValue ?? quizRewardValue(db, difficulty)),
     deadline: String(body.deadline ?? existing.deadline ?? today()).slice(0, 10),
+    timeLimitMinutes,
     questions,
     passingScore,
     retakeMode: ["none", "all", "selected"].includes(body.retakeMode ?? existing.retakeMode) ? body.retakeMode ?? existing.retakeMode : "none",
@@ -3654,6 +3695,36 @@ app.delete("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), asyn
   res.json({ ok: true });
 });
 
+app.post("/api/student/quizzes/:id/start", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  normalizeQuiz(quiz, db);
+  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
+  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
+  if (!isQuizDeadlineOpen(quiz)) return res.status(400).json({ error: "The deadline has passed." });
+  let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
+  if (!submission) {
+    submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
+    quiz.submissions.push(submission);
+  }
+  if (submission.activeAttempt && quizAttemptExpired(submission.activeAttempt)) finishTimedOutQuizAttempt(quiz, submission);
+  if (submission.activeAttempt) return res.json({ attempt: submission.activeAttempt });
+  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) {
+    await writeDb(db);
+    return res.status(400).json({ error: "No retake is available for this quiz." });
+  }
+  const startedAt = now();
+  submission.activeAttempt = {
+    id: randomUUID(),
+    attemptNumber: submission.attempts.length + 1,
+    startedAt,
+    dueAt: new Date(Date.now() + quiz.timeLimitMinutes * 60 * 1000).toISOString()
+  };
+  await writeDb(db);
+  res.status(201).json({ attempt: submission.activeAttempt });
+});
+
 app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async (req, res) => {
   const db = await readDb();
   const quiz = db.quizzes.find((item) => item.id === req.params.id);
@@ -3665,14 +3736,21 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
   if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return res.status(400).json({ error: "No retake is available for this quiz." });
   if (!submission) {
-    submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0 };
+    submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
     quiz.submissions.push(submission);
+  }
+  const activeAttempt = submission.activeAttempt;
+  if (quiz.timeLimitMinutes > 0 && !activeAttempt) return res.status(400).json({ error: "Start the quiz before submitting." });
+  if (activeAttempt?.dueAt && Date.now() > new Date(activeAttempt.dueAt).getTime() + 90 * 1000) {
+    finishTimedOutQuizAttempt(quiz, submission);
+    await writeDb(db);
+    return res.status(400).json({ error: "Time is up. This attempt was recorded as timed out." });
   }
   const answers = req.body.answers && typeof req.body.answers === "object" ? req.body.answers : {};
   const result = scoreQuiz(quiz, answers);
   const attempt = {
-    id: randomUUID(),
-    attemptNumber: submission.attempts.length + 1,
+    id: activeAttempt?.id || randomUUID(),
+    attemptNumber: activeAttempt?.attemptNumber || submission.attempts.length + 1,
     answers,
     correct: result.correct,
     total: result.total,
@@ -3680,9 +3758,13 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
     difficulty: quiz.difficulty,
     rewardValue: result.rewardValue,
     awarded: result.awarded,
+    startedAt: activeAttempt?.startedAt || now(),
+    dueAt: activeAttempt?.dueAt || "",
+    timedOut: false,
     submittedAt: now()
   };
   submission.attempts.push(attempt);
+  submission.activeAttempt = null;
   submission.bestScore = Math.max(Number(submission.bestScore || 0), result.correct);
   submission.bestAwarded = Math.max(Number(submission.bestAwarded || 0), result.awarded);
   const existing = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === req.user.studentId);

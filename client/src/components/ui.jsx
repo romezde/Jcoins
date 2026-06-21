@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Plus } from "lucide-react";
 
-export function Field({ label, value, onChange, type = "text", children }) {
+export function Field({ label, value, onChange, type = "text", children, ...inputProps }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
-  const input = <input type={isPassword && showPassword ? "text" : type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
+  const input = <input {...inputProps} type={isPassword && showPassword ? "text" : type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
   return <label>{label}{children || (isPassword ? <span className="password-field">
     {input}
     <button type="button" className="soft password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>
@@ -31,7 +31,7 @@ export function Panel({ title, children, wide = false, defaultOpen = true, actio
   </section>;
 }
 
-export function ActionModal({ title, buttonLabel = title, children, openEvent }) {
+export function ActionModal({ title, buttonLabel = title, children, openEvent, icon: Icon = Plus }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!openEvent) return undefined;
@@ -47,7 +47,7 @@ export function ActionModal({ title, buttonLabel = title, children, openEvent })
   }, [open]);
   return <>
     <section className="action-modal-launch">
-      <button type="button" onClick={() => setOpen(true)}><Plus size={16} />{buttonLabel}</button>
+      <button type="button" onClick={() => setOpen(true)}><Icon size={16} />{buttonLabel}</button>
     </section>
     {open && <div className="modal-backdrop" role="dialog" aria-modal="true">
       <section className="modal-card modal-card-wide">

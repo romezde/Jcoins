@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil } from "lucide-react";
 import { del, post, postForm, put, today } from "../api.js";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 
@@ -21,7 +22,7 @@ export default function Quizzes({ data, run, role }) {
   });
   if (role === "student") return <StudentQuizzes data={data} run={run} />;
   return <div className="dashboard-grid">
-    <QuizCreateModal data={data} run={run} />
+    <QuizFormModal data={data} run={run} />
     <Panel title="Quiz List" wide defaultOpen>
       <div className="filter-bar">
         <Select label="Subject" value={filter.subjectId} onChange={(subjectId) => setFilter({ ...filter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
@@ -29,30 +30,36 @@ export default function Quizzes({ data, run, role }) {
         <Select label="Status" value={filter.status} onChange={(status) => setFilter({ ...filter, status })} options={[{ value: "all", label: "All" }, { value: "draft", label: "Draft" }, { value: "published", label: "Published" }, { value: "closed", label: "Closed" }]} />
         <Field label="Search" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
       </div>
-      <Table columns={["Quiz", "Subject", "Section", "Status", "Difficulty", "Deadline", "Tracker", "Actions"]} rows={quizzes.map((quiz) => [
+      <Table columns={["Quiz", "Subject", "Section", "Status", "Difficulty", "Time", "Deadline", "Tracker", "Actions"]} rows={quizzes.map((quiz) => [
         quiz.title,
         quiz.subjectName,
         quiz.section,
         statusLabel(quiz.status),
         `${quiz.difficulty} (${quiz.rewardValue} JC)`,
+        `${quiz.timeLimitMinutes} min`,
         quiz.deadline,
         quiz.tracker,
-        <QuizActions quiz={quiz} run={run} />
+        <QuizActions quiz={quiz} data={data} run={run} />
       ])} />
     </Panel>
     {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} run={run} />)}
   </div>;
 }
 
-function QuizCreateModal({ data, run }) {
+function QuizFormModal({ data, run, quiz = null }) {
   const firstSubject = data.subjects[0]?.id || "";
   const firstSection = data.sections[0] || "";
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = useState(() => quiz ? {
+    ...quiz,
+    questions: quiz.questions.map((question) => ({ ...question, options: [...question.options] })),
+    retakeStudentIds: [...(quiz.retakeStudentIds || [])]
+  } : ({
     title: "New Quiz",
     subjectId: firstSubject,
     section: firstSection,
     difficulty: "Easy",
     deadline: today(),
+    timeLimitMinutes: 30,
     passingScore: 1,
     questions: [blankQuestion()],
     retakeMode: "none",
@@ -92,10 +99,12 @@ function QuizCreateModal({ data, run }) {
 
   function submit(e) {
     e.preventDefault();
-    run(() => post("/admin/quizzes", cleanQuizForm(form)), "Quiz draft created");
+    run(() => quiz
+      ? put(`/admin/quizzes/${quiz.id}`, cleanQuizForm(form))
+      : post("/admin/quizzes", cleanQuizForm(form)), quiz ? "Quiz updated" : "Quiz draft created");
   }
 
-  return <ActionModal title="Create Quiz">
+  return <ActionModal title={quiz ? `Edit ${quiz.title}` : "Create Quiz"} buttonLabel={quiz ? "Edit" : "Create Quiz"} icon={quiz ? Pencil : undefined}>
     <form onSubmit={submit}>
       <div className="form-grid two">
         <Field label="Quiz Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
@@ -103,6 +112,7 @@ function QuizCreateModal({ data, run }) {
         <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={(data.sections || []).map((section) => ({ value: section, label: section }))} />
         <Select label="Difficulty" value={form.difficulty} onChange={(difficulty) => setForm({ ...form, difficulty })} options={(data.settings.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} (${item.points} JC)` }))} />
         <Field label="Deadline" type="date" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
+        <Field label="Time Limit (minutes)" type="number" min="1" max="240" step="1" required value={form.timeLimitMinutes} onChange={(timeLimitMinutes) => setForm({ ...form, timeLimitMinutes })} />
         <Field label="Passing Score" type="number" value={form.passingScore} onChange={(passingScore) => setForm({ ...form, passingScore })} />
         <Select label="Answer Reveal" value={form.answerVisibility} onChange={(answerVisibility) => setForm({ ...form, answerVisibility })} options={answerVisibility} />
         {form.answerVisibility === "scheduled" && <Field label="Reveal Date/Time" type="datetime-local" value={form.answerRevealAt} onChange={(answerRevealAt) => setForm({ ...form, answerRevealAt })} />}
@@ -150,8 +160,9 @@ function deleteQuiz(quiz, run) {
     && run(() => del(`/admin/quizzes/${quiz.id}`), "Quiz deleted");
 }
 
-function QuizActions({ quiz, run }) {
+function QuizActions({ quiz, data, run }) {
   return <div className="inline">
+    {quiz.status === "draft" && <QuizFormModal data={data} run={run} quiz={quiz} />}
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     <button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete</button>
@@ -160,41 +171,72 @@ function QuizActions({ quiz, run }) {
 
 function QuizCard({ quiz, run }) {
   return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button>}>
-    <p className="muted-line">{quiz.subjectName} | {quiz.section} | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
+    <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
 }
 
 function StudentQuizzes({ data, run }) {
   const [activeQuizId, setActiveQuizId] = useState("");
+  const [activeAttempt, setActiveAttempt] = useState(null);
   const activeQuiz = useMemo(() => (data.quizzes || []).find((quiz) => quiz.id === activeQuizId), [data.quizzes, activeQuizId]);
+  async function openQuiz(quiz) {
+    if (!quiz.canSubmit || !quiz.timeLimitMinutes) {
+      setActiveAttempt(quiz.submission?.activeAttempt || null);
+      setActiveQuizId(quiz.id);
+      return;
+    }
+    const result = await run(() => post(`/student/quizzes/${quiz.id}/start`, {}), "Quiz started");
+    if (!result) return;
+    setActiveAttempt(result.attempt);
+    setActiveQuizId(quiz.id);
+  }
   return <div className="dashboard-grid">
     <Panel title="My Quizzes" wide defaultOpen>
-      <Table columns={["Quiz", "Subject", "Status", "Deadline", "Score", "JCoins", "Action"]} rows={(data.quizzes || []).map((quiz) => [
+      <Table columns={["Quiz", "Subject", "Status", "Time", "Deadline", "Score", "JCoins", "Action"]} rows={(data.quizzes || []).map((quiz) => [
         quiz.title,
         quiz.subjectName,
         statusLabel(quiz.status),
+        quiz.timeLimitMinutes ? `${quiz.timeLimitMinutes} min` : "Untimed",
         quiz.deadline,
         quiz.submission?.latest ? `${quiz.submission.latest.correct}/${quiz.submission.latest.total}` : "Not taken",
         quiz.submission?.bestAwarded ?? 0,
-        <button type="button" className="soft" onClick={() => setActiveQuizId(quiz.id)}>{quiz.canSubmit ? "Answer" : "View"}</button>
+        <button type="button" className="soft" onClick={() => openQuiz(quiz)}>{quiz.canSubmit ? quiz.submission?.activeAttempt ? "Continue" : "Answer" : "View"}</button>
       ])} />
     </Panel>
-    {activeQuiz && <StudentQuizPanel quiz={activeQuiz} run={run} />}
+    {activeQuiz && <StudentQuizPanel quiz={activeQuiz} attempt={activeAttempt || activeQuiz.submission?.activeAttempt} run={run} onFinished={() => setActiveAttempt(null)} />}
   </div>;
 }
 
-function StudentQuizPanel({ quiz, run }) {
+function StudentQuizPanel({ quiz, attempt, run, onFinished }) {
   const [answers, setAnswers] = useState({});
+  const [remaining, setRemaining] = useState(() => secondsRemaining(attempt));
+  const submittedRef = useRef(false);
   const showAnswers = quiz.submission?.showAnswers;
-  function submit(e) {
-    e.preventDefault();
-    run(() => post(`/student/quizzes/${quiz.id}/submit`, { answers }), "Quiz submitted");
+  async function submitQuiz() {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    const result = await run(() => post(`/student/quizzes/${quiz.id}/submit`, { answers }), remaining <= 0 ? "Time ended; quiz submitted" : "Quiz submitted");
+    if (!result) submittedRef.current = false;
+    else onFinished();
   }
+  useEffect(() => {
+    submittedRef.current = false;
+    setRemaining(secondsRemaining(attempt));
+    if (!attempt?.dueAt) return undefined;
+    const timer = window.setInterval(() => setRemaining(secondsRemaining(attempt)), 1000);
+    return () => window.clearInterval(timer);
+  }, [attempt?.id, attempt?.dueAt]);
+  useEffect(() => {
+    if (attempt?.dueAt && remaining <= 0 && quiz.canSubmit) submitQuiz();
+  }, [remaining, attempt?.dueAt, quiz.canSubmit]);
   return <Panel title={quiz.title} wide defaultOpen>
-    <p className="muted-line">{quiz.subjectName} | {quiz.difficulty} | reward up to {quiz.rewardValue} JC | passing {quiz.passingScore}/{quiz.questions.length}</p>
+    <div className="quiz-session-head">
+      <p className="muted-line">{quiz.subjectName} | {quiz.difficulty} | reward up to {quiz.rewardValue} JC | passing {quiz.passingScore}/{quiz.questions.length}</p>
+      {attempt?.dueAt && <strong className={remaining <= 60 ? "quiz-timer warning" : "quiz-timer"}>{formatTimer(remaining)}</strong>}
+    </div>
     {quiz.submission?.latest && <div className="notice">Latest score: {quiz.submission.latest.correct}/{quiz.submission.latest.total}. Best reward: {quiz.submission.bestAwarded} JCoins.</div>}
-    <form className="quiz-answer-form" onSubmit={submit}>
+    <form className="quiz-answer-form" onSubmit={(event) => { event.preventDefault(); submitQuiz(); }}>
       {quiz.questions.map((question, index) => <section key={question.id} className="quiz-question-card">
         <strong>{index + 1}. {question.prompt}</strong>
         <div className="quiz-options">
@@ -213,6 +255,7 @@ function cleanQuizForm(form) {
   return {
     ...form,
     passingScore: Number(form.passingScore || 1),
+    timeLimitMinutes: Number(form.timeLimitMinutes || 30),
     questions: form.questions.map((question) => ({
       ...question,
       prompt: String(question.prompt || "").trim(),
@@ -220,6 +263,16 @@ function cleanQuizForm(form) {
       answer: String(question.answer || "").trim()
     }))
   };
+}
+
+function secondsRemaining(attempt) {
+  if (!attempt?.dueAt) return 0;
+  return Math.max(0, Math.ceil((new Date(attempt.dueAt).getTime() - Date.now()) / 1000));
+}
+
+function formatTimer(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function studentsForQuiz(data, form) {

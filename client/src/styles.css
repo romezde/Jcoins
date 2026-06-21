@@ -3720,6 +3720,16 @@ td button {
     justify-items: start;
   }
   .filter-bar, .transaction-filter-bar { grid-template-columns: 1fr; }
+  .quiz-session-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .quiz-timer {
+    position: sticky;
+    top: calc(158px + env(safe-area-inset-top));
+    z-index: 4;
+    width: 100%;
+  }
   .filter-count {
     min-height: 38px;
     justify-content: flex-start;
@@ -4352,6 +4362,36 @@ td button {
 
 .quiz-answer-form {
   margin-top: 12px;
+}
+
+.quiz-session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quiz-session-head p {
+  margin: 0;
+}
+
+.quiz-timer {
+  flex: 0 0 auto;
+  min-width: 86px;
+  border: 1px solid rgba(34,211,238,.36);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #cffafe;
+  background: rgba(34,211,238,.1);
+  font-size: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.quiz-timer.warning {
+  border-color: rgba(251,113,133,.5);
+  color: #fecdd3;
+  background: rgba(251,113,133,.12);
 }
 
 .transaction-target-box {
