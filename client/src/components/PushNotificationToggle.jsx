@@ -8,6 +8,7 @@ export default function PushNotificationToggle() {
   const [permission, setPermission] = useState(() => supported ? Notification.permission : "unsupported");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!supported) return undefined;
@@ -24,6 +25,7 @@ export default function PushNotificationToggle() {
   async function enable() {
     setBusy(true);
     setError("");
+    setMessage("");
     try {
       const nextPermission = await Notification.requestPermission();
       setPermission(nextPermission);
@@ -37,6 +39,7 @@ export default function PushNotificationToggle() {
       });
       await post("/push/subscribe", { subscription: current.toJSON() });
       setSubscription(current);
+      setMessage("Push enabled. Send a test to confirm this device.");
     } catch (requestError) {
       setError(requestError.message || "Could not enable notifications.");
     } finally {
@@ -48,6 +51,7 @@ export default function PushNotificationToggle() {
     if (!subscription) return;
     setBusy(true);
     setError("");
+    setMessage("");
     try {
       await post("/push/unsubscribe", { endpoint: subscription.endpoint });
       await subscription.unsubscribe();
@@ -59,11 +63,27 @@ export default function PushNotificationToggle() {
     }
   }
 
+  async function test() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await post("/push/test", {});
+      setMessage(`Test sent to ${result.sent} device${result.sent === 1 ? "" : "s"}.`);
+    } catch (requestError) {
+      setError(requestError.message || "Could not send a test notification.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <div className="push-notification-control">
     <button type="button" className="soft" disabled={busy || permission === "denied"} onClick={subscription ? disable : enable}>
       {subscription ? <BellOff size={16} /> : <BellRing size={16} />}
       {busy ? "Updating..." : permission === "denied" ? "Push blocked" : subscription ? "Disable push" : "Enable push"}
     </button>
+    {subscription && <button type="button" className="soft" disabled={busy} onClick={test}>Send test notification</button>}
+    {message && <small>{message}</small>}
     {error && <small className="inline-error">{error}</small>}
   </div>;
 }
