@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Eye, X } from "lucide-react";
 import { request } from "../api.js";
 
 export default function ActivityFileViewer({ activityId, studentId, files }) {
@@ -8,6 +8,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState({});
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const fileSignature = list.map((file) => `${file.fileIndex ?? ""}:${file.fileName}`).join("|");
 
@@ -16,6 +17,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
     setIndex(0);
     setLoaded({});
     setLoading(false);
+    setDownloading(false);
     setError("");
   }, [activityId, studentId, fileSignature]);
 
@@ -37,14 +39,38 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
     return () => { active = false; };
   }, [open, index, activityId, studentId]);
 
+  async function downloadFiles() {
+    setDownloading(true);
+    setError("");
+    try {
+      for (let position = 0; position < list.length; position += 1) {
+        const file = list[position];
+        const fileIndex = Number.isInteger(file.fileIndex) ? file.fileIndex : position;
+        const downloadedFile = loaded[position] || (await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`)).file;
+        if (!downloadedFile?.fileData) throw new Error(`Could not download ${file.fileName}.`);
+        triggerDownload(downloadedFile);
+      }
+    } catch (downloadError) {
+      setError(downloadError.message || "Could not download file.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (!list.length) return "-";
   const current = loaded[index];
   return <>
     <div className="activity-file-list">
-      <button type="button" className="soft file-view-link" onClick={() => { setIndex(0); setOpen(true); }}>
-        View {list.length === 1 ? "file" : `${list.length} files`}
-      </button>
+      <div className="activity-file-actions">
+        <button type="button" className="soft file-view-link" onClick={() => { setIndex(0); setOpen(true); }}>
+          <Eye size={16} /> View
+        </button>
+        <button type="button" className="soft file-view-link" onClick={downloadFiles} disabled={downloading}>
+          <Download size={16} /> {downloading ? "Downloading..." : list.length > 1 ? "Download all" : "Download"}
+        </button>
+      </div>
       <small>{list.map((file) => file.fileName).join(", ")}</small>
+      {!open && error && <span className="inline-error">{error}</span>}
     </div>
     {open && <div className="modal-backdrop activity-viewer-backdrop" role="dialog" aria-modal="true">
       <section className="activity-viewer">
@@ -66,6 +92,16 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
       </section>
     </div>}
   </>;
+}
+
+function triggerDownload(file) {
+  const link = document.createElement("a");
+  link.href = file.fileData;
+  link.download = file.fileName || "activity-file";
+  link.rel = "noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function FilePreview({ file }) {
