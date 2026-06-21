@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,11 +17,24 @@ const require = createRequire(import.meta.url);
 const { PDFParse } = require("pdf-parse");
 const dataDir = path.resolve(__dirname, "../data");
 const dbPath = path.join(dataDir, "db.json");
-const JWT_SECRET = process.env.JWT_SECRET || "dev-jcoins-secret-change-before-production";
 const PORT = Number(process.env.PORT || 4000);
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
+const configuredJwtSecret = String(process.env.JWT_SECRET || "").trim();
+const jwtSecretIsPlaceholder = !configuredJwtSecret || [
+  "change-this-to-a-long-random-secret",
+  "dev-jcoins-secret-change-before-production"
+].includes(configuredJwtSecret);
+const JWT_SECRET = jwtSecretIsPlaceholder
+  ? SUPABASE_SERVICE_ROLE_KEY
+    ? createHash("sha256").update(`${SUPABASE_SERVICE_ROLE_KEY}:jcoins-jwt`).digest("hex")
+    : randomBytes(32).toString("hex")
+  : configuredJwtSecret;
+const ALLOWED_ORIGINS = String(process.env.CORS_ORIGINS || "https://jcoins-zeta.vercel.app,https://coins-zeta.vercel.app,http://localhost:5173,http://127.0.0.1:5173,capacitor://localhost,ionic://localhost")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const ACTIVITY_FILE_ROW_PREFIX = "activity-file:";
 const TRANSACTION_ROW_PREFIX = "transaction:";
 const STUDENT_ROW_PREFIX = "student:";
@@ -80,6 +93,8 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 
 const app = express();
 let mutationRequestQueue = Promise.resolve();
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
 ["get", "post", "put", "delete", "patch"].forEach((method) => {
   const original = app[method].bind(app);
   app[method] = (path, ...handlers) => original(path, ...handlers.map((handler, index) => {
@@ -94,7 +109,25 @@ let mutationRequestQueue = Promise.resolve();
   }));
 });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
-app.use(cors());
+app.use((req, res, next) => {
+  req.requestId = randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "geolocation=(), payment=()");
+  if (req.path.startsWith("/api/auth")) res.setHeader("Cache-Control", "no-store");
+  next();
+});
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
+    return callback(new Error("Origin not allowed"));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Authorization", "Content-Type"],
+  maxAge: 86400
+}));
 app.use(express.json({ limit: "25mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
@@ -160,6 +193,7 @@ const persistedAuditLogHashes = new Map();
 let persistedMainHash = "";
 let cachedDb = null;
 let cachedDbAt = 0;
+let cachedAuthUsers = new Map();
 let dbLoadPromise = null;
 let dbWriteQueue = Promise.resolve();
 
@@ -685,6 +719,7 @@ function cloneDb(db) {
 }
 
 function cacheDb(db) {
+  cachedAuthUsers = new Map((db.users || []).filter((user) => user?.id).map((user) => [user.id, structuredClone(user)]));
   if (!DB_CACHE_TTL_MS) return;
   cachedDb = cloneDb(db);
   cachedDbAt = Date.now();
@@ -1379,6 +1414,46 @@ function publicUser(user) {
   return { id: user.id, username: user.username, role: user.role, mustChangePassword: user.mustChangePassword, studentId: user.studentId, subjectIds: user.subjectIds || [], sectionIds: user.sectionIds || [] };
 }
 
+const rateLimitBuckets = new Map();
+
+function rateLimit({ windowMs, max, prefix, key = (req) => req.ip }) {
+  return (req, res, next) => {
+    const nowMs = Date.now();
+    const bucketKey = `${prefix}:${key(req) || "unknown"}`;
+    let bucket = rateLimitBuckets.get(bucketKey);
+    if (!bucket || bucket.resetAt <= nowMs) bucket = { count: 0, resetAt: nowMs + windowMs };
+    bucket.count += 1;
+    rateLimitBuckets.set(bucketKey, bucket);
+    if (bucket.count > max) {
+      res.setHeader("Retry-After", Math.max(1, Math.ceil((bucket.resetAt - nowMs) / 1000)));
+      return res.status(429).json({ error: "Too many attempts. Please wait and try again." });
+    }
+    if (rateLimitBuckets.size > 5000) {
+      for (const [storedKey, stored] of rateLimitBuckets.entries()) {
+        if (stored.resetAt <= nowMs) rateLimitBuckets.delete(storedKey);
+      }
+    }
+    return next();
+  };
+}
+
+const loginIpLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, prefix: "login-ip" });
+const loginAccountLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: "login-account",
+  key: (req) => `${req.ip}:${String(req.body?.username || "").trim().toLowerCase()}`
+});
+const registrationLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 250, prefix: "registration-ip" });
+const registrationAccountLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  prefix: "registration-account",
+  key: (req) => `${req.ip}:${String(req.body?.surname || "").trim().toLowerCase()}:${String(req.body?.firstName || "").trim().toLowerCase()}`
+});
+const authenticatedMutationLimit = rateLimit({ windowMs: 60 * 1000, max: 300, prefix: "mutation", key: (req) => req.user?.id });
+const assistantLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: "assistant", key: (req) => req.user?.id });
+
 function objectMentionsStudent(value, studentId) {
   if (value == null) return false;
   if (typeof value !== "object") return value === studentId;
@@ -1429,17 +1504,29 @@ function purgeOrphanStudentUsers(db) {
 }
 
 function sign(user) {
-  return jwt.sign(publicUser(user), JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign(
+    { ...publicUser(user), authVersion: Number(user.authVersion || 0) },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN, algorithm: "HS256" }
+  );
 }
 
-function auth(req, res, next) {
+async function auth(req, res, next) {
+  let decoded;
   try {
-    const token = String(req.headers.authorization || "").replace("Bearer ", "");
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
+    const authorization = String(req.headers.authorization || "");
+    if (!authorization.startsWith("Bearer ")) throw new Error("Missing bearer token");
+    decoded = jwt.verify(authorization.slice(7), JWT_SECRET, { algorithms: ["HS256"] });
   } catch {
-    res.status(401).json({ error: "Unauthorized" });
+    return res.status(401).json({ error: "Unauthorized" });
   }
+  await dbWriteQueue.catch(() => {});
+  if (!cachedDbIsFresh() || !cachedAuthUsers.size) await readDb();
+  const currentUser = cachedAuthUsers.get(decoded.id);
+  if (!currentUser || Number(currentUser.authVersion || 0) !== Number(decoded.authVersion || 0)) return res.status(401).json({ error: "Session expired. Please log in again." });
+  req.user = publicUser(currentUser);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return authenticatedMutationLimit(req, res, next);
+  return next();
 }
 
 function requireRole(...roles) {
@@ -2311,7 +2398,7 @@ app.get("/api/admin/storage-health", auth, requireRole("admin"), async (req, res
   res.json(await storageHealthSummary(db));
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", loginIpLimit, loginAccountLimit, async (req, res) => {
   const db = await readDb();
   const user = db.users.find((u) => u.username.toLowerCase() === String(req.body.username || "").toLowerCase());
   if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.passwordHash))) return res.status(401).json({ error: "Invalid username or password" });
@@ -2325,6 +2412,13 @@ app.post("/api/auth/change-password", auth, async (req, res) => {
   if (String(req.body.newPassword || "").length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
   user.passwordHash = await bcrypt.hash(String(req.body.newPassword), 10);
   user.mustChangePassword = false;
+  user.authVersion = Number(user.authVersion || 0) + 1;
+  addAuditLog(db, user, "account.password.change", {
+    entityType: "user",
+    entityId: user.id,
+    targetStudentId: user.studentId || null,
+    summary: `Password changed for ${user.username}.`
+  });
   await writeDb(db);
   res.json({ token: sign(user), user: publicUser(user) });
 });
@@ -2377,7 +2471,7 @@ app.get("/api/events/token", auth, (req, res) => {
   res.json({ token, expiresAt: new Date(expiresAt).toISOString() });
 });
 
-app.post("/api/auth/register-student", async (req, res) => {
+app.post("/api/auth/register-student", registrationLimit, registrationAccountLimit, async (req, res) => {
   const db = await readDb();
   if (!db.settings.registration?.enabled) return res.status(403).json({ error: "Student registration is currently closed." });
   const surname = String(req.body.surname || "").trim();
@@ -2434,7 +2528,11 @@ app.post("/api/auth/register-student", async (req, res) => {
 
 app.get("/api/leaderboard", async (req, res) => {
   const db = await readDb();
-  res.json({ students: hideProfilePhotos(hydrateStudents(db)), subjects: db.subjects });
+  const students = hideProfilePhotos(hydrateStudents(db)).map((student) => {
+    const { username, userId, subjectIds, createdAt, profilePhoto, ...publicStudent } = student;
+    return publicStudent;
+  });
+  res.json({ students, subjects: db.subjects.map((subject) => ({ id: subject.id, name: subject.name })) });
 });
 
 app.get("/api/me", auth, async (req, res) => {
@@ -2816,6 +2914,7 @@ app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (re
   const db = await readDb();
   const { name, section, username, tempPassword, startingJCoins, subjectIds = [] } = req.body;
   if (!name || !username || !tempPassword) return res.status(400).json({ error: "Name, username, and temporary password are required." });
+  if (String(tempPassword).length < 6) return res.status(400).json({ error: "Temporary password must be at least 6 characters." });
   if (db.users.some((u) => u.username.toLowerCase() === String(username).toLowerCase())) return res.status(409).json({ error: "Username already exists." });
   if (req.user.role === "teacher") {
     const allowedSubjects = new Set(req.user.subjectIds || []);
@@ -2863,7 +2962,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
 
       if (!name) throw new Error(`Row ${rowNumber}: name is required.`);
       if (!username) throw new Error(`Row ${rowNumber}: username is required.`);
-      if (!tempPassword) throw new Error(`Row ${rowNumber}: temporary password is required.`);
+      if (!tempPassword || tempPassword.length < 6) throw new Error(`Row ${rowNumber}: temporary password must be at least 6 characters.`);
       if (existingUsernames.has(username.toLowerCase()) || incomingUsernames.has(username.toLowerCase())) throw new Error(`Row ${rowNumber}: username "${username}" is already used.`);
       if (!Number.isFinite(startingJCoins)) throw new Error(`Row ${rowNumber}: starting JCoins must be a number.`);
       if (!subjectIds.length || subjectIds.some((id) => !id)) throw new Error(`Row ${rowNumber}: enter valid subject names or IDs.`);
@@ -3727,7 +3826,7 @@ async function askGemini({ message, referenceText, context }) {
   throw new Error(lastError || "AI request failed.");
 }
 
-app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), upload.single("file"), async (req, res) => {
+app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistantLimit, upload.single("file"), async (req, res) => {
   try {
     const db = await readDb();
     const message = String(req.body.message || "").trim();
@@ -3759,10 +3858,24 @@ app.put("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) => 
   const db = await readDb();
   const user = db.users.find((u) => u.id === req.params.id);
   if (!user) return res.status(404).json({ error: "User not found." });
-  user.role = req.body.role || user.role;
-  user.subjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : user.subjectIds;
-  user.sectionIds = Array.isArray(req.body.sectionIds) ? req.body.sectionIds : user.sectionIds;
+  const role = req.body.role || user.role;
+  if (!["admin", "teacher", "student", "display"].includes(role)) return res.status(400).json({ error: "Invalid account role." });
+  if (user.id === req.user.id && role !== "admin") return res.status(400).json({ error: "You cannot remove your own admin access while logged in." });
+  const subjectIds = Array.isArray(req.body.subjectIds) ? [...new Set(req.body.subjectIds)] : user.subjectIds;
+  const sectionIds = Array.isArray(req.body.sectionIds) ? [...new Set(req.body.sectionIds)] : user.sectionIds;
+  if (subjectIds.some((id) => !db.subjects.some((subject) => subject.id === id))) return res.status(400).json({ error: "One or more assigned subjects do not exist." });
+  if (sectionIds.some((section) => !db.sections.includes(section))) return res.status(400).json({ error: "One or more assigned sections do not exist." });
+  user.role = role;
+  user.subjectIds = subjectIds;
+  user.sectionIds = sectionIds;
   if (typeof req.body.mustChangePassword === "boolean") user.mustChangePassword = req.body.mustChangePassword;
+  addAuditLog(db, req.user, "account.update", {
+    entityType: "user",
+    entityId: user.id,
+    targetStudentId: user.studentId || null,
+    summary: `Updated account access for ${user.username}.`,
+    meta: { role: user.role, subjectIds: user.subjectIds, sectionIds: user.sectionIds }
+  });
   await writeDb(db);
   res.json({ user: userWithStudent(user, db) });
 });
@@ -3770,10 +3883,15 @@ app.put("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) => 
 app.post("/api/admin/users", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   const username = String(req.body.username || "").trim();
-  const tempPassword = String(req.body.tempPassword || "teacher123!");
+  const tempPassword = String(req.body.tempPassword || "");
   const role = ["admin", "teacher", "display"].includes(req.body.role) ? req.body.role : "teacher";
+  const subjectIds = Array.isArray(req.body.subjectIds) ? [...new Set(req.body.subjectIds)] : [];
+  const sectionIds = Array.isArray(req.body.sectionIds) ? [...new Set(req.body.sectionIds)] : [];
   if (!username) return res.status(400).json({ error: "Username is required." });
+  if (tempPassword.length < 8) return res.status(400).json({ error: "Temporary password must be at least 8 characters." });
   if (db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: "Username already exists." });
+  if (subjectIds.some((id) => !db.subjects.some((subject) => subject.id === id))) return res.status(400).json({ error: "One or more assigned subjects do not exist." });
+  if (sectionIds.some((section) => !db.sections.includes(section))) return res.status(400).json({ error: "One or more assigned sections do not exist." });
   const user = {
     id: randomUUID(),
     username,
@@ -3781,10 +3899,16 @@ app.post("/api/admin/users", auth, requireRole("admin"), async (req, res) => {
     role,
     mustChangePassword: true,
     studentId: null,
-    subjectIds: Array.isArray(req.body.subjectIds) ? req.body.subjectIds : [],
-    sectionIds: Array.isArray(req.body.sectionIds) ? req.body.sectionIds : []
+    subjectIds,
+    sectionIds
   };
   db.users.push(user);
+  addAuditLog(db, req.user, "account.create", {
+    entityType: "user",
+    entityId: user.id,
+    summary: `Created ${role} account ${username}.`,
+    meta: { role, subjectIds, sectionIds }
+  });
   await writeDb(db);
   res.status(201).json({ user: userWithStudent(user, db) });
 });
@@ -3794,8 +3918,18 @@ app.post("/api/admin/users/:id/reset-password", auth, requireRole("admin", "teac
   const user = db.users.find((u) => u.id === req.params.id);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (req.user.role === "teacher" && user.role !== "student") return res.status(403).json({ error: "Teachers can only reset student passwords." });
-  user.passwordHash = await bcrypt.hash(String(req.body.tempPassword || "temp123"), 10);
+  if (req.user.role === "teacher" && (!user.studentId || !scopedStudentIds(db, req.user).has(user.studentId))) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const tempPassword = String(req.body.tempPassword || "");
+  if (tempPassword.length < 6) return res.status(400).json({ error: "Temporary password must be at least 6 characters." });
+  user.passwordHash = await bcrypt.hash(tempPassword, 10);
   user.mustChangePassword = true;
+  user.authVersion = Number(user.authVersion || 0) + 1;
+  addAuditLog(db, req.user, "account.password.reset", {
+    entityType: "user",
+    entityId: user.id,
+    targetStudentId: user.studentId || null,
+    summary: `Reset password for ${user.username}.`
+  });
   await writeDb(db);
   res.json({ user: userWithStudent(user, db) });
 });
@@ -3807,6 +3941,12 @@ app.delete("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) 
   if (user.role === "student") return res.status(400).json({ error: "Remove student accounts from the Students table." });
   if (user.id === req.user.id) return res.status(400).json({ error: "You cannot remove your own account while logged in." });
   db.users = db.users.filter((u) => u.id !== user.id);
+  addAuditLog(db, req.user, "account.delete", {
+    entityType: "user",
+    entityId: user.id,
+    summary: `Removed ${user.role} account ${user.username}.`,
+    meta: { role: user.role }
+  });
   await writeDb(db);
   res.json({ ok: true });
 });
@@ -4051,9 +4191,14 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
 
 scheduleDailyBackup();
 app.use((err, req, res, _next) => {
-  console.error("API error:", err);
-  if (res.headersSent) return;
-  res.status(500).json({ error: err.message || "Server error" });
+  console.error(`API error [${req.requestId || "unknown"}]:`, err);
+  if (res.headersSent) return _next(err);
+  const status = Number(err.status || err.statusCode || 500);
+  if (status >= 400 && status < 500) {
+    const error = status === 413 ? "Request is too large." : "Invalid request.";
+    return res.status(status).json({ error, requestId: req.requestId });
+  }
+  return res.status(500).json({ error: "Server error. Please try again.", requestId: req.requestId });
 });
 
 app.listen(PORT, () => console.log(`JCoins API running at http://localhost:${PORT}`));
