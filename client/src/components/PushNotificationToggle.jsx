@@ -77,12 +77,34 @@ export default function PushNotificationToggle() {
     }
   }
 
+  async function testPhone() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("JCoins phone test", {
+        body: "Your phone can display JCoins notifications.",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: `jcoins-phone-test-${Date.now()}`,
+        data: { url: "/" }
+      });
+      setMessage("Phone test requested. Check your notification panel.");
+    } catch (requestError) {
+      setError(requestError.message || "This phone could not display a notification.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <div className="push-notification-control">
     <button type="button" className="soft" disabled={busy || permission === "denied"} onClick={subscription ? disable : enable}>
       {subscription ? <BellOff size={16} /> : <BellRing size={16} />}
       {busy ? "Updating..." : permission === "denied" ? "Push blocked" : subscription ? "Disable push" : "Enable push"}
     </button>
-    {subscription && <button type="button" className="soft" disabled={busy} onClick={test}>Send test notification</button>}
+    {subscription && <button type="button" className="soft" disabled={busy} onClick={testPhone}>Test this phone</button>}
+    {subscription && <button type="button" className="soft" disabled={busy} onClick={test}>Test background push</button>}
     {message && <small>{message}</small>}
     {error && <small className="inline-error">{error}</small>}
   </div>;
