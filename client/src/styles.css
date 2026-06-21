@@ -182,8 +182,11 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   min-height: 100vh;
 }
 .sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  bottom: 0;
+  left: 0;
+  width: 250px;
   height: 100vh;
   height: 100dvh;
   padding: calc(18px + env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
@@ -311,6 +314,7 @@ form { display: grid; gap: 14px; margin-top: 22px; }
   background: rgba(148,163,184,.22);
 }
 .main-pane {
+  grid-column: 2;
   min-width: 0;
   padding-top: calc(74px + env(safe-area-inset-top));
 }
