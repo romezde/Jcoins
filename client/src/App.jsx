@@ -15,6 +15,7 @@ import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
 import Approvals from "./screens/Approvals.jsx";
+import AuditLogs from "./screens/AuditLogs.jsx";
 import Settings from "./screens/Settings.jsx";
 import NameWheel from "./screens/NameWheel.jsx";
 import { StaffFeedback, StudentFeedback } from "./screens/Feedback.jsx";
@@ -696,6 +697,7 @@ function requiredModulesForTab(tab, role) {
     "Trade Requests": ["shop"],
     "Appearance Shop": ["appearance"],
     Approvals: ["requests"],
+    "Audit Logs": ["audit"],
     Feedback: ["feedback"],
     Settings: ["settings", "guild"],
     History: ["transactions"],
@@ -722,6 +724,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
+  if (tab === "Audit Logs") return <AuditLogs data={data} />;
   if (tab === "Feedback") return role === "student" ? <StudentFeedback data={data} run={run} /> : <StaffFeedback data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;
   if (tab === "Name Wheel") return <NameWheel data={data} />;

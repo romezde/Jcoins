@@ -44,6 +44,7 @@ const APPEARANCE_INVENTORY_ROW_PREFIX = "appearance-inventory:";
 const APPEARANCE_GIFT_ROW_PREFIX = "appearance-gift:";
 const APPEARANCE_EQUIPPED_ROW_PREFIX = "appearance-equipped:";
 const GUILD_RESPONSE_ROW_PREFIX = "guild-response:";
+const AUDIT_LOG_ROW_PREFIX = "audit-log:";
 const STORAGE_ROW_TYPES = [
   { key: "activityFiles", label: "Activity file blobs", prefix: ACTIVITY_FILE_ROW_PREFIX },
   { key: "transactions", label: "Transactions and points", prefix: TRANSACTION_ROW_PREFIX },
@@ -66,7 +67,8 @@ const STORAGE_ROW_TYPES = [
   { key: "appearanceInventory", label: "Appearance inventory", prefix: APPEARANCE_INVENTORY_ROW_PREFIX },
   { key: "appearanceGifts", label: "Appearance gifts", prefix: APPEARANCE_GIFT_ROW_PREFIX },
   { key: "appearanceEquipped", label: "Equipped appearances", prefix: APPEARANCE_EQUIPPED_ROW_PREFIX },
-  { key: "guildResponses", label: "Guild responses", prefix: GUILD_RESPONSE_ROW_PREFIX }
+  { key: "guildResponses", label: "Guild responses", prefix: GUILD_RESPONSE_ROW_PREFIX },
+  { key: "auditLogs", label: "Audit logs", prefix: AUDIT_LOG_ROW_PREFIX }
 ];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
@@ -121,6 +123,7 @@ const persistedAppearanceInventoryHashes = new Map();
 const persistedAppearanceGiftHashes = new Map();
 const persistedAppearanceEquippedHashes = new Map();
 const persistedGuildResponseHashes = new Map();
+const persistedAuditLogHashes = new Map();
 let cachedDb = null;
 let cachedDbAt = 0;
 let dbLoadPromise = null;
@@ -504,6 +507,7 @@ async function createInitialDb() {
     appearanceInventory: [],
     appearanceEquipped: {},
     appearanceGifts: [],
+    auditLogs: [],
     guildSystem: defaultGuildSystem()
   };
 }
@@ -721,6 +725,7 @@ async function readDb() {
   db.requests ||= [];
   db.feedback ||= [];
   db.schedules ||= [];
+  db.auditLogs ||= [];
   const normalizedGuildSystem = normalizeGuildSystem(db.guildSystem);
   if (!db.guildSystem || JSON.stringify(db.guildSystem.questions || []) !== JSON.stringify(guildQuestions)) changed = true;
   db.guildSystem = normalizedGuildSystem;
@@ -808,6 +813,7 @@ async function persistDb(db) {
     const appearanceGifts = extractEntityRows(dbToStore, "appearanceGifts", APPEARANCE_GIFT_ROW_PREFIX);
     const appearanceEquipped = extractObjectRows(dbToStore, "appearanceEquipped", APPEARANCE_EQUIPPED_ROW_PREFIX);
     const guildResponses = extractGuildResponseRows(dbToStore);
+    const auditLogs = extractEntityRows(dbToStore, "auditLogs", AUDIT_LOG_ROW_PREFIX);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await upsertActivityFileRows(files);
     await syncEntityRows(students.items, students.rowIds, STUDENT_ROW_PREFIX, persistedStudentHashes);
@@ -830,6 +836,7 @@ async function persistDb(db) {
     await syncEntityRows(appearanceGifts.items, appearanceGifts.rowIds, APPEARANCE_GIFT_ROW_PREFIX, persistedAppearanceGiftHashes);
     await syncObjectRows(appearanceEquipped.items, appearanceEquipped.rowIds, APPEARANCE_EQUIPPED_ROW_PREFIX, persistedAppearanceEquippedHashes);
     await syncGuildResponseRows(guildResponses.items, guildResponses.rowIds);
+    await syncEntityRows(auditLogs.items, auditLogs.rowIds, AUDIT_LOG_ROW_PREFIX, persistedAuditLogHashes);
     await syncTransactionRows(transactions, transactionRowIds);
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -869,6 +876,7 @@ async function readSupabaseDb() {
     db.appearanceGifts,
     db.appearanceEquipped,
     db.guildSystem,
+    db.auditLogs,
     db.transactions
   ] = await Promise.all([
     readEntityRows(STUDENT_ROW_PREFIX, db.students || [], persistedStudentHashes),
@@ -891,6 +899,7 @@ async function readSupabaseDb() {
     readEntityRows(APPEARANCE_GIFT_ROW_PREFIX, db.appearanceGifts || [], persistedAppearanceGiftHashes),
     readObjectRows(APPEARANCE_EQUIPPED_ROW_PREFIX, db.appearanceEquipped || {}, persistedAppearanceEquippedHashes),
     readGuildResponseRows(db.guildSystem),
+    readEntityRows(AUDIT_LOG_ROW_PREFIX, db.auditLogs || [], persistedAuditLogHashes),
     readTransactionRows(db.transactions || [])
   ]);
   return db;
@@ -1005,7 +1014,8 @@ function reconstructedDataCounts(db) {
     appearanceInventory: (db.appearanceInventory || []).length,
     appearanceGifts: (db.appearanceGifts || []).length,
     appearanceEquipped: Object.keys(db.appearanceEquipped || {}).length,
-    guildResponses: (db.guildSystem?.responses || []).length
+    guildResponses: (db.guildSystem?.responses || []).length,
+    auditLogs: (db.auditLogs || []).length
   };
 }
 
@@ -1539,6 +1549,42 @@ function requestRows(db, requests) {
       tradeSenderName: trade ? studentName(db, trade.senderId) : "",
       tradeRecipientName: trade ? studentName(db, trade.recipientId) : ""
     };
+  });
+}
+
+function actorName(db, actorId) {
+  if (!actorId || actorId === "system") return "system";
+  const user = db.users.find((item) => item.id === actorId);
+  if (!user) return actorId;
+  return user.studentId ? `${user.username} (${studentName(db, user.studentId)})` : user.username;
+}
+
+function auditLogRows(db, logs = db.auditLogs || []) {
+  return [...logs]
+    .sort(byDateDesc)
+    .map((log) => ({
+      ...log,
+      actorName: log.actorName || actorName(db, log.actorId),
+      targetStudentName: log.targetStudentId ? studentName(db, log.targetStudentId) : "",
+      amount: log.amount == null ? "" : log.amount
+    }));
+}
+
+function addAuditLog(db, user, action, details = {}) {
+  db.auditLogs ||= [];
+  db.auditLogs.push({
+    id: randomUUID(),
+    action,
+    entityType: details.entityType || "",
+    entityId: details.entityId || "",
+    targetStudentId: details.targetStudentId || "",
+    amount: details.amount ?? null,
+    summary: String(details.summary || action).slice(0, 500),
+    meta: details.meta || {},
+    actorId: user?.id || "system",
+    actorRole: user?.role || "system",
+    actorStudentId: user?.studentId || "",
+    createdAt: now()
   });
 }
 
@@ -2148,6 +2194,7 @@ function filteredOverview(db, user, modules = null) {
   const includeSchedules = wantsModule(modules, "schedule");
   const includeGuild = wantsModule(modules, "guild") || wantsModule(modules, "settings");
   const includePeople = wantsModule(modules, "people");
+  const includeAudit = user.role === "admin" && wantsModule(modules, "audit");
   const fullActivities = includeActivities ? hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity) : [];
   const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds) : fullActivities;
   const transactions = includeTransactions ? db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc) : [];
@@ -2181,7 +2228,8 @@ function filteredOverview(db, user, modules = null) {
         ? feedbackRows(db, (db.feedback || []).filter((entry) => entry.status === "New" && (user.role === "admin" || studentIds.has(entry.studentId)))).slice(0, 20)
         : [],
     schedules: includeSchedules ? scheduleRows(db, visibleScheduleRows) : [],
-    guildSystem: includeGuild ? guildSystemView(db, user) : {}
+    guildSystem: includeGuild ? guildSystemView(db, user) : {},
+    auditLogs: includeAudit ? auditLogRows(db).slice(0, 500) : []
   };
 }
 
@@ -3297,6 +3345,13 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
     const amount = Math.abs(Number(req.body.amount || 0));
     db.transactions.push(tx(req.body.fromStudentId, "trade", -amount, req.body.remarks || "Trade", now(), req.user.id, { toStudentId: req.body.studentId }));
     db.transactions.push(tx(req.body.studentId, "trade", amount, req.body.remarks || "Trade", now(), req.user.id, { fromStudentId: req.body.fromStudentId }));
+    addAuditLog(db, req.user, "transaction.trade.manual", {
+      entityType: "transaction",
+      targetStudentId: req.body.studentId,
+      amount,
+      summary: `Manual trade: ${studentName(db, req.body.fromStudentId)} sent ${amount} JCoins to ${studentName(db, req.body.studentId)}.`,
+      meta: { fromStudentId: req.body.fromStudentId, toStudentId: req.body.studentId }
+    });
   } else {
     const targetIds = [...new Set((Array.isArray(req.body.studentIds) && req.body.studentIds.length ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
     if (!targetIds.length) return res.status(400).json({ error: "Choose at least one student." });
@@ -3314,6 +3369,13 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
         db.transactions.push(tx(studentId, type, amount, note, now(), req.user.id));
       });
     }
+    addAuditLog(db, req.user, "transaction.create", {
+      entityType: "transaction",
+      targetStudentId: targetIds.length === 1 ? targetIds[0] : "",
+      amount: type === "penalty" ? -Math.abs(Number(req.body.amount || 0)) : Number(req.body.amount || 0),
+      summary: `${type} transaction for ${targetIds.length} student${targetIds.length === 1 ? "" : "s"}.`,
+      meta: { type, targetIds, itemId: req.body.itemId || "" }
+    });
   }
   await writeDb(db);
   res.status(201).json({ ok: true });
@@ -3514,6 +3576,10 @@ app.post("/api/appearance/unequip", auth, requireRole("student"), async (req, re
 app.put("/api/admin/settings", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   db.settings = req.body.settings;
+  addAuditLog(db, req.user, "settings.update", {
+    entityType: "settings",
+    summary: "Admin updated system settings."
+  });
   await writeDb(db);
   res.json({ settings: db.settings });
 });
@@ -3723,6 +3789,14 @@ app.post("/api/requests", auth, async (req, res) => {
   }
   const request = { id: randomUUID(), type, status, studentId, payload, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
   db.requests.push(request);
+  addAuditLog(db, req.user, "request.create", {
+    entityType: "request",
+    entityId: request.id,
+    targetStudentId: studentId,
+    amount: type === "trade" ? payload.amount : null,
+    summary: `${type} request created with status ${status}.`,
+    meta: { type, status, payload }
+  });
   await writeDb(db);
   res.status(201).json({ request });
 });
@@ -3746,6 +3820,14 @@ app.post("/api/requests/:id/respond", auth, requireRole("student"), async (req, 
     request.peerRejectedAt = request.resolvedAt;
     request.peerRejectedBy = req.user.id;
   }
+  addAuditLog(db, req.user, decision === "approved" ? "trade.peer.approve" : "trade.peer.reject", {
+    entityType: "request",
+    entityId: request.id,
+    targetStudentId: request.studentId,
+    amount: request.payload?.amount ?? null,
+    summary: `${studentName(db, req.user.studentId)} ${decision === "approved" ? "accepted" : "rejected"} a trade request.`,
+    meta: { requestId: request.id, toStudentId: request.payload?.toStudentId || "" }
+  });
   await writeDb(db);
   res.json({ request });
 });
@@ -3757,9 +3839,18 @@ app.post("/api/requests/:id/cancel", auth, async (req, res) => {
   const ownsRequest = req.user.role === "student" && request.studentId === req.user.studentId;
   if (!ownsRequest && req.user.role !== "admin") return res.status(403).json({ error: "You can only cancel your own request." });
   if (!["pending", "peer_pending"].includes(request.status)) return res.status(400).json({ error: "Only active requests can be cancelled." });
+  const previousStatus = request.status;
   request.status = "cancelled";
   request.resolvedAt = now();
   request.resolvedBy = req.user.id;
+  addAuditLog(db, req.user, "request.cancel", {
+    entityType: "request",
+    entityId: request.id,
+    targetStudentId: request.studentId,
+    amount: request.payload?.amount ?? null,
+    summary: `${request.type} request cancelled.`,
+    meta: { type: request.type, previousStatus }
+  });
   await writeDb(db);
   res.json({ request });
 });
@@ -3874,6 +3965,14 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
     const note = request.remarks || "Student trade";
     db.transactions.push(tx(senderId, "trade", -amount, note, request.resolvedAt, req.user.id, { kind: "student-trade", requestId: request.id, toStudentId: recipientId }));
     db.transactions.push(tx(recipientId, "trade", amount, note, request.resolvedAt, req.user.id, { kind: "student-trade", requestId: request.id, fromStudentId: senderId }));
+    addAuditLog(db, req.user, "trade.admin.approve", {
+      entityType: "request",
+      entityId: request.id,
+      targetStudentId: recipientId,
+      amount,
+      summary: `Approved trade: ${studentName(db, senderId)} sent ${amount} JCoins to ${studentName(db, recipientId)}.`,
+      meta: { requestId: request.id, senderId, recipientId }
+    });
   }
   if (request.type === "registration" && request.status === "approved") {
     const payload = request.payload || {};
@@ -3889,6 +3988,16 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
     delete request.payload.passwordHash;
   }
   if (request.type === "registration" && request.status !== "approved") delete request.payload.passwordHash;
+  if (request.type !== "trade" || request.status !== "approved") {
+    addAuditLog(db, req.user, "request.resolve", {
+      entityType: "request",
+      entityId: request.id,
+      targetStudentId: request.studentId,
+      amount: request.payload?.amount ?? null,
+      summary: `${request.type} request marked ${request.status}.`,
+      meta: { type: request.type, status: request.status }
+    });
+  }
   await writeDb(db);
   res.json({ request });
 });
