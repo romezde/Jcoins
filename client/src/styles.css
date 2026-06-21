@@ -563,6 +563,24 @@ input::placeholder {
   color: var(--muted);
   font-size: 12px;
 }
+.push-notification-control {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding: 8px 0;
+}
+.notification-menu .push-notification-control button {
+  display: inline-flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 36px;
+  text-align: center;
+}
+.push-notification-control .inline-error {
+  color: #fecdd3;
+  font-size: 11px;
+}
 .dashboard-grid {
   width: min(1180px, calc(100% - 24px));
   margin: 0 auto;

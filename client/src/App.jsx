@@ -23,6 +23,7 @@ import Schedule from "./screens/Schedule.jsx";
 import { Account, Reports, StudentActivities, StudentHistory, StudentProfile, TeacherProfile } from "./screens/Profiles.jsx";
 import GuildAffinity from "./screens/GuildAffinity.jsx";
 import FloatingAssistant from "./components/FloatingAssistant.jsx";
+import PushNotificationToggle from "./components/PushNotificationToggle.jsx";
 
 function useSession() {
   const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("jcoins_session") || "null"));
@@ -684,6 +685,7 @@ function NotificationBell({ role, userId, data, navigate }) {
         <strong>Notifications</strong>
         {hasDot && <span>{items.length}</span>}
       </div>
+      <PushNotificationToggle />
       {items.length ? items.slice(0, 8).map((item) => <button type="button" key={item.id} onClick={() => openTarget(item)}>
         <strong>{item.title}</strong>
         <span>{item.detail}</span>

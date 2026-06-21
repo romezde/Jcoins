@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
 import AdmZip from "adm-zip";
+import webpush from "web-push";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -58,6 +59,8 @@ const APPEARANCE_GIFT_ROW_PREFIX = "appearance-gift:";
 const APPEARANCE_EQUIPPED_ROW_PREFIX = "appearance-equipped:";
 const GUILD_RESPONSE_ROW_PREFIX = "guild-response:";
 const AUDIT_LOG_ROW_PREFIX = "audit-log:";
+const PUSH_SUBSCRIPTION_ROW_PREFIX = "push-subscription:";
+const PUSH_CONFIG_ROW_ID = "system:push-config";
 const STORAGE_ROW_TYPES = [
   { key: "activityFiles", label: "Activity file blobs", prefix: ACTIVITY_FILE_ROW_PREFIX },
   { key: "transactions", label: "Transactions and points", prefix: TRANSACTION_ROW_PREFIX },
@@ -81,7 +84,8 @@ const STORAGE_ROW_TYPES = [
   { key: "appearanceGifts", label: "Appearance gifts", prefix: APPEARANCE_GIFT_ROW_PREFIX },
   { key: "appearanceEquipped", label: "Equipped appearances", prefix: APPEARANCE_EQUIPPED_ROW_PREFIX },
   { key: "guildResponses", label: "Guild responses", prefix: GUILD_RESPONSE_ROW_PREFIX },
-  { key: "auditLogs", label: "Audit logs", prefix: AUDIT_LOG_ROW_PREFIX }
+  { key: "auditLogs", label: "Audit logs", prefix: AUDIT_LOG_ROW_PREFIX },
+  { key: "pushSubscriptions", label: "Push notification subscriptions", prefix: PUSH_SUBSCRIPTION_ROW_PREFIX }
 ];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
@@ -192,7 +196,10 @@ const persistedAppearanceGiftHashes = new Map();
 const persistedAppearanceEquippedHashes = new Map();
 const persistedGuildResponseHashes = new Map();
 const persistedAuditLogHashes = new Map();
+const persistedPushSubscriptionHashes = new Map();
 let persistedMainHash = "";
+let pushConfigPromise = null;
+const stalePushSubscriptionIds = new Set();
 let cachedDb = null;
 let cachedDbAt = 0;
 let cachedAuthUsers = new Map();
@@ -578,6 +585,7 @@ async function createInitialDb() {
     appearanceEquipped: {},
     appearanceGifts: [],
     auditLogs: [],
+    pushSubscriptions: [],
     guildSystem: defaultGuildSystem()
   };
 }
@@ -795,6 +803,13 @@ async function readDb() {
   db.feedback ||= [];
   db.schedules ||= [];
   db.auditLogs ||= [];
+  db.pushSubscriptions ||= [];
+  if (stalePushSubscriptionIds.size) {
+    const before = db.pushSubscriptions.length;
+    db.pushSubscriptions = db.pushSubscriptions.filter((subscription) => !stalePushSubscriptionIds.has(subscription.id));
+    if (db.pushSubscriptions.length !== before) changed = true;
+    stalePushSubscriptionIds.clear();
+  }
   const normalizedGuildSystem = normalizeGuildSystem(db.guildSystem);
   if (!db.guildSystem || JSON.stringify(db.guildSystem.questions || []) !== JSON.stringify(guildQuestions)) changed = true;
   db.guildSystem = normalizedGuildSystem;
@@ -884,6 +899,7 @@ async function persistDb(db) {
     const appearanceEquipped = extractObjectRows(dbToStore, "appearanceEquipped", APPEARANCE_EQUIPPED_ROW_PREFIX);
     const guildResponses = extractGuildResponseRows(dbToStore);
     const auditLogs = extractEntityRows(dbToStore, "auditLogs", AUDIT_LOG_ROW_PREFIX);
+    const pushSubscriptions = extractEntityRows(dbToStore, "pushSubscriptions", PUSH_SUBSCRIPTION_ROW_PREFIX);
     const { transactions, transactionRowIds } = extractTransactionRows(dbToStore);
     await Promise.all([
       upsertActivityFileRows(files),
@@ -908,6 +924,7 @@ async function persistDb(db) {
       syncObjectRows(appearanceEquipped.items, appearanceEquipped.rowIds, APPEARANCE_EQUIPPED_ROW_PREFIX, persistedAppearanceEquippedHashes),
       syncGuildResponseRows(guildResponses.items, guildResponses.rowIds),
       syncEntityRows(auditLogs.items, auditLogs.rowIds, AUDIT_LOG_ROW_PREFIX, persistedAuditLogHashes),
+      syncEntityRows(pushSubscriptions.items, pushSubscriptions.rowIds, PUSH_SUBSCRIPTION_ROW_PREFIX, persistedPushSubscriptionHashes),
       syncTransactionRows(transactions, transactionRowIds)
     ]);
     const mainHash = entityHash(dbToStore);
@@ -954,6 +971,7 @@ async function readSupabaseDb() {
     db.appearanceEquipped,
     db.guildSystem,
     db.auditLogs,
+    db.pushSubscriptions,
     db.transactions
   ] = await Promise.all([
     readEntityRows(STUDENT_ROW_PREFIX, db.students || [], persistedStudentHashes),
@@ -977,6 +995,7 @@ async function readSupabaseDb() {
     readObjectRows(APPEARANCE_EQUIPPED_ROW_PREFIX, db.appearanceEquipped || {}, persistedAppearanceEquippedHashes),
     readGuildResponseRows(db.guildSystem),
     readEntityRows(AUDIT_LOG_ROW_PREFIX, db.auditLogs || [], persistedAuditLogHashes),
+    readEntityRows(PUSH_SUBSCRIPTION_ROW_PREFIX, db.pushSubscriptions || [], persistedPushSubscriptionHashes),
     readTransactionRows(db.transactions || [])
   ]);
   return db;
@@ -1092,7 +1111,8 @@ function reconstructedDataCounts(db) {
     appearanceGifts: (db.appearanceGifts || []).length,
     appearanceEquipped: Object.keys(db.appearanceEquipped || {}).length,
     guildResponses: (db.guildSystem?.responses || []).length,
-    auditLogs: (db.auditLogs || []).length
+    auditLogs: (db.auditLogs || []).length,
+    pushSubscriptions: (db.pushSubscriptions || []).length
   };
 }
 
@@ -1499,6 +1519,7 @@ function purgeStudentData(db, studentId) {
   const studentUserIds = new Set(db.users.filter((user) => user.studentId === studentId).map((user) => user.id));
   db.students = db.students.filter((student) => student.id !== studentId);
   db.users = db.users.filter((user) => user.studentId !== studentId);
+  db.pushSubscriptions = (db.pushSubscriptions || []).filter((subscription) => !studentUserIds.has(subscription.userId));
   db.transactions = (db.transactions || []).filter((transaction) =>
     transaction.studentId !== studentId
     && !studentUserIds.has(transaction.createdBy)
@@ -1566,6 +1587,103 @@ function requireStaffOrAssistant(req, res, next) {
   if (req.user.role === "admin" || req.user.role === "teacher") return next();
   if (req.user.role === "student") return next();
   return res.status(403).json({ error: "Forbidden" });
+}
+
+async function getPushConfig() {
+  if (pushConfigPromise) return pushConfigPromise;
+  pushConfigPromise = (async () => {
+    let publicKey = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+    let privateKey = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+    if ((!publicKey || !privateKey) && supabase) {
+      const { data, error } = await supabase
+        .from(SUPABASE_STATE_TABLE)
+        .select("state")
+        .eq("id", PUSH_CONFIG_ROW_ID)
+        .maybeSingle();
+      if (error) throw supabaseSetupError(error);
+      publicKey = String(data?.state?.publicKey || "");
+      privateKey = String(data?.state?.privateKey || "");
+      if (!publicKey || !privateKey) {
+        const generated = webpush.generateVAPIDKeys();
+        const inserted = await supabase.from(SUPABASE_STATE_TABLE).insert({
+          id: PUSH_CONFIG_ROW_ID,
+          state: { publicKey: generated.publicKey, privateKey: generated.privateKey, createdAt: now() },
+          updated_at: now()
+        });
+        if (inserted.error && inserted.error.code !== "23505") throw supabaseSetupError(inserted.error);
+        if (inserted.error?.code === "23505") {
+          const existing = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", PUSH_CONFIG_ROW_ID).single();
+          if (existing.error) throw supabaseSetupError(existing.error);
+          publicKey = String(existing.data?.state?.publicKey || "");
+          privateKey = String(existing.data?.state?.privateKey || "");
+        } else {
+          publicKey = generated.publicKey;
+          privateKey = generated.privateKey;
+        }
+      }
+    }
+    if (!publicKey || !privateKey) return null;
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT || "https://jcoins-zeta.vercel.app", publicKey, privateKey);
+    return { publicKey };
+  })().catch((error) => {
+    pushConfigPromise = null;
+    console.error("Push configuration failed:", error.message);
+    return null;
+  });
+  return pushConfigPromise;
+}
+
+function cleanPushSubscription(input = {}) {
+  const endpoint = String(input.endpoint || "").trim();
+  const p256dh = String(input.keys?.p256dh || "").trim();
+  const authKey = String(input.keys?.auth || "").trim();
+  if (!endpoint.startsWith("https://") || endpoint.length > 2000 || !p256dh || !authKey) throw new Error("Invalid push subscription.");
+  return {
+    endpoint,
+    expirationTime: input.expirationTime || null,
+    keys: { p256dh: p256dh.slice(0, 500), auth: authKey.slice(0, 500) }
+  };
+}
+
+function pushSubscriptionId(endpoint) {
+  return `push_${createHash("sha256").update(endpoint).digest("hex").slice(0, 32)}`;
+}
+
+function queuePushToUsers(db, userIds, notification) {
+  const targets = new Set((userIds || []).filter(Boolean));
+  const subscriptions = (db.pushSubscriptions || []).filter((subscription) => targets.has(subscription.userId));
+  if (!subscriptions.length) return;
+  const payload = JSON.stringify({
+    title: String(notification.title || "JCoins").slice(0, 80),
+    body: String(notification.body || "You have a new JCoins notification.").slice(0, 180),
+    url: String(notification.url || "/").startsWith("/") ? String(notification.url || "/") : "/",
+    tag: String(notification.tag || "jcoins-update").slice(0, 80)
+  });
+  setTimeout(async () => {
+    if (!await getPushConfig()) return;
+    await Promise.allSettled(subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription, payload, { TTL: 60 * 60, urgency: "normal" });
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) stalePushSubscriptionIds.add(subscription.id);
+        else console.error(`Push delivery failed [${subscription.id}]:`, error.message);
+      }
+    }));
+  }, 0);
+}
+
+function userIdsForStudents(db, studentIds) {
+  const targets = new Set(studentIds || []);
+  return db.users.filter((user) => user.studentId && targets.has(user.studentId)).map((user) => user.id);
+}
+
+function staffUserIdsForStudent(db, studentId) {
+  const student = db.students.find((item) => item.id === studentId);
+  if (!student) return db.users.filter((user) => user.role === "admin").map((user) => user.id);
+  const subjects = new Set(student.subjectIds || []);
+  return db.users.filter((user) => user.role === "admin" || (user.role === "teacher"
+    && (user.subjectIds || []).some((id) => subjects.has(id))
+    && (!(user.sectionIds || []).length || user.sectionIds.includes(student.section)))).map((user) => user.id);
 }
 
 function activeStudentAssistant(db, user, date = today()) {
@@ -2552,6 +2670,12 @@ app.post("/api/auth/register-student", registrationLimit, registrationAccountLim
     resolvedBy: "self-registration"
   });
   await writeDb(db);
+  queuePushToUsers(db, staffUserIdsForStudent(db, student.id), {
+    title: "Student account created",
+    body: `${fullName} registered in ${section}.`,
+    url: "/approvals",
+    tag: `registration-${student.id}`
+  });
   res.status(201).json({ username, fullName, status: "created" });
 });
 
@@ -2567,6 +2691,49 @@ app.get("/api/leaderboard", async (req, res) => {
 app.get("/api/me", auth, async (req, res) => {
   const db = await readDb();
   res.json(filteredOverview(db, req.user, overviewModules(req)));
+});
+
+app.get("/api/push/config", auth, async (req, res) => {
+  const config = await getPushConfig();
+  res.json({ enabled: !!config, publicKey: config?.publicKey || "" });
+});
+
+app.post("/api/push/subscribe", auth, async (req, res) => {
+  let subscription;
+  try {
+    subscription = cleanPushSubscription(req.body.subscription || req.body);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (!await getPushConfig()) return res.status(503).json({ error: "Push notifications are not configured yet." });
+  const db = await readDb();
+  const id = pushSubscriptionId(subscription.endpoint);
+  const entry = {
+    id,
+    userId: req.user.id,
+    ...subscription,
+    userAgent: String(req.headers["user-agent"] || "").slice(0, 240),
+    createdAt: db.pushSubscriptions.find((item) => item.id === id)?.createdAt || now(),
+    updatedAt: now()
+  };
+  const withoutEndpoint = db.pushSubscriptions.filter((item) => item.id !== id);
+  const currentUserSubscriptions = [...withoutEndpoint.filter((item) => item.userId === req.user.id), entry]
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 5);
+  db.pushSubscriptions = [
+    ...withoutEndpoint.filter((item) => item.userId !== req.user.id),
+    ...currentUserSubscriptions
+  ];
+  await writeDb(db);
+  res.status(201).json({ subscribed: true });
+});
+
+app.post("/api/push/unsubscribe", auth, async (req, res) => {
+  const endpoint = String(req.body.endpoint || "").trim();
+  const db = await readDb();
+  db.pushSubscriptions = db.pushSubscriptions.filter((item) => item.userId !== req.user.id || item.endpoint !== endpoint);
+  await writeDb(db);
+  res.json({ subscribed: false });
 });
 
 app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
@@ -3358,6 +3525,12 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), asy
   if (existing) existing.amount = row.earned;
   else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
   await writeDb(db);
+  queuePushToUsers(db, staffUserIdsForStudent(db, req.user.studentId), {
+    title: "Activity submitted",
+    body: `${studentName(db, req.user.studentId)} submitted ${activity.title}.`,
+    url: "/activities",
+    tag: `activity-${activity.id}-${req.user.studentId}`
+  });
   res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileNames: files.map((file) => file.fileName) } });
 });
 
@@ -3433,6 +3606,15 @@ app.post("/api/admin/quizzes/:id/publish", auth, requireRole("admin", "teacher")
   quiz.publishedAt = now();
   quiz.rewardValue = Number(quiz.rewardValue ?? quizRewardValue(db, quiz.difficulty));
   await writeDb(db);
+  const assignedStudentIds = db.students
+    .filter((student) => student.section === quiz.section && (student.subjectIds || []).includes(quiz.subjectId))
+    .map((student) => student.id);
+  queuePushToUsers(db, userIdsForStudents(db, assignedStudentIds), {
+    title: "New quiz published",
+    body: `${quiz.title} is now available.`,
+    url: "/quizzes",
+    tag: `quiz-${quiz.id}`
+  });
   res.json({ quiz: publicQuiz(quiz, db, req.user) });
 });
 
@@ -3970,6 +4152,7 @@ app.delete("/api/admin/users/:id", auth, requireRole("admin"), async (req, res) 
   if (user.role === "student") return res.status(400).json({ error: "Remove student accounts from the Students table." });
   if (user.id === req.user.id) return res.status(400).json({ error: "You cannot remove your own account while logged in." });
   db.users = db.users.filter((u) => u.id !== user.id);
+  db.pushSubscriptions = (db.pushSubscriptions || []).filter((subscription) => subscription.userId !== user.id);
   addAuditLog(db, req.user, "account.delete", {
     entityType: "user",
     entityId: user.id,
@@ -4014,6 +4197,21 @@ app.post("/api/requests", auth, async (req, res) => {
     meta: { type, status, payload }
   });
   await writeDb(db);
+  if (type === "trade") {
+    queuePushToUsers(db, userIdsForStudents(db, [payload.toStudentId]), {
+      title: "Trade needs your approval",
+      body: `${studentName(db, studentId)} sent a ${payload.amount} JCoin trade request.`,
+      url: "/trade-requests",
+      tag: `trade-${request.id}`
+    });
+  } else {
+    queuePushToUsers(db, staffUserIdsForStudent(db, studentId), {
+      title: "New student request",
+      body: `${studentName(db, studentId)} submitted a ${type} request.`,
+      url: "/approvals",
+      tag: `request-${request.id}`
+    });
+  }
   res.status(201).json({ request });
 });
 
@@ -4045,6 +4243,21 @@ app.post("/api/requests/:id/respond", auth, requireRole("student"), async (req, 
     meta: { requestId: request.id, toStudentId: request.payload?.toStudentId || "" }
   });
   await writeDb(db);
+  if (decision === "approved") {
+    queuePushToUsers(db, staffUserIdsForStudent(db, request.studentId), {
+      title: "Trade awaiting staff approval",
+      body: `${studentName(db, req.user.studentId)} accepted a student trade.`,
+      url: "/approvals",
+      tag: `trade-${request.id}`
+    });
+  } else {
+    queuePushToUsers(db, userIdsForStudents(db, [request.studentId]), {
+      title: "Trade request rejected",
+      body: `${studentName(db, req.user.studentId)} rejected the trade request.`,
+      url: "/trade-requests",
+      tag: `trade-${request.id}`
+    });
+  }
   res.json({ request });
 });
 
@@ -4114,6 +4327,12 @@ app.post("/api/feedback", auth, requireRole("student"), async (req, res) => {
   const entry = { id: randomUUID(), studentId, ...input, status: "New", createdAt: now(), updatedAt: now(), statusChangedAt: now(), statusChangedBy: req.user.id };
   db.feedback.push(entry);
   await writeDb(db);
+  queuePushToUsers(db, staffUserIdsForStudent(db, studentId), {
+    title: "New student feedback",
+    body: `${studentName(db, studentId)} submitted ${entry.category.toLowerCase()}.`,
+    url: "/feedback",
+    tag: `feedback-${entry.id}`
+  });
   res.status(201).json({ feedback: entry });
 });
 
@@ -4159,6 +4378,12 @@ app.put("/api/admin/feedback/:id", auth, requireRole("admin", "teacher"), async 
   entry.statusChangedAt = now();
   entry.statusChangedBy = req.user.id;
   await writeDb(db);
+  queuePushToUsers(db, userIdsForStudents(db, [entry.studentId]), {
+    title: "Feedback updated",
+    body: `${entry.title} is now marked ${entry.status}.`,
+    url: "/feedback",
+    tag: `feedback-${entry.id}`
+  });
   res.json({ feedback: entry });
 });
 
@@ -4168,7 +4393,8 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
   if (!request) return res.status(404).json({ error: "Request not found." });
   if (!canUseRequest(db, req.user, request)) return res.status(403).json({ error: "This request is outside your assigned class scope." });
   if (request.status !== "pending") return res.status(400).json({ error: "Only pending requests can be resolved." });
-  request.status = req.body.status || "approved";
+  if (!["approved", "rejected"].includes(req.body.status)) return res.status(400).json({ error: "Choose approved or rejected." });
+  request.status = req.body.status;
   request.resolvedAt = now();
   request.resolvedBy = req.user.id;
   if (request.type === "trade" && request.status === "approved") {
@@ -4215,6 +4441,16 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
     });
   }
   await writeDb(db);
+  const requestStudentIds = [request.studentId];
+  if (request.type === "trade" && request.payload?.toStudentId) requestStudentIds.push(request.payload.toStudentId);
+  queuePushToUsers(db, userIdsForStudents(db, requestStudentIds), {
+    title: `${request.type === "trade" ? "Trade" : "Request"} ${request.status}`,
+    body: request.type === "trade"
+      ? `Your trade request was ${request.status}.`
+      : `${request.type} request was ${request.status}.`,
+    url: request.type === "trade" ? "/trade-requests" : "/shop",
+    tag: `request-${request.id}`
+  });
   res.json({ request });
 });
 
