@@ -12,7 +12,7 @@ export default function Subjects({ data, run }) {
         <button>Add Subject</button>
       </form>
     </ActionModal>
-    <Panel title="Subjects Table" wide defaultOpen={false}>
+    <Panel title="Subjects Table" wide defaultOpen>
       <Table columns={["Subject", "Action"]} rows={data.subjects.map((s) => {
         const edit = edits[s.id] ?? s.name;
         return [

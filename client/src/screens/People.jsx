@@ -5,7 +5,7 @@ import { StudentFilterFields, studentMatchesFilters } from "../components/Studen
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
 
-export default function People({ data, run, role }) {
+export default function People({ data, run, role, view = "students" }) {
   const [student, setStudent] = useState({ name: "", section: "", username: "", tempPassword: "temp123", startingJCoins: 0, subjectIds: role === "teacher" ? data.user.subjectIds || [] : [] });
   const [teacher, setTeacher] = useState({ username: "", tempPassword: "teacher123!", role: "teacher", subjectIds: [], sectionIds: [] });
   const [sectionName, setSectionName] = useState("");
@@ -110,14 +110,14 @@ export default function People({ data, run, role }) {
     {confirmReset && <ResetConfirmModal target={confirmReset} onCancel={() => setConfirmReset(null)} onConfirm={() => run(() => resetPassword(confirmReset), "Password reset")} />}
     {profileModal && <StudentProfileModal profile={profileModal} onClose={() => setProfileModal(null)} />}
     <div className="quick-actions wide">
-      <ActionModal title="Add Section">
+      {view === "sections" && <ActionModal title="Add Section">
         <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/sections", { name: sectionName }), "Section added"); setSectionName(""); }}>
           <Field label="Section Name" value={sectionName} onChange={setSectionName} />
           <button>Add Section</button>
         </form>
-      </ActionModal>
+      </ActionModal>}
 
-      <ActionModal title="Add Student">
+      {view === "students" && <ActionModal title="Add Student">
         <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/students", student), "Student created"); }}>
           <Field label="Name" value={student.name} onChange={(v) => setStudent({ ...student, name: v })} />
           <Select label="Section" value={student.section} onChange={(v) => setStudent({ ...student, section: v })} options={[{ value: "", label: "Select section" }, ...sections.map((section) => ({ value: section, label: section }))]} />
@@ -127,9 +127,9 @@ export default function People({ data, run, role }) {
           <DropdownChecklist label="Subjects" items={visibleSubjects} selected={student.subjectIds} onChange={(ids) => setStudent({ ...student, subjectIds: ids })} />
           <button>Create Student</button>
         </form>
-      </ActionModal>
+      </ActionModal>}
 
-      <ActionModal title="Import Students">
+      {view === "students" && <ActionModal title="Import Students">
         <form onSubmit={importStudents}>
           <p className="muted-line">Download the Excel template, use the dropdowns, then upload the completed .xlsx file. CSV still works too.</p>
           <div className="button-row">
@@ -142,9 +142,9 @@ export default function People({ data, run, role }) {
           {!!importRows.length && <p className="muted-line">Ready to import {importRows.length} student{importRows.length === 1 ? "" : "s"}. Preview shows the first 20 rows.</p>}
           <button disabled={!importRows.length}>Import Students</button>
         </form>
-      </ActionModal>
+      </ActionModal>}
 
-      <ActionModal title="Batch Remove Students">
+      {view === "students" && <ActionModal title="Batch Remove Students">
         <form onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -162,9 +162,9 @@ export default function People({ data, run, role }) {
           <Field label='Type "REMOVE" to confirm' value={batchRemoveConfirm} onChange={setBatchRemoveConfirm} />
           <button className="danger" disabled={!batchRemoveStudents.length || batchRemoveConfirm !== "REMOVE"}>Remove Matching Students</button>
         </form>
-      </ActionModal>
+      </ActionModal>}
 
-      {role === "admin" && <ActionModal title="Add Teacher">
+      {view === "teachers" && role === "admin" && <ActionModal title="Add Teacher">
         <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/users", teacher), "Teacher created"); }}>
           <Field label="Username" value={teacher.username} onChange={(v) => setTeacher({ ...teacher, username: v })} />
           <Field label="Temp Password" type="password" value={teacher.tempPassword} onChange={(v) => setTeacher({ ...teacher, tempPassword: v })} />
@@ -174,7 +174,7 @@ export default function People({ data, run, role }) {
         </form>
       </ActionModal>}
 
-      <ActionModal title="Assign Student Assistant">
+      {view === "assistants" && <ActionModal title="Assign Student Assistant">
         <form onSubmit={(e) => {
           e.preventDefault();
           run(() => post("/admin/student-assistants", assistantForm), "Student assistant assigned");
@@ -184,10 +184,10 @@ export default function People({ data, run, role }) {
           <Field label="Week Start" type="date" value={assistantForm.weekStart} onChange={(weekStart) => setAssistantForm({ ...assistantForm, weekStart })} />
           <button disabled={!assistantForm.section || !assistantForm.studentId}>Assign Assistant</button>
         </form>
-      </ActionModal>
+      </ActionModal>}
     </div>
 
-    <Panel title="Student Assistants" wide defaultOpen={false}>
+    {view === "assistants" && <Panel title="Student Assistants" wide defaultOpen>
       <Table columns={["Week", "Section", "Student", "Status", "Assigned By", "Action"]} rows={(data.studentAssistants || []).map((assignment) => [
         `${assignment.weekStart} to ${assignment.weekEnd}`,
         assignment.section,
@@ -197,16 +197,16 @@ export default function People({ data, run, role }) {
         <button className="danger" onClick={() => confirm(`Remove ${assignment.studentName} as assistant for ${assignment.section}?`) && run(() => del(`/admin/student-assistants/${assignment.id}`), "Student assistant removed")}>Remove</button>
       ])} />
       {!(data.studentAssistants || []).length && <p className="muted-line">No student assistants assigned yet.</p>}
-    </Panel>
+    </Panel>}
 
-    <Panel title="Section List" defaultOpen={false}>
+    {view === "sections" && <Panel title="Section List" wide defaultOpen>
       <Table columns={["Section", "Action"]} rows={sections.map((section) => [
         section,
         <button className="danger" onClick={() => confirm(`Delete section ${section}? Students in this section will be changed to no section.`) && run(() => del(`/admin/sections/${encodeURIComponent(section)}`), "Section deleted")}>Delete</button>
       ])} />
-    </Panel>
+    </Panel>}
 
-    <Panel title="Students Table" wide defaultOpen={false}>
+    {view === "students" && <Panel title="Students Table" wide defaultOpen>
       <div className="filter-bar">
         <Select label="Section" value={studentFilter.section} onChange={(section) => setStudentFilter({ ...studentFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: section })), { value: "__none", label: "No section" }]} />
         <Field label="Search Student" value={studentFilter.search} onChange={(search) => setStudentFilter({ ...studentFilter, search })} />
@@ -232,9 +232,9 @@ export default function People({ data, run, role }) {
           </div>
         ];
       })} />
-    </Panel>
+    </Panel>}
 
-    {role === "admin" && <Users data={data} run={run} onReset={(userId, username) => setConfirmReset({ userId, username })} />}
+    {view === "teachers" && role === "admin" && <Users data={data} run={run} onReset={(userId, username) => setConfirmReset({ userId, username })} />}
   </div>;
 }
 
@@ -279,7 +279,7 @@ function AccountMini({ label, value }) {
 
 function Users({ data, run, onReset }) {
   const accounts = data.users.filter((user) => user.role !== "student");
-  return <Panel title="Teachers and Accounts" wide defaultOpen={false}>
+  return <Panel title="Teachers and Accounts" wide defaultOpen>
     <Table columns={["Username", "Role", "Subjects", "Sections", "Must Change", "Actions"]} rows={accounts.map((u) => [
       u.username,
       <select value={u.role} onChange={(e) => run(() => put(`/admin/users/${u.id}`, { role: e.target.value, subjectIds: u.subjectIds, sectionIds: u.sectionIds || [] }))}>{["admin", "teacher", "student", "display"].map((r) => <option key={r}>{r}</option>)}</select>,

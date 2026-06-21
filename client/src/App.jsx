@@ -494,7 +494,7 @@ function navGroupsForRole(role) {
   }
   return [
     { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes"] },
-    { id: "people", label: "People Management", icon: UsersRound, tabs: ["People", "Subjects"] },
+    { id: "people", label: "People Management", icon: UsersRound, tabs: ["Students", "Teachers", "Student Assistants", "Sections", "Subjects"] },
     { id: "economy", label: "Economy", icon: Coins, tabs: ["Transactions", "Shop", "Appearance Shop", "Approvals"] },
     { id: "experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Name Wheel", "Profile"] },
     { id: "admin", label: "Administration", icon: Settings2, tabs: ["Reports", "Feedback", "Audit Logs", "Settings", "Account"] }
@@ -768,12 +768,12 @@ function buildSearchResults(tabs, data) {
   };
   const list = [];
   tabs.forEach((tab) => add(list, "Module", tab, tab));
-  (data?.students || []).forEach((student) => add(list, "Student", `${student.name}${student.username ? ` (${student.username})` : ""}`, "People", `${student.section} ${student.rank}`));
+  (data?.students || []).forEach((student) => add(list, "Student", `${student.name}${student.username ? ` (${student.username})` : ""}`, "Students", `${student.section} ${student.rank}`));
   (data?.subjects || []).forEach((subject) => add(list, "Subject", subject.name, tabs.includes("Subjects") ? "Subjects" : "Leaderboard"));
   (data?.activities || []).forEach((activity) => add(list, "Activity", activity.title, "Activities", `${activity.subjectName} ${activity.type}`));
   (data?.shopItems || []).forEach((item) => add(list, "Shop Item", item.name, "Shop", `${item.tier} ${item.cost} ${item.notes}`));
   (data?.appearanceItems || []).forEach((item) => add(list, "Appearance", item.name, "Appearance Shop", `${item.type} ${item.tier} ${item.price} ${item.preview}`));
-  (data?.users || []).forEach((user) => add(list, "Account", user.username, "People", `${user.role} ${(user.sectionIds || []).join(" ")}`));
+  (data?.users || []).forEach((user) => add(list, "Account", user.username, tabs.includes("Teachers") ? "Teachers" : "Account", `${user.role} ${(user.sectionIds || []).join(" ")}`));
   (data?.attendanceWeeks || []).forEach((week) => add(list, "Attendance", week.title, "Attendance", week.subjectName));
   (data?.feedback || []).forEach((entry) => add(list, "Feedback", entry.title, "Feedback", `${entry.studentName} ${entry.category} ${entry.status} ${entry.feature}`));
   (data?.schedules || []).forEach((schedule) => add(list, "Schedule", `${schedule.subjectName} ${schedule.day}`, "Schedule", `${schedule.section} ${schedule.startTime} ${schedule.endTime} ${schedule.room} ${schedule.type}`));
@@ -788,7 +788,10 @@ function requiredModulesForTab(tab, role) {
     Dashboard: ["dashboard"],
     Schedule: ["schedule"],
     "Guild Affinity": ["guild"],
-    People: ["people"],
+    Students: ["people"],
+    Teachers: ["people"],
+    "Student Assistants": ["people"],
+    Sections: ["people"],
     Attendance: ["attendance"],
     Recitation: ["recitations"],
     Activities: ["activities"],
@@ -814,7 +817,10 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Dashboard") return <Dashboard data={data} />;
   if (tab === "Schedule") return <Schedule data={data} run={run} role={role} />;
   if (tab === "Guild Affinity") return <GuildAffinity data={data} run={run} role={role} />;
-  if (tab === "People") return <People data={data} run={run} role={role} />;
+  if (tab === "Students") return <People data={data} run={run} role={role} view="students" />;
+  if (tab === "Teachers") return <People data={data} run={run} role={role} view="teachers" />;
+  if (tab === "Student Assistants") return <People data={data} run={run} role={role} view="assistants" />;
+  if (tab === "Sections") return <People data={data} run={run} role={role} view="sections" />;
   if (tab === "Subjects") return <Subjects data={data} run={run} />;
   if (tab === "Attendance") return <Attendance data={assistantData} run={run} role={role} />;
   if (tab === "Recitation") return <Recitation data={assistantData} run={run} />;
