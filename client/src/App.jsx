@@ -617,6 +617,15 @@ function notificationItems(role, data) {
     return [...requestItems, ...feedbackItems].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
   if (role === "student") {
+    const tradeActionItems = requests
+      .filter((request) => request.type === "trade" && request.status === "peer_pending" && request.payload?.toStudentId === data?.student?.id)
+      .map((request) => ({
+        id: request.id,
+        tab: "Trade Requests",
+        title: "Trade needs your approval",
+        detail: `${request.tradeSenderName || request.fromStudentName || "Student"} -> ${request.tradeRecipientName || request.toStudentName || "you"} | ${request.payload?.amount || 0} JC`,
+        date: new Date(request.createdAt).toLocaleString()
+      }));
     const requestItems = requests
       .filter((request) => ["approved", "rejected"].includes(request.status))
       .map((request) => ({
@@ -635,7 +644,7 @@ function notificationItems(role, data) {
         detail: entry.title,
         date: new Date(entry.statusChangedAt || entry.updatedAt || entry.createdAt).toLocaleString()
       }));
-    return [...requestItems, ...feedbackItems].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return [...tradeActionItems, ...requestItems, ...feedbackItems].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
   return [];
 }

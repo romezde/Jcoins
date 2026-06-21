@@ -1528,15 +1528,26 @@ function requestRows(db, requests) {
     const publicPayload = request.type === "registration"
       ? { ...payload, passwordHash: undefined, subjectNames: (payload.subjectIds || []).map((subjectId) => subjectName(db, subjectId)) }
       : payload;
+    const trade = request.type === "trade" ? tradeRequestParticipants(request) : null;
     return {
       ...request,
       payload: publicPayload,
       studentName: request.type === "registration" ? payload.fullName || "New student" : studentName(db, request.studentId),
       fromStudentName: studentName(db, request.studentId),
       itemName: payload.itemId ? activeShopPrice(db, payload.itemId)?.name || "Unknown Item" : "",
-      toStudentName: payload.toStudentId ? studentName(db, payload.toStudentId) : ""
+      toStudentName: payload.toStudentId ? studentName(db, payload.toStudentId) : "",
+      tradeSenderName: trade ? studentName(db, trade.senderId) : "",
+      tradeRecipientName: trade ? studentName(db, trade.recipientId) : ""
     };
   });
+}
+
+function tradeRequestParticipants(request) {
+  const payload = request.payload || {};
+  const requesterId = request.studentId;
+  const peerId = payload.toStudentId;
+  if (payload.requesterRole === "recipient") return { senderId: peerId, recipientId: requesterId };
+  return { senderId: requesterId, recipientId: peerId };
 }
 
 function formatStudentFullName({ surname, firstName, middleName }) {
@@ -1559,6 +1570,8 @@ function canUseRequest(db, user, request) {
     return canUseSection(user, payload.section) && subjectIds.every((subjectId) => canUseSubject(user, subjectId));
   }
   if (!request.studentId) return true;
+  if (user.role === "student" && request.type === "trade" && request.payload?.toStudentId === user.studentId) return true;
+  if (request.type === "trade" && request.payload?.toStudentId && scopedStudentIds(db, user).has(request.payload.toStudentId)) return true;
   return scopedStudentIds(db, user).has(request.studentId);
 }
 
@@ -3691,20 +3704,50 @@ app.post("/api/requests", auth, async (req, res) => {
   const studentId = req.user.studentId || req.body.studentId;
   if (!type) return res.status(400).json({ error: "Request type is required." });
   if (!studentId || !db.students.some((student) => student.id === studentId)) return res.status(400).json({ error: "Valid student is required." });
-  if (req.user.role === "student" && db.requests.some((request) => request.studentId === studentId && request.type === type && request.status === "pending")) {
+  if (req.user.role === "student" && type !== "trade" && db.requests.some((request) => request.studentId === studentId && request.type === type && request.status === "pending")) {
     return res.status(409).json({ error: `You already have a pending ${type} request. Cancel it first before making another.` });
   }
+  let status = "pending";
+  let payload = req.body.payload || {};
   if (type === "trade") {
-    const toStudentId = req.body.payload?.toStudentId;
-    const amount = Number(req.body.payload?.amount || 0);
+    const toStudentId = payload.toStudentId;
+    const amount = Number(payload.amount || 0);
+    const requesterRole = payload.requesterRole === "recipient" ? "recipient" : "sender";
     if (!toStudentId || !db.students.some((student) => student.id === toStudentId)) return res.status(400).json({ error: "Choose a student to trade with." });
     if (toStudentId === studentId) return res.status(400).json({ error: "You cannot trade with yourself." });
     if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Trade amount must be greater than 0." });
+    const activeTrade = db.requests.some((request) => request.type === "trade" && ["peer_pending", "pending"].includes(request.status) && (request.studentId === studentId || request.payload?.toStudentId === studentId || request.studentId === toStudentId || request.payload?.toStudentId === toStudentId));
+    if (activeTrade) return res.status(409).json({ error: "One of these students already has an active trade request." });
+    payload = { toStudentId, amount, requesterRole };
+    status = "peer_pending";
   }
-  const request = { id: randomUUID(), type, status: "pending", studentId, payload: req.body.payload || {}, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
+  const request = { id: randomUUID(), type, status, studentId, payload, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
   db.requests.push(request);
   await writeDb(db);
   res.status(201).json({ request });
+});
+
+app.post("/api/requests/:id/respond", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const request = db.requests.find((r) => r.id === req.params.id);
+  if (!request) return res.status(404).json({ error: "Request not found." });
+  if (request.type !== "trade") return res.status(400).json({ error: "Only trade requests need student approval." });
+  if (request.payload?.toStudentId !== req.user.studentId) return res.status(403).json({ error: "Only the other student can respond to this trade." });
+  if (request.status !== "peer_pending") return res.status(400).json({ error: "This trade is no longer waiting for student approval." });
+  const decision = req.body.status === "approved" ? "approved" : "rejected";
+  if (decision === "approved") {
+    request.status = "pending";
+    request.peerApprovedAt = now();
+    request.peerApprovedBy = req.user.id;
+  } else {
+    request.status = "rejected";
+    request.resolvedAt = now();
+    request.resolvedBy = req.user.id;
+    request.peerRejectedAt = request.resolvedAt;
+    request.peerRejectedBy = req.user.id;
+  }
+  await writeDb(db);
+  res.json({ request });
 });
 
 app.post("/api/requests/:id/cancel", auth, async (req, res) => {
@@ -3713,7 +3756,7 @@ app.post("/api/requests/:id/cancel", auth, async (req, res) => {
   if (!request) return res.status(404).json({ error: "Request not found." });
   const ownsRequest = req.user.role === "student" && request.studentId === req.user.studentId;
   if (!ownsRequest && req.user.role !== "admin") return res.status(403).json({ error: "You can only cancel your own request." });
-  if (request.status !== "pending") return res.status(400).json({ error: "Only pending requests can be cancelled." });
+  if (!["pending", "peer_pending"].includes(request.status)) return res.status(400).json({ error: "Only active requests can be cancelled." });
   request.status = "cancelled";
   request.resolvedAt = now();
   request.resolvedBy = req.user.id;
@@ -3821,6 +3864,17 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
   request.status = req.body.status || "approved";
   request.resolvedAt = now();
   request.resolvedBy = req.user.id;
+  if (request.type === "trade" && request.status === "approved") {
+    const payload = request.payload || {};
+    const amount = Math.abs(Number(payload.amount || 0));
+    const { senderId, recipientId } = tradeRequestParticipants(request);
+    if (!senderId || !recipientId || senderId === recipientId) return res.status(400).json({ error: "Trade request has invalid students." });
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Trade amount must be greater than 0." });
+    if (studentCoins(db, senderId) < amount) return res.status(400).json({ error: `${studentName(db, senderId)} does not have enough JCoins for this trade.` });
+    const note = request.remarks || "Student trade";
+    db.transactions.push(tx(senderId, "trade", -amount, note, request.resolvedAt, req.user.id, { kind: "student-trade", requestId: request.id, toStudentId: recipientId }));
+    db.transactions.push(tx(recipientId, "trade", amount, note, request.resolvedAt, req.user.id, { kind: "student-trade", requestId: request.id, fromStudentId: senderId }));
+  }
   if (request.type === "registration" && request.status === "approved") {
     const payload = request.payload || {};
     if (db.users.some((user) => user.username.toLowerCase() === String(payload.username || "").toLowerCase()) || db.students.some((student) => student.name.toLowerCase() === String(payload.fullName || "").toLowerCase())) {

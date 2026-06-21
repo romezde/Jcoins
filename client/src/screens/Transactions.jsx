@@ -7,7 +7,7 @@ export default function Transactions({ data, run, role }) {
   const [form, setForm] = useState({ recipientMode: "selected", studentId: "", studentIds: [], fromStudentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
   const [targetFilter, setTargetFilter] = useState({ search: "", subjectId: "all", section: "all", guildId: "all" });
   const [filter, setFilter] = useState({ type: "all", studentId: "all", subjectId: "all", section: "all", guildId: "all", search: "" });
-  const typeOptions = role === "student" ? ["bonus", "adjustment", "penalty"] : ["bonus", "adjustment", "penalty", "trade", "shop"];
+  const typeOptions = role === "student" ? ["bonus", "adjustment", "penalty"] : ["bonus", "adjustment", "penalty", "shop"];
   const canBulk = form.type !== "trade";
   const studentById = new Map(data.students.map((student) => [student.id, student]));
   const filteredTargetStudents = data.students.filter((student) => studentMatchesFilters(data, student, targetFilter));
