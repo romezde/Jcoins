@@ -66,16 +66,19 @@ export async function downloadXlsxTemplate({ filename, sheetName, columns, sampl
 }
 
 async function readXlsxObjects(file, headerMap) {
-  const XLSX = await loadSheetJS();
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-  const sheetName = workbook.SheetNames.find((name) => !name.startsWith("_")) || workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const ExcelJS = await loadExcelJS();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await file.arrayBuffer());
+  const sheet = workbook.worksheets.find((item) => !item.name.startsWith("_") && item.state === "visible")
+    || workbook.worksheets.find((item) => !item.name.startsWith("_"))
+    || workbook.worksheets[0];
   if (!sheet) return [];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
-  if (!matrix.length) return [];
-  const headers = matrix[0].map((header) => normalizeHeader(header, headerMap));
-  return matrix.slice(1)
-    .map((cells) => Object.fromEntries(headers.map((header, index) => [header, cellText({ value: cells[index] })])))
+  const headerRow = sheet.getRow(1);
+  const columnCount = Math.max(sheet.actualColumnCount, headerRow.actualCellCount);
+  if (!columnCount) return [];
+  const headers = Array.from({ length: columnCount }, (_, index) => normalizeHeader(headerRow.getCell(index + 1), headerMap));
+  return Array.from({ length: Math.max(0, sheet.actualRowCount - 1) }, (_, index) => sheet.getRow(index + 2))
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, cellText(row.getCell(index + 1))])))
     .filter((row) => Object.values(row).some((value) => String(value).trim()));
 }
 
@@ -84,13 +87,8 @@ async function loadExcelJS() {
   return mod.default || mod;
 }
 
-async function loadSheetJS() {
-  const mod = await import("xlsx");
-  return mod.default || mod;
-}
-
 function normalizeHeader(header, headerMap) {
-  const key = String(cellText({ value: header }) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const key = cellText(header).trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   return headerMap[key] || key;
 }
 

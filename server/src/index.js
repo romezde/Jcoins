@@ -2974,7 +2974,10 @@ app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, 
 
 app.post("/api/admin/subjects", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
-  const subject = { id: randomUUID(), name: String(req.body.name || "New Subject") };
+  const name = String(req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Subject name is required." });
+  if (db.subjects.some((subject) => subject.name.trim().toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: "Subject already exists." });
+  const subject = { id: randomUUID(), name };
   db.subjects.push(subject);
   await writeDb(db);
   res.status(201).json({ subject });
@@ -2984,7 +2987,10 @@ app.put("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, res) 
   const db = await readDb();
   const subject = db.subjects.find((s) => s.id === req.params.id);
   if (!subject) return res.status(404).json({ error: "Subject not found." });
-  subject.name = String(req.body.name || subject.name);
+  const name = String(req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Subject name is required." });
+  if (db.subjects.some((item) => item.id !== subject.id && item.name.trim().toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: "Subject already exists." });
+  subject.name = name;
   await writeDb(db);
   res.json({ subject });
 });
@@ -3024,7 +3030,8 @@ app.post("/api/admin/sections", auth, requireRole("admin", "teacher"), async (re
   const db = await readDb();
   const name = String(req.body.name || "").trim();
   if (!name) return res.status(400).json({ error: "Section name is required." });
-  if (!db.sections.includes(name)) db.sections.push(name);
+  if (db.sections.some((section) => section.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: "Section already exists." });
+  db.sections.push(name);
   db.sections.sort();
   await writeDb(db);
   res.status(201).json({ sections: db.sections });
@@ -3034,6 +3041,7 @@ app.delete("/api/admin/sections/:name", auth, requireRole("admin", "teacher"), a
   const db = await readDb();
   const name = decodeURIComponent(req.params.name);
   if (!db.sections.includes(name)) return res.status(404).json({ error: "Section not found." });
+  if (!canUseSection(req.user, name)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
   db.sections = db.sections.filter((section) => section !== name);
   db.schedules = (db.schedules || []).filter((schedule) => schedule.section !== name);
   db.students.forEach((student) => {
@@ -3109,9 +3117,13 @@ app.delete("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), as
 app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const { name, section, username, tempPassword, startingJCoins, subjectIds = [] } = req.body;
+  const startingBalance = Number(startingJCoins || 0);
   if (!name || !username || !tempPassword) return res.status(400).json({ error: "Name, username, and temporary password are required." });
   if (String(tempPassword).length < 6) return res.status(400).json({ error: "Temporary password must be at least 6 characters." });
+  if (!Number.isFinite(startingBalance) || startingBalance < 0) return res.status(400).json({ error: "Starting JCoins must be zero or greater." });
   if (db.users.some((u) => u.username.toLowerCase() === String(username).toLowerCase())) return res.status(409).json({ error: "Username already exists." });
+  if (section && !db.sections.includes(section)) return res.status(400).json({ error: "Choose an existing section." });
+  if (!subjectIds.length || subjectIds.some((id) => !db.subjects.some((subject) => subject.id === id))) return res.status(400).json({ error: "Choose one or more existing subjects." });
   if (req.user.role === "teacher") {
     const allowedSubjects = new Set(req.user.subjectIds || []);
     const allowedSections = new Set(req.user.sectionIds || []);
@@ -3119,10 +3131,9 @@ app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (re
     if (!subjectIds.length || subjectIds.some((id) => !allowedSubjects.has(id))) return res.status(403).json({ error: "One or more subjects are outside your assigned class scope." });
   }
   const student = { id: randomUUID(), name, section: section || "", subjectIds, createdAt: now() };
-  if (student.section && !db.sections.includes(student.section)) db.sections.push(student.section);
   db.students.push(student);
   db.users.push({ id: randomUUID(), username, passwordHash: await bcrypt.hash(String(tempPassword), 10), role: "student", mustChangePassword: true, studentId: student.id, subjectIds: [], sectionIds: [] });
-  db.transactions.push(tx(student.id, "starting", Number(startingJCoins || 0), "Starting balance", now(), req.user.id));
+  db.transactions.push(tx(student.id, "starting", startingBalance, "Starting balance", now(), req.user.id));
   await writeDb(db);
   res.status(201).json({ student });
 });
@@ -3160,7 +3171,8 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
       if (!username) throw new Error(`Row ${rowNumber}: username is required.`);
       if (!tempPassword || tempPassword.length < 6) throw new Error(`Row ${rowNumber}: temporary password must be at least 6 characters.`);
       if (existingUsernames.has(username.toLowerCase()) || incomingUsernames.has(username.toLowerCase())) throw new Error(`Row ${rowNumber}: username "${username}" is already used.`);
-      if (!Number.isFinite(startingJCoins)) throw new Error(`Row ${rowNumber}: starting JCoins must be a number.`);
+      if (!Number.isFinite(startingJCoins) || startingJCoins < 0) throw new Error(`Row ${rowNumber}: starting JCoins must be zero or greater.`);
+      if (!section || !db.sections.includes(section)) throw new Error(`Row ${rowNumber}: choose an existing section.`);
       if (!subjectIds.length || subjectIds.some((id) => !id)) throw new Error(`Row ${rowNumber}: enter valid subject names or IDs.`);
       if (allowedSections?.size && !allowedSections.has(section)) throw new Error(`Row ${rowNumber}: section "${section}" is outside your assigned class scope.`);
       if (allowedSubjects && subjectIds.some((id) => !allowedSubjects.has(id))) throw new Error(`Row ${rowNumber}: one or more subjects are outside your assigned class scope.`);
@@ -3174,7 +3186,6 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   const created = [];
   for (const item of prepared) {
     const student = { id: randomUUID(), name: item.name, section: item.section, subjectIds: item.subjectIds, createdAt: now() };
-    if (student.section && !db.sections.includes(student.section)) db.sections.push(student.section);
     db.students.push(student);
     db.users.push({ id: randomUUID(), username: item.username, passwordHash: await bcrypt.hash(item.tempPassword, 10), role: "student", mustChangePassword: true, studentId: student.id, subjectIds: [], sectionIds: [] });
     db.transactions.push(tx(student.id, "starting", item.startingJCoins, "Starting balance", now(), req.user.id));
@@ -3211,10 +3222,13 @@ app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async 
     if (allowedSections.size && !allowedSections.has(nextSection)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
     if (nextSubjects.some((id) => !allowedSubjects.has(id))) return res.status(403).json({ error: "One or more subjects are outside your assigned class scope." });
   }
+  const nextSection = String(req.body.section ?? student.section ?? "");
+  const nextSubjects = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : student.subjectIds;
+  if (nextSection && !db.sections.includes(nextSection)) return res.status(400).json({ error: "Choose an existing section." });
+  if (!nextSubjects.length || nextSubjects.some((id) => !db.subjects.some((subject) => subject.id === id))) return res.status(400).json({ error: "Choose one or more existing subjects." });
   student.name = String(req.body.name || student.name);
-  student.section = String(req.body.section ?? student.section ?? "");
-  if (student.section && !db.sections.includes(student.section)) db.sections.push(student.section);
-  student.subjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : student.subjectIds;
+  student.section = nextSection;
+  student.subjectIds = nextSubjects;
   await writeDb(db);
   res.json({ student });
 });
@@ -3690,6 +3704,7 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
   try { ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
   const type = req.body.type || "adjustment";
+  if (!["bonus", "adjustment", "penalty", "shop", "trade"].includes(type)) return res.status(400).json({ error: "Choose a valid transaction type." });
   if (req.user.role === "student" && !["bonus", "adjustment", "penalty"].includes(type)) return res.status(403).json({ error: "Student assistants can only add bonus, adjustment, or penalty transactions." });
   const assistantTransactionRemark = assistantCreditRemark(db, req.user, req.body.remarks);
   if (type === "trade") {
@@ -3699,7 +3714,9 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
     if (req.body.studentId === req.body.fromStudentId) return res.status(400).json({ error: "Choose two different students for a trade." });
     if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
     if (!allowedStudentIds.has(req.body.fromStudentId)) return res.status(403).json({ error: "The trade source student is outside your assigned class scope." });
-    const amount = Math.abs(Number(req.body.amount || 0));
+    const requestedAmount = Number(req.body.amount);
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) return res.status(400).json({ error: "Amount must be greater than zero." });
+    const amount = Math.abs(requestedAmount);
     db.transactions.push(tx(req.body.fromStudentId, "trade", -amount, req.body.remarks || "Trade", now(), req.user.id, { toStudentId: req.body.studentId }));
     db.transactions.push(tx(req.body.studentId, "trade", amount, req.body.remarks || "Trade", now(), req.user.id, { fromStudentId: req.body.fromStudentId }));
     addAuditLog(db, req.user, "transaction.trade.manual", {
@@ -3713,14 +3730,19 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
     const targetIds = [...new Set((Array.isArray(req.body.studentIds) && req.body.studentIds.length ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
     if (!targetIds.length) return res.status(400).json({ error: "Choose at least one student." });
     if (targetIds.some((studentId) => !allowedStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+    let recordedAmount;
     if (type === "shop") {
       const priced = activeShopPrice(db, req.body.itemId);
+      if (!priced) return res.status(400).json({ error: "Choose a valid shop item." });
+      recordedAmount = -Math.abs(priced.activeCost);
       targetIds.forEach((studentId) => {
-        db.transactions.push(tx(studentId, "shop", -Math.abs(priced?.activeCost || req.body.amount || 0), req.body.remarks || priced?.name || "Shop", now(), req.user.id, { itemId: req.body.itemId }));
+        db.transactions.push(tx(studentId, "shop", recordedAmount, req.body.remarks || priced.name || "Shop", now(), req.user.id, { itemId: req.body.itemId }));
       });
     } else {
-      const sign = type === "penalty" ? -1 : 1;
-      const amount = sign * Number(req.body.amount || 0);
+      const requestedAmount = Number(req.body.amount);
+      if (!Number.isFinite(requestedAmount) || requestedAmount === 0) return res.status(400).json({ error: "Amount must be a non-zero number." });
+      const amount = type === "penalty" ? -Math.abs(requestedAmount) : type === "bonus" ? Math.abs(requestedAmount) : requestedAmount;
+      recordedAmount = amount;
       const note = req.user.role === "student" ? assistantTransactionRemark : req.body.remarks || type;
       targetIds.forEach((studentId) => {
         db.transactions.push(tx(studentId, type, amount, note, now(), req.user.id));
@@ -3729,7 +3751,7 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
     addAuditLog(db, req.user, "transaction.create", {
       entityType: "transaction",
       targetStudentId: targetIds.length === 1 ? targetIds[0] : "",
-      amount: type === "penalty" ? -Math.abs(Number(req.body.amount || 0)) : Number(req.body.amount || 0),
+      amount: recordedAmount,
       summary: `${type} transaction for ${targetIds.length} student${targetIds.length === 1 ? "" : "s"}.`,
       meta: { type, targetIds, itemId: req.body.itemId || "" }
     });
