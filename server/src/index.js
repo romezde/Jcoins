@@ -122,7 +122,9 @@ app.use((req, res, next) => {
 app.use(cors({
   origin(origin, callback) {
     if (!origin || ALLOWED_ORIGINS.includes(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
-    return callback(new Error("Origin not allowed"));
+    const error = new Error("Origin not allowed");
+    error.status = 403;
+    return callback(error);
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Authorization", "Content-Type"],
@@ -1442,14 +1444,14 @@ const loginAccountLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   prefix: "login-account",
-  key: (req) => `${req.ip}:${String(req.body?.username || "").trim().toLowerCase()}`
+  key: (req) => String(req.body?.username || "").trim().toLowerCase()
 });
 const registrationLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 250, prefix: "registration-ip" });
 const registrationAccountLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   prefix: "registration-account",
-  key: (req) => `${req.ip}:${String(req.body?.surname || "").trim().toLowerCase()}:${String(req.body?.firstName || "").trim().toLowerCase()}`
+  key: (req) => `${String(req.body?.surname || "").trim().toLowerCase()}:${String(req.body?.firstName || "").trim().toLowerCase()}`
 });
 const authenticatedMutationLimit = rateLimit({ windowMs: 60 * 1000, max: 300, prefix: "mutation", key: (req) => req.user?.id });
 const assistantLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: "assistant", key: (req) => req.user?.id });
