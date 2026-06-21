@@ -44,6 +44,30 @@ const APPEARANCE_INVENTORY_ROW_PREFIX = "appearance-inventory:";
 const APPEARANCE_GIFT_ROW_PREFIX = "appearance-gift:";
 const APPEARANCE_EQUIPPED_ROW_PREFIX = "appearance-equipped:";
 const GUILD_RESPONSE_ROW_PREFIX = "guild-response:";
+const STORAGE_ROW_TYPES = [
+  { key: "activityFiles", label: "Activity file blobs", prefix: ACTIVITY_FILE_ROW_PREFIX },
+  { key: "transactions", label: "Transactions and points", prefix: TRANSACTION_ROW_PREFIX },
+  { key: "students", label: "Students", prefix: STUDENT_ROW_PREFIX },
+  { key: "users", label: "Users and login accounts", prefix: USER_ROW_PREFIX },
+  { key: "attendanceRecords", label: "Attendance records", prefix: ATTENDANCE_RECORD_ROW_PREFIX },
+  { key: "recitations", label: "Recitations", prefix: RECITATION_ROW_PREFIX },
+  { key: "activities", label: "Activities", prefix: ACTIVITY_ROW_PREFIX },
+  { key: "quizzes", label: "Quizzes", prefix: QUIZ_ROW_PREFIX },
+  { key: "requests", label: "Requests", prefix: REQUEST_ROW_PREFIX },
+  { key: "feedback", label: "Feedback", prefix: FEEDBACK_ROW_PREFIX },
+  { key: "schedules", label: "Schedules", prefix: SCHEDULE_ROW_PREFIX },
+  { key: "attendanceWeeks", label: "Attendance weeks", prefix: ATTENDANCE_WEEK_ROW_PREFIX },
+  { key: "subjects", label: "Subjects", prefix: SUBJECT_ROW_PREFIX },
+  { key: "sections", label: "Sections", prefix: SECTION_ROW_PREFIX },
+  { key: "studentAssistants", label: "Student assistants", prefix: STUDENT_ASSISTANT_ROW_PREFIX },
+  { key: "shopItems", label: "Shop items", prefix: SHOP_ITEM_ROW_PREFIX },
+  { key: "sales", label: "Sales", prefix: SALE_ROW_PREFIX },
+  { key: "appearanceItems", label: "Appearance items", prefix: APPEARANCE_ITEM_ROW_PREFIX },
+  { key: "appearanceInventory", label: "Appearance inventory", prefix: APPEARANCE_INVENTORY_ROW_PREFIX },
+  { key: "appearanceGifts", label: "Appearance gifts", prefix: APPEARANCE_GIFT_ROW_PREFIX },
+  { key: "appearanceEquipped", label: "Equipped appearances", prefix: APPEARANCE_EQUIPPED_ROW_PREFIX },
+  { key: "guildResponses", label: "Guild responses", prefix: GUILD_RESPONSE_ROW_PREFIX }
+];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -586,33 +610,9 @@ async function createDailyBackup(reason = "scheduled") {
 
 async function readSupplementalStorageRows() {
   if (!supabase) return [];
-  const prefixes = [
-    ACTIVITY_FILE_ROW_PREFIX,
-    TRANSACTION_ROW_PREFIX,
-    STUDENT_ROW_PREFIX,
-    USER_ROW_PREFIX,
-    ATTENDANCE_RECORD_ROW_PREFIX,
-    RECITATION_ROW_PREFIX,
-    ACTIVITY_ROW_PREFIX,
-    QUIZ_ROW_PREFIX,
-    REQUEST_ROW_PREFIX,
-    FEEDBACK_ROW_PREFIX,
-    SCHEDULE_ROW_PREFIX,
-    ATTENDANCE_WEEK_ROW_PREFIX,
-    SUBJECT_ROW_PREFIX,
-    STUDENT_ASSISTANT_ROW_PREFIX,
-    SHOP_ITEM_ROW_PREFIX,
-    SALE_ROW_PREFIX,
-    APPEARANCE_ITEM_ROW_PREFIX,
-    APPEARANCE_INVENTORY_ROW_PREFIX,
-    APPEARANCE_GIFT_ROW_PREFIX,
-    APPEARANCE_EQUIPPED_ROW_PREFIX,
-    SECTION_ROW_PREFIX,
-    GUILD_RESPONSE_ROW_PREFIX
-  ];
   const rows = [];
-  for (const prefix of prefixes) {
-    rows.push(...await readStorageRowsByPrefix(prefix, "id,state,updated_at"));
+  for (const type of STORAGE_ROW_TYPES) {
+    rows.push(...await readStorageRowsByPrefix(type.prefix, "id,state,updated_at"));
   }
   return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
@@ -901,6 +901,69 @@ async function readStorageRowsByPrefix(prefix, fields = "id,state") {
     if (!data || data.length < pageSize) break;
   }
   return rows;
+}
+
+async function countStorageRowsByPrefix(prefix) {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id", { count: "exact", head: true })
+    .like("id", `${prefix}%`);
+  if (error) throw supabaseSetupError(error);
+  return count || 0;
+}
+
+function reconstructedDataCounts(db) {
+  const activityFileReferences = (db.activities || []).reduce((total, activity) => (
+    total + (activity.submissions || []).reduce((sum, submission) => sum + activitySubmissionFiles(submission).length, 0)
+  ), 0);
+  return {
+    transactions: (db.transactions || []).length,
+    students: (db.students || []).length,
+    users: (db.users || []).length,
+    attendanceRecords: (db.attendanceRecords || []).length,
+    recitations: (db.recitations || []).length,
+    activities: (db.activities || []).length,
+    activityFiles: activityFileReferences,
+    quizzes: (db.quizzes || []).length,
+    requests: (db.requests || []).length,
+    feedback: (db.feedback || []).length,
+    schedules: (db.schedules || []).length,
+    attendanceWeeks: (db.attendanceWeeks || []).length,
+    subjects: (db.subjects || []).length,
+    sections: (db.sections || []).length,
+    studentAssistants: (db.studentAssistants || []).length,
+    shopItems: (db.shopItems || []).length,
+    sales: (db.sales || []).length,
+    appearanceItems: (db.appearanceItems || []).length,
+    appearanceInventory: (db.appearanceInventory || []).length,
+    appearanceGifts: (db.appearanceGifts || []).length,
+    appearanceEquipped: Object.keys(db.appearanceEquipped || {}).length,
+    guildResponses: (db.guildSystem?.responses || []).length
+  };
+}
+
+async function storageHealthSummary(db) {
+  const reconstructedCounts = reconstructedDataCounts(db);
+  const rows = [];
+  for (const type of STORAGE_ROW_TYPES) {
+    const rowCount = await countStorageRowsByPrefix(type.prefix);
+    rows.push({
+      key: type.key,
+      label: type.label,
+      prefix: type.prefix,
+      rowCount,
+      visibleCount: reconstructedCounts[type.key] ?? null
+    });
+  }
+  return {
+    storage: supabase ? "supabase" : "file",
+    table: supabase ? SUPABASE_STATE_TABLE : null,
+    generatedAt: now(),
+    rows,
+    reconstructedCounts,
+    note: "visibleCount is what the app can currently read after rebuilding data from storage rows and main fallback."
+  };
 }
 
 function entityRowId(prefix, id) {
@@ -2068,6 +2131,11 @@ function assistantAssignmentRows(db, user) {
 }
 
 app.get("/api/health", (req, res) => res.json({ ok: true, storage: supabase ? "supabase" : "file" }));
+
+app.get("/api/admin/storage-health", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  res.json(await storageHealthSummary(db));
+});
 
 app.post("/api/auth/login", async (req, res) => {
   const db = await readDb();
