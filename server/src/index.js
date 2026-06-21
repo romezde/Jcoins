@@ -2051,6 +2051,21 @@ function cleanActivityFiles(body = {}) {
   return files;
 }
 
+async function activityFilePreviewText(file = {}) {
+  if (activityFileIsImage(file) || !file.fileData) return "";
+  const match = String(file.fileData).match(/^data:([^;]+);base64,(.+)$/i);
+  if (!match) return "";
+  try {
+    return await extractReferenceText({
+      originalname: file.fileName || "submission",
+      mimetype: file.fileType || match[1],
+      buffer: Buffer.from(match[2], "base64")
+    });
+  } catch {
+    return "";
+  }
+}
+
 function quizRewardValue(db, difficulty) {
   return db.settings.quizzes.difficulties.find((item) => item.name === difficulty)?.points ?? 0;
 }
@@ -3536,7 +3551,8 @@ app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, asy
     if (storedFile) file = { ...file, ...storedFile };
   }
   if (!file?.fileData) return res.status(404).json({ error: "File data not found." });
-  res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData } });
+  const previewText = await activityFilePreviewText(file);
+  res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData, previewText } });
 });
 
 app.post("/api/student/activities/:id/submit", auth, requireRole("student"), async (req, res) => {
