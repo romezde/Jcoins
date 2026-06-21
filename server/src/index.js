@@ -3275,6 +3275,10 @@ app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, r
   if (req.user.role === "student" && !["bonus", "adjustment", "penalty"].includes(type)) return res.status(403).json({ error: "Student assistants can only add bonus, adjustment, or penalty transactions." });
   const assistantTransactionRemark = assistantCreditRemark(db, req.user, req.body.remarks);
   if (type === "trade") {
+    const targetIds = [...new Set((Array.isArray(req.body.studentIds) ? req.body.studentIds : [req.body.studentId]).filter(Boolean))];
+    if (targetIds.length !== 1 || !req.body.fromStudentId) return res.status(400).json({ error: "Choose exactly one From Student and one To Student." });
+    if (targetIds[0] !== req.body.studentId) req.body.studentId = targetIds[0];
+    if (req.body.studentId === req.body.fromStudentId) return res.status(400).json({ error: "Choose two different students for a trade." });
     if (!allowedStudentIds.has(req.body.studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
     if (!allowedStudentIds.has(req.body.fromStudentId)) return res.status(403).json({ error: "The trade source student is outside your assigned class scope." });
     const amount = Math.abs(Number(req.body.amount || 0));

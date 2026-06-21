@@ -4,14 +4,16 @@ import { StudentFilterFields, StudentMultiPicker, studentMatchesFilters } from "
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 
 export default function Transactions({ data, run, role }) {
-  const [form, setForm] = useState({ recipientMode: "selected", studentId: "", studentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
+  const [form, setForm] = useState({ recipientMode: "selected", studentId: "", studentIds: [], fromStudentIds: [], type: "bonus", fromStudentId: "", itemId: "", amount: 10, remarks: "" });
   const [targetFilter, setTargetFilter] = useState({ search: "", subjectId: "all", section: "all", guildId: "all" });
   const [filter, setFilter] = useState({ type: "all", studentId: "all", subjectId: "all", section: "all", guildId: "all", search: "" });
   const typeOptions = role === "student" ? ["bonus", "adjustment", "penalty"] : ["bonus", "adjustment", "penalty", "trade", "shop"];
   const canBulk = form.type !== "trade";
   const studentById = new Map(data.students.map((student) => [student.id, student]));
   const filteredTargetStudents = data.students.filter((student) => studentMatchesFilters(data, student, targetFilter));
+  const tradeNeedsOneSender = form.type === "trade" && form.fromStudentIds.length !== 1;
   const tradeNeedsOneRecipient = form.type === "trade" && form.studentIds.length !== 1;
+  const tradeUsesSameStudent = form.type === "trade" && form.fromStudentIds.length === 1 && form.studentIds.length === 1 && form.fromStudentIds[0] === form.studentIds[0];
   const selectedNeedsRecipient = canBulk && form.recipientMode === "selected" && !form.studentIds.length;
   const filteredNeedsRecipient = canBulk && form.recipientMode === "filtered" && !filteredTargetStudents.length;
   const filteredTransactions = data.transactions.filter((transaction) => {
@@ -31,7 +33,8 @@ export default function Transactions({ data, run, role }) {
         : form.recipientMode === "filtered"
           ? filteredTargetStudents.map((student) => student.id)
         : form.studentIds;
-    run(() => post("/admin/transactions", { ...form, studentId: studentIds[0] || "", studentIds }), studentIds.length > 1 ? `${studentIds.length} transactions added` : "Transaction added");
+    const fromStudentId = form.type === "trade" ? form.fromStudentIds[0] || "" : form.fromStudentId;
+    run(() => post("/admin/transactions", { ...form, fromStudentId, studentId: studentIds[0] || "", studentIds }), studentIds.length > 1 ? `${studentIds.length} transactions added` : "Transaction added");
   }
   return <div className="dashboard-grid">
     <ActionModal title="Add Transaction">
@@ -42,16 +45,17 @@ export default function Transactions({ data, run, role }) {
           { value: "filtered", label: "Filtered group" },
           { value: "all", label: `All students (${data.students.length})` }
         ]} />}
+        {!canBulk && <StudentMultiPicker data={data} students={data.students} selected={form.fromStudentIds} onChange={(fromStudentIds) => setForm({ ...form, fromStudentIds })} label="From Student" />}
         {!canBulk && <StudentMultiPicker data={data} students={data.students} selected={form.studentIds} onChange={(studentIds) => setForm({ ...form, studentIds })} label="To Student" />}
-        {!canBulk && <div className="notice">Choose exactly one student for trade transactions.</div>}
+        {!canBulk && <div className="notice">Choose exactly one From Student and one To Student for trade transactions.</div>}
         {canBulk && form.recipientMode === "selected" && <StudentMultiPicker data={data} students={data.students} selected={form.studentIds} onChange={(studentIds) => setForm({ ...form, studentIds })} />}
         {canBulk && form.recipientMode === "filtered" && <FilteredRecipients data={data} filter={targetFilter} setFilter={setTargetFilter} students={filteredTargetStudents} />}
         {canBulk && form.recipientMode === "all" && <div className="notice">This will apply to all {data.students.length} students currently available to your account.</div>}
-        {form.type === "trade" && <Select label="From Student" value={form.fromStudentId} onChange={(v) => setForm({ ...form, fromStudentId: v })} options={[{ id: "", name: "Select" }, ...data.students]} />}
+        {tradeUsesSameStudent && <div className="notice">Choose two different students for a trade.</div>}
         {form.type === "shop" && <Select label="Item" value={form.itemId} onChange={(v) => setForm({ ...form, itemId: v })} options={[{ id: "", name: "Select" }, ...data.shopItems.map((i) => ({ id: i.id, name: `${i.name} (${i.activeCost} JC)` }))]} />}
         <Field label="Amount" type="number" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
         <Field label="Remarks" value={form.remarks} onChange={(v) => setForm({ ...form, remarks: v })} />
-        <button disabled={tradeNeedsOneRecipient || selectedNeedsRecipient || filteredNeedsRecipient}>Add Transaction</button>
+        <button disabled={tradeNeedsOneSender || tradeNeedsOneRecipient || tradeUsesSameStudent || selectedNeedsRecipient || filteredNeedsRecipient}>Add Transaction</button>
       </form>
     </ActionModal>
     <Panel title="Transactions Table" wide defaultOpen>
