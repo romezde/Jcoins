@@ -2503,6 +2503,32 @@ function hydrateActivities(db) {
   });
 }
 
+function syncActivityRewards(db, activity, createdBy) {
+  const basePoints = activityBase(db, activity.type);
+  for (const submission of activity.submissions || []) {
+    const submittedAt = submission.submittedAt || submission.dateSubmitted || "";
+    const daysLate = submission.submitted ? activityDaysLate(activity.deadline, submittedAt) : 0;
+    const earned = submission.submitted ? Math.max(0, basePoints - daysLate * Number(db.settings.activities.latePenaltyPerDay || 0)) : 0;
+    const maxScoreAllowed = activityMaxScoreAllowed(daysLate);
+    if (submission.score !== "" && submission.score != null) submission.score = Math.max(0, Math.min(Number(submission.score || 0), maxScoreAllowed));
+    submission.snapshot = {
+      type: activity.type,
+      basePoints,
+      latePenaltyPerDay: Number(db.settings.activities.latePenaltyPerDay || 0),
+      daysLate,
+      earned
+    };
+    const transaction = db.transactions.find((item) => item.meta?.kind === "activity" && item.meta.activityId === activity.id && item.studentId === submission.studentId);
+    if (transaction) {
+      transaction.amount = earned;
+      transaction.note = activity.title;
+      transaction.meta = { ...(transaction.meta || {}), subjectId: activity.subjectId };
+    } else if (earned) {
+      db.transactions.push(tx(submission.studentId, "activity", earned, activity.title, submittedAt || now(), createdBy, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+    }
+  }
+}
+
 function hydrateActivitySummaries(db, visibleStudents = null, subjectIds = null) {
   const studentPool = visibleStudents || db.students;
   return db.activities
@@ -3674,6 +3700,31 @@ app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (
   db.activities.push(activity);
   await writeDb(db);
   res.status(201).json({ activity });
+});
+
+app.put("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  const subjectId = String(req.body.subjectId || activity.subjectId);
+  if (!db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
+  if (subjectId !== activity.subjectId && (activity.submissions || []).length) {
+    return res.status(400).json({ error: "The subject cannot be changed after submission records exist." });
+  }
+  const type = String(req.body.type || activity.type);
+  if (!db.settings.activities.types.some((item) => item.name === type)) return res.status(400).json({ error: "Choose an existing activity type." });
+  activity.title = String(req.body.title ?? activity.title).trim().slice(0, 120) || "Activity";
+  activity.subjectId = subjectId;
+  activity.dateCreated = String(req.body.dateCreated ?? activity.dateCreated).slice(0, 10) || today();
+  activity.deadline = normalizeActivityDeadline(req.body.deadline ?? activity.deadline);
+  activity.type = type;
+  activity.maxScore = 100;
+  activity.remarks = String(req.body.remarks ?? activity.remarks ?? "").trim().slice(0, 500);
+  activity.updatedAt = now();
+  syncActivityRewards(db, activity, req.user.id);
+  await writeDb(db);
+  res.json({ activity });
 });
 
 app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), async (req, res) => {

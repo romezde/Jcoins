@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Activities({ data, run }) {
-  const [form, setForm] = useState({ title: "Activity 1", subjectId: data.subjects[0]?.id || "", dateCreated: today(), deadline: `${today()}T23:59`, type: data.settings.activities.types[0]?.name || "Simple", maxScore: 100, remarks: "" });
   const [filter, setFilter] = useState({ subjectId: "all", search: "" });
   const filteredActivities = data.activities.filter((activity) => {
     const subjectMatch = filter.subjectId === "all" || activity.subjectId === filter.subjectId;
@@ -15,35 +15,57 @@ export default function Activities({ data, run }) {
   });
 
   return <div className="dashboard-grid">
-    <ActionModal title="Create Activity">
-      <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/activities", form), "Activity created"); }}>
-        <Field label="Activity Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
-        <Select label="Subject" value={form.subjectId} onChange={(v) => setForm({ ...form, subjectId: v })} options={data.subjects} />
-        <Field label="Date Created" type="date" value={form.dateCreated} onChange={(v) => setForm({ ...form, dateCreated: v })} />
-        <Field label="Deadline" type="datetime-local" value={toDatetimeLocal(form.deadline)} onChange={(v) => setForm({ ...form, deadline: v })} />
-        <Select label="Type" value={form.type} onChange={(v) => setForm({ ...form, type: v })} options={data.settings.activities.types.map((t) => t.name)} />
-        <label>Score Scale<input value="100%" readOnly /></label>
-        <Field label="Remarks" value={form.remarks} onChange={(v) => setForm({ ...form, remarks: v })} />
-        <button>Create Activity</button>
-      </form>
-    </ActionModal>
+    <ActivityFormModal data={data} run={run} />
     <Panel title="Activity List" wide defaultOpen>
       <div className="filter-bar">
         <Select label="Subject" value={filter.subjectId} onChange={(subjectId) => setFilter({ ...filter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
         <Field label="Search Activities" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
         <div className="filter-count">{filteredActivities.length} activit{filteredActivities.length === 1 ? "y" : "ies"}</div>
       </div>
-      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Score", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, formatActivityDateTime(a.deadline), a.type, "0-100", a.remarks, <div className="inline"><button type="button" className="soft" onClick={() => exportActivity(a)}>Export Spreadsheet</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>])} />
+      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Score", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, formatActivityDateTime(a.deadline), a.type, "0-100", a.remarks, <div className="inline"><ActivityFormModal data={data} run={run} activity={a} /><button type="button" className="soft" onClick={() => exportActivity(a)}>Export Spreadsheet</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>])} />
     </Panel>
-    {filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} run={run} />)}
+    {filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} data={data} run={run} />)}
   </div>;
 }
 
-function ActivityCard({ activity, run }) {
+function ActivityFormModal({ data, run, activity = null }) {
+  const [form, setForm] = useState(() => activity ? activityFormValues(activity) : {
+    title: "Activity 1",
+    subjectId: data.subjects[0]?.id || "",
+    dateCreated: today(),
+    deadline: `${today()}T23:59`,
+    type: data.settings.activities.types[0]?.name || "Simple",
+    maxScore: 100,
+    remarks: ""
+  });
+  const hasSubmissions = !!activity?.rows?.some((row) => row.submitted || row.remarks || row.score !== "");
+  useEffect(() => {
+    if (activity) setForm(activityFormValues(activity));
+  }, [activity?.title, activity?.subjectId, activity?.dateCreated, activity?.deadline, activity?.type, activity?.remarks]);
+  function submit(event) {
+    event.preventDefault();
+    run(() => activity ? put(`/admin/activities/${activity.id}`, form) : post("/admin/activities", form), activity ? "Activity updated" : "Activity created");
+  }
+  return <ActionModal title={activity ? `Edit ${activity.title}` : "Create Activity"} buttonLabel={activity ? "Edit" : "Create Activity"} icon={activity ? Pencil : undefined}>
+    <form onSubmit={submit}>
+      <Field label="Activity Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
+      <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId })} options={hasSubmissions ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
+      {hasSubmissions && <p className="muted-line">The subject is locked after submissions. Deadline or type changes will safely recalculate late limits and JCoins.</p>}
+      <Field label="Date Created" type="date" value={form.dateCreated} onChange={(dateCreated) => setForm({ ...form, dateCreated })} />
+      <Field label="Deadline" type="datetime-local" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
+      <Select label="Type" value={form.type} onChange={(type) => setForm({ ...form, type })} options={data.settings.activities.types.map((item) => item.name)} />
+      <label>Score Scale<input value="100%" readOnly /></label>
+      <Field label="Remarks" value={form.remarks} onChange={(remarks) => setForm({ ...form, remarks })} />
+      <button>{activity ? "Save Changes" : "Create Activity"}</button>
+    </form>
+  </ActionModal>;
+}
+
+function ActivityCard({ activity, data, run }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const rows = activity.rows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.score, row.remarks, row.fileNames, row.fileName, row.status].some((value) => String(value || "").toLowerCase().includes(q)));
-  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{activity.tracker} submitted</strong><button type="button" className="soft" onClick={() => exportActivity(activity)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
+  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{activity.tracker} submitted</strong><ActivityFormModal data={data} run={run} activity={activity} /><button type="button" className="soft" onClick={() => exportActivity(activity)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
     <p className="muted-line">{activity.subjectName} | {activity.type} | deadline {formatActivityDateTime(activity.deadline)} | base {activity.basePoints} JC | actual score 0-100</p>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
@@ -66,6 +88,18 @@ function ActivityCard({ activity, run }) {
 function deleteActivity(activity, run) {
   return confirm(`Delete ${activity.title}? This removes submissions and JCoins earned from this activity.`)
     && run(() => del(`/admin/activities/${activity.id}`), "Activity deleted");
+}
+
+function activityFormValues(activity) {
+  return {
+    title: activity.title,
+    subjectId: activity.subjectId,
+    dateCreated: activity.dateCreated,
+    deadline: toDatetimeLocal(activity.deadline),
+    type: activity.type,
+    maxScore: 100,
+    remarks: activity.remarks || ""
+  };
 }
 
 function exportActivity(activity) {
