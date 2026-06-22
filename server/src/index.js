@@ -1884,6 +1884,10 @@ function formatStudentFullName({ surname, firstName, middleName }) {
   return `${last}, ${[first, middle].filter(Boolean).join(" ")}`.trim();
 }
 
+function normalizeStudentName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 function studentRegistrationUsername({ surname, firstName }) {
   const clean = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   return `${clean(surname)}.${clean(firstName)}`;
@@ -3196,8 +3200,10 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   if (!rows.length) return res.status(400).json({ error: "Upload at least one student row." });
   if (rows.length > 300) return res.status(400).json({ error: "Import up to 300 students at a time." });
 
-  const existingUsernames = new Set(db.users.map((user) => user.username.toLowerCase()));
+  const existingUsersByUsername = new Map(db.users.map((user) => [user.username.toLowerCase(), user]));
+  const existingStudentsById = new Map(db.students.map((student) => [student.id, student]));
   const incomingUsernames = new Set();
+  const skipped = [];
   const allowedSubjects = req.user.role === "teacher" ? new Set(req.user.subjectIds || []) : null;
   const allowedSections = req.user.role === "teacher" ? new Set(req.user.sectionIds || []) : null;
   const subjectLookup = new Map(db.subjects.flatMap((subject) => [
@@ -3222,15 +3228,24 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
       if (!name) throw new Error(`Row ${rowNumber}: name is required.`);
       if (!username) throw new Error(`Row ${rowNumber}: username is required.`);
       if (!tempPassword || tempPassword.length < 6) throw new Error(`Row ${rowNumber}: temporary password must be at least 6 characters.`);
-      if (existingUsernames.has(username.toLowerCase()) || incomingUsernames.has(username.toLowerCase())) throw new Error(`Row ${rowNumber}: username "${username}" is already used.`);
+      const normalizedUsername = username.toLowerCase();
+      const existingUser = existingUsersByUsername.get(normalizedUsername);
+      if (existingUser) {
+        const existingStudent = existingStudentsById.get(existingUser.studentId);
+        const sameStudent = existingStudent && normalizeStudentName(existingStudent.name) === normalizeStudentName(name);
+        if (!sameStudent) throw new Error(`Row ${rowNumber}: username "${username}" belongs to another account. Use a unique username for ${name}.`);
+        skipped.push({ rowNumber, name, username, reason: "already exists" });
+        return null;
+      }
+      if (incomingUsernames.has(normalizedUsername)) throw new Error(`Row ${rowNumber}: username "${username}" is repeated in this file.`);
       if (!Number.isFinite(startingJCoins) || startingJCoins < 0) throw new Error(`Row ${rowNumber}: starting JCoins must be zero or greater.`);
       if (!section || !db.sections.includes(section)) throw new Error(`Row ${rowNumber}: choose an existing section.`);
       if (!subjectIds.length || subjectIds.some((id) => !id)) throw new Error(`Row ${rowNumber}: enter valid subject names or IDs.`);
       if (allowedSections?.size && !allowedSections.has(section)) throw new Error(`Row ${rowNumber}: section "${section}" is outside your assigned class scope.`);
       if (allowedSubjects && subjectIds.some((id) => !allowedSubjects.has(id))) throw new Error(`Row ${rowNumber}: one or more subjects are outside your assigned class scope.`);
-      incomingUsernames.add(username.toLowerCase());
+      incomingUsernames.add(normalizedUsername);
       return { name, username, tempPassword, section, startingJCoins, subjectIds };
-    });
+    }).filter(Boolean);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -3245,7 +3260,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   }
   db.sections.sort();
   await writeDb(db);
-  res.status(201).json({ createdCount: created.length, created });
+  res.status(created.length ? 201 : 200).json({ createdCount: created.length, created, skippedCount: skipped.length, skipped });
 });
 
 app.post("/api/admin/students/batch-delete", auth, requireRole("admin", "teacher"), async (req, res) => {

@@ -88,7 +88,9 @@ export default function People({ data, run, role, view = "students" }) {
     await run(async () => {
       result = await post("/admin/students/bulk", { students: importRows });
       setImportRows([]);
-      setImportResult(`${result.createdCount} student${result.createdCount === 1 ? "" : "s"} imported.`);
+      const imported = `${result.createdCount} student${result.createdCount === 1 ? "" : "s"} imported`;
+      const skipped = result.skippedCount ? `; ${result.skippedCount} existing student${result.skippedCount === 1 ? "" : "s"} skipped` : "";
+      setImportResult(`${imported}${skipped}.`);
     }, "Students imported");
   }
   async function uploadStudentPhoto(studentId, file) {
