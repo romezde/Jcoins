@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bell, BookOpenCheck, CheckCircle2, Coins, Download, Gamepad2, LogOut, Menu, Search, Settings2, Shield, UsersRound, X } from "lucide-react";
+import { ArrowLeft, Bell, BookOpenCheck, CheckCircle2, Coins, Download, Gamepad2, LogOut, Menu, Search, Settings2, Shield, UsersRound, X } from "lucide-react";
 import { adminTabs, eventUrl, post, request, slug, studentAssistantTabs, studentTabs, tabFromPath, teacherTabs } from "./api.js";
 import { DropdownChecklist, Field, Select } from "./components/ui.jsx";
 import JCoinLogo from "./components/JCoinLogo.jsx";
@@ -132,7 +132,7 @@ function msUntilNextMidnight() {
   return Math.max(1000, next.getTime() - now.getTime());
 }
 
-function ChangePassword({ onDone }) {
+function ChangePassword({ onDone, onReturn }) {
   const [form, setForm] = useState({ currentPassword: "", newPassword: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -143,7 +143,7 @@ function ChangePassword({ onDone }) {
     setLoading(true);
     try { onDone(await post("/auth/change-password", form)); } catch (err) { setError(err.message); setLoading(false); }
   }
-  return <main className="login"><section className="login-panel"><Shield /><h1>Change Password</h1><p>Create your own password before continuing.</p><form onSubmit={submit} aria-busy={loading}><Field label="Current Password" type="password" value={form.currentPassword} onChange={(v) => setForm({ ...form, currentPassword: v })} /><Field label="New Password" type="password" value={form.newPassword} onChange={(v) => setForm({ ...form, newPassword: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Saving..." : "Save Password"}</button></form></section></main>;
+  return <main className="login"><section className="login-panel"><Shield /><h1>Change Password</h1><p>Create your own password before continuing.</p><form onSubmit={submit} aria-busy={loading}><Field label="Current Password" type="password" value={form.currentPassword} onChange={(v) => setForm({ ...form, currentPassword: v })} /><Field label="New Password" type="password" value={form.newPassword} onChange={(v) => setForm({ ...form, newPassword: v })} />{error && <div className="error">{error}</div>}<button disabled={loading}>{loading ? "Saving..." : "Save Password"}</button><button type="button" className="soft" disabled={loading} onClick={onReturn}><ArrowLeft size={18} /> Return to Login</button></form></section></main>;
 }
 
 export default function App() {
@@ -164,7 +164,7 @@ export default function App() {
   }
   if (!session && path.replace(/^\/+/, "").toLowerCase() === "leaderboard") return <PublicLeaderboard onLogin={goLogin} />;
   if (!session) return <Login onLogin={save} onPublicLeaderboard={goPublicLeaderboard} />;
-  if (session.user.mustChangePassword) return <ChangePassword onDone={save} />;
+  if (session.user.mustChangePassword) return <ChangePassword onDone={save} onReturn={logout} />;
   return <RoleApp session={session} logout={logout} />;
 }
 
