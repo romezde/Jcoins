@@ -68,7 +68,17 @@ export async function downloadXlsxTemplate({ filename, sheetName, columns, sampl
 async function readXlsxObjects(file, headerMap) {
   const ExcelJS = await loadExcelJS();
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await file.arrayBuffer());
+  const fileBuffer = await file.arrayBuffer();
+  try {
+    await workbook.xlsx.load(fileBuffer);
+  } catch (error) {
+    const normalizedBuffer = await normalizeSpreadsheetNamespaces(fileBuffer);
+    try {
+      await workbook.xlsx.load(normalizedBuffer);
+    } catch {
+      throw new Error("This Excel file could not be read. Download a fresh template and upload it as an .xlsx file.", { cause: error });
+    }
+  }
   const sheet = workbook.worksheets.find((item) => !item.name.startsWith("_") && item.state === "visible")
     || workbook.worksheets.find((item) => !item.name.startsWith("_"))
     || workbook.worksheets[0];
@@ -85,6 +95,26 @@ async function readXlsxObjects(file, headerMap) {
 async function loadExcelJS() {
   const mod = await import("exceljs");
   return mod.default || mod;
+}
+
+async function normalizeSpreadsheetNamespaces(buffer) {
+  const mod = await import("jszip");
+  const JSZip = mod.default || mod;
+  const zip = await JSZip.loadAsync(buffer);
+  const xmlEntries = Object.entries(zip.files).filter(([name, entry]) => !entry.dir && name.toLowerCase().endsWith(".xml"));
+  await Promise.all(xmlEntries.map(async ([name, entry]) => {
+    let xml = await entry.async("string");
+    const namespaceMatch = xml.match(/xmlns:([A-Za-z_][\w.-]*)=["']http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main["']/);
+    if (!namespaceMatch) return;
+    const prefix = escapeRegExp(namespaceMatch[1]);
+    xml = xml.replace(new RegExp(`<(/?)${prefix}:`, "g"), "<$1");
+    zip.file(name, xml);
+  }));
+  return zip.generateAsync({ type: "uint8array" });
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeHeader(header, headerMap) {
