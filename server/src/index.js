@@ -219,6 +219,8 @@ const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satur
 const reminderOptions = [0, 5, 10, 15, 30, 60];
 const quizDifficulties = ["Easy", "Moderate", "Hard", "Advanced"];
 const answerVisibilityOptions = ["immediate", "after_deadline", "scheduled", "never"];
+const quizQuestionTypes = ["multiple_choice", "true_false", "fill_blank", "matching", "multiple_select", "numerical", "computation"];
+const quizTypes = ["mixed", ...quizQuestionTypes];
 const defaultShopItems = [
   { id: "item_hint", tier: "Low", name: "Hint During Quiz", cost: 50, notes: "1 per quiz" },
   { id: "item_seat_choice", tier: "Low", name: "Seat Choice (1 Day)", cost: 80, notes: "" },
@@ -2075,25 +2077,50 @@ function quizRewardValue(db, difficulty) {
 }
 
 function cleanQuizQuestion(question = {}) {
-  const type = question.type === "true_false" ? "true_false" : "multiple_choice";
-  const options = type === "true_false"
-    ? ["True", "False"]
-    : (Array.isArray(question.options) ? question.options : [])
-      .map((option) => String(option || "").trim())
-      .filter(Boolean)
-      .slice(0, 6);
-  const normalizedOptions = type === "multiple_choice" && options.length >= 2 ? options : ["Option A", "Option B"];
-  const answer = String(question.answer || question.correctAnswer || normalizedOptions[0] || "True").trim();
-  const safeAnswer = (type === "true_false" ? ["True", "False"] : normalizedOptions).includes(answer)
-    ? answer
-    : (type === "true_false" ? "True" : normalizedOptions[0]);
-  return {
+  const type = quizQuestionTypes.includes(question.type) ? question.type : "multiple_choice";
+  const base = {
     id: question.id || randomUUID(),
     type,
-    prompt: String(question.prompt || question.text || "Question").trim().slice(0, 500),
-    options: type === "true_false" ? ["True", "False"] : normalizedOptions,
-    answer: safeAnswer
+    prompt: String(question.prompt || question.text || "Question").trim().slice(0, 500)
   };
+  if (type === "true_false") {
+    const answer = String(question.answer || question.correctAnswer || "True").trim();
+    return { ...base, options: ["True", "False"], answer: ["True", "False"].includes(answer) ? answer : "True" };
+  }
+  if (["multiple_choice", "multiple_select"].includes(type)) {
+    const options = (Array.isArray(question.options) ? question.options : [])
+      .map((option) => String(option || "").trim()).filter(Boolean).slice(0, 8);
+    const normalizedOptions = options.length >= 2 ? options : ["Option A", "Option B"];
+    if (type === "multiple_select") {
+      const requested = Array.isArray(question.answers) ? question.answers : Array.isArray(question.answer) ? question.answer : [question.answer];
+      const answers = [...new Set(requested.map((answer) => String(answer || "").trim()).filter((answer) => normalizedOptions.includes(answer)))];
+      return { ...base, options: normalizedOptions, answers: answers.length ? answers : [normalizedOptions[0]], answer: answers.length ? answers : [normalizedOptions[0]] };
+    }
+    const answer = String(question.answer || question.correctAnswer || normalizedOptions[0]).trim();
+    return { ...base, options: normalizedOptions, answer: normalizedOptions.includes(answer) ? answer : normalizedOptions[0] };
+  }
+  if (type === "fill_blank") {
+    const requested = Array.isArray(question.acceptedAnswers) ? question.acceptedAnswers : [question.answer || question.correctAnswer];
+    const acceptedAnswers = [...new Set(requested.map((answer) => String(answer || "").trim()).filter(Boolean))].slice(0, 12);
+    const safeAnswers = acceptedAnswers.length ? acceptedAnswers : ["Answer"];
+    return { ...base, options: [], acceptedAnswers: safeAnswers, answer: safeAnswers[0] };
+  }
+  if (type === "matching") {
+    const incomingPairs = Array.isArray(question.matchingPairs) ? question.matchingPairs : Array.isArray(question.pairs) ? question.pairs : [];
+    const matchingPairs = incomingPairs.map((pair) => ({
+      id: pair.id || randomUUID(),
+      left: String(pair.left || pair.prompt || "").trim().slice(0, 160),
+      right: String(pair.right || pair.answer || "").trim().slice(0, 160)
+    })).filter((pair) => pair.left && pair.right).slice(0, 12);
+    const safePairs = matchingPairs.length >= 2 ? matchingPairs : [
+      { id: randomUUID(), left: "Item 1", right: "Match 1" },
+      { id: randomUUID(), left: "Item 2", right: "Match 2" }
+    ];
+    return { ...base, options: [], matchingPairs: safePairs };
+  }
+  const numericAnswer = Number(String(question.answer ?? question.correctAnswer ?? 0).replaceAll(",", ""));
+  const tolerance = Math.max(0, Number(question.tolerance || 0));
+  return { ...base, options: [], answer: Number.isFinite(numericAnswer) ? numericAnswer : 0, tolerance: Number.isFinite(tolerance) ? tolerance : 0 };
 }
 
 function normalizeQuiz(quiz, db) {
@@ -2101,6 +2128,7 @@ function normalizeQuiz(quiz, db) {
   quiz.subjectId ||= db.subjects[0]?.id || "";
   quiz.section = String(quiz.section || "").trim();
   quiz.difficulty = quizDifficulties.includes(quiz.difficulty) ? quiz.difficulty : "Easy";
+  quiz.quizType = quizTypes.includes(quiz.quizType) ? quiz.quizType : "mixed";
   quiz.rewardValue = Number.isFinite(Number(quiz.rewardValue)) ? Number(quiz.rewardValue) : quizRewardValue(db, quiz.difficulty);
   quiz.deadline ||= today();
   quiz.timeLimitMinutes = Math.max(0, Math.min(240, Number(quiz.timeLimitMinutes || 0)));
@@ -2187,12 +2215,37 @@ function canShowQuizAnswers(quiz) {
 }
 
 function scoreQuiz(quiz, answers = {}) {
-  const correct = quiz.questions.reduce((sum, question) => sum + (String(answers[question.id] || "") === question.answer ? 1 : 0), 0);
+  const correct = quiz.questions.reduce((sum, question) => sum + (quizAnswerIsCorrect(question, answers[question.id]) ? 1 : 0), 0);
   const total = quiz.questions.length;
   const passingScore = Math.max(1, Math.min(Number(quiz.passingScore || total || 1), Math.max(1, total)));
   const rewardValue = Number(quiz.rewardValue || 0);
   const awarded = Math.round(rewardValue * Math.min(correct / passingScore, 1));
   return { correct, total, passingScore, rewardValue, awarded };
+}
+
+function quizAnswerIsCorrect(question, submitted) {
+  if (question.type === "fill_blank") {
+    const value = normalizeQuizTextAnswer(submitted);
+    return !!value && (question.acceptedAnswers || [question.answer]).some((answer) => normalizeQuizTextAnswer(answer) === value);
+  }
+  if (question.type === "multiple_select") {
+    const expected = [...new Set(question.answers || question.answer || [])].map(String).sort();
+    const received = [...new Set(Array.isArray(submitted) ? submitted : [])].map(String).sort();
+    return expected.length === received.length && expected.every((answer, index) => answer === received[index]);
+  }
+  if (question.type === "matching") {
+    if (!submitted || typeof submitted !== "object" || Array.isArray(submitted)) return false;
+    return question.matchingPairs.every((pair) => String(submitted[pair.id] || "") === pair.right);
+  }
+  if (["numerical", "computation"].includes(question.type)) {
+    const received = Number(String(submitted ?? "").replaceAll(",", ""));
+    return Number.isFinite(received) && Math.abs(received - Number(question.answer)) <= Number(question.tolerance || 0);
+  }
+  return String(submitted ?? "") === String(question.answer ?? "");
+}
+
+function normalizeQuizTextAnswer(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function publicQuiz(quiz, db, user) {
@@ -2232,14 +2285,27 @@ function publicQuiz(quiz, db, user) {
       ...studentBase,
       rows: [],
       questions: visibleQuestions.map((question) => {
-        const options = quiz.shuffleOptions && question.type === "multiple_choice" ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
-        return {
+        const canShuffleOptions = ["multiple_choice", "multiple_select"].includes(question.type);
+        const options = quiz.shuffleOptions && canShuffleOptions ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
+        const studentQuestion = {
           id: question.id,
           type: question.type,
           prompt: question.prompt,
-          options,
-          answer: showAnswers ? question.answer : undefined
+          options
         };
+        if (question.type === "matching") {
+          studentQuestion.matchingItems = question.matchingPairs.map((pair) => ({ id: pair.id, text: pair.left }));
+          studentQuestion.options = question.matchingPairs.map((pair) => pair.right);
+          if (quiz.shuffleOptions) studentQuestion.options.sort(() => Math.random() - 0.5);
+        }
+        if (showAnswers) {
+          studentQuestion.answer = question.answer;
+          if (question.type === "fill_blank") studentQuestion.acceptedAnswers = question.acceptedAnswers;
+          if (question.type === "multiple_select") studentQuestion.answers = question.answers;
+          if (question.type === "matching") studentQuestion.matchingAnswers = Object.fromEntries(question.matchingPairs.map((pair) => [pair.id, pair.right]));
+          if (["numerical", "computation"].includes(question.type)) studentQuestion.tolerance = question.tolerance;
+        }
+        return studentQuestion;
       }),
       submission: submission ? {
         attempts: submission.attempts.length,
@@ -3634,6 +3700,7 @@ function quizFromBody(db, body, user, existing = {}) {
     subjectId,
     section,
     difficulty,
+    quizType: quizTypes.includes(body.quizType ?? existing.quizType) ? body.quizType ?? existing.quizType : "mixed",
     rewardValue: Number(existing.rewardValue ?? quizRewardValue(db, difficulty)),
     deadline: String(body.deadline ?? existing.deadline ?? today()).slice(0, 10),
     timeLimitMinutes,
@@ -4147,11 +4214,11 @@ async function askGemini({ message, referenceText, context }) {
     "You are the JCoins Arena assistant for Jerome's classroom economy app.",
     "Reply conversationally and briefly.",
     "If the user asks to create a quiz, return a JSON object with reply and quizDraft.",
-    "Quiz drafts must only use auto-gradable multiple_choice or true_false questions.",
-    "Each multiple_choice question needs 4 options and an answer that exactly matches one option.",
+    "Quiz drafts must only use these auto-gradable types: multiple_choice, true_false, fill_blank, matching, multiple_select, numerical, computation.",
+    "For multiple_choice use options plus one answer. For multiple_select use options plus an answers array. For fill_blank use acceptedAnswers. For matching use matchingPairs with id, left, and right. For numerical or computation use a numerical answer and non-negative tolerance.",
     "Do not claim anything is saved or published.",
     "Return only JSON in this shape:",
-    "{\"reply\":\"short message\",\"quizDraft\":{\"title\":\"\",\"difficulty\":\"Easy|Moderate|Hard|Advanced\",\"passingScore\":0,\"questions\":[{\"type\":\"multiple_choice\",\"prompt\":\"\",\"options\":[\"\",\"\",\"\",\"\"],\"answer\":\"\"}]}}",
+    "{\"reply\":\"short message\",\"quizDraft\":{\"title\":\"\",\"difficulty\":\"Easy|Moderate|Hard|Advanced\",\"quizType\":\"mixed\",\"passingScore\":0,\"questions\":[{\"type\":\"multiple_choice\",\"prompt\":\"\",\"options\":[\"\",\"\",\"\",\"\"],\"answer\":\"\"}]}}",
     `App context: ${JSON.stringify(context).slice(0, 4000)}`,
     referenceText ? `Reference text:\n${referenceText.slice(0, 18000)}` : "No uploaded reference text.",
     `User message: ${message}`
@@ -4194,6 +4261,7 @@ app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistant
     if (result.quizDraft?.questions) {
       result.quizDraft.questions = result.quizDraft.questions.map(cleanQuizQuestion).slice(0, 60);
       result.quizDraft.difficulty = quizDifficulties.includes(result.quizDraft.difficulty) ? result.quizDraft.difficulty : "Easy";
+      result.quizDraft.quizType = quizTypes.includes(result.quizDraft.quizType) ? result.quizDraft.quizType : "mixed";
       result.quizDraft.passingScore = Math.max(1, Math.min(Number(result.quizDraft.passingScore || result.quizDraft.questions.length), Math.max(1, result.quizDraft.questions.length)));
     }
     res.json({ ...result, referenceUsed: !!referenceText });
