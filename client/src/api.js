@@ -1,7 +1,7 @@
 export const API = import.meta.env.VITE_API_URL || "/api";
 
-export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "Guild Affinity", "Students", "Teachers", "Student Assistants", "Sections", "Subjects", "Attendance", "Recitation", "Activities", "Quizzes", "Transactions", "Shop", "Appearance Shop", "Approvals", "Audit Logs", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
-export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "Guild Affinity", "Students", "Student Assistants", "Sections", "Attendance", "Recitation", "Activities", "Quizzes", "Transactions", "Approvals", "Feedback", "Reports", "Name Wheel", "Profile", "Account"];
+export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "Guild Affinity", "Students", "Teachers", "Student Assistants", "Sections", "Subjects", "Attendance", "Recitation", "Activities", "Quizzes", "Transactions", "Shop", "Appearance Shop", "Approvals", "History", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
+export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "Guild Affinity", "Students", "Student Assistants", "Sections", "Attendance", "Recitation", "Activities", "Quizzes", "Transactions", "Approvals", "Feedback", "Reports", "History", "Name Wheel", "Profile", "Account"];
 export const studentTabs = ["Leaderboard", "Schedule", "Profile", "Activities", "Quizzes", "Shop", "Trade Requests", "Appearance Shop", "Feedback", "History", "Account"];
 export const studentAssistantTabs = ["Attendance", "Recitation", "Transactions"];
 

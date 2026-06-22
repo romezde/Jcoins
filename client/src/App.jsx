@@ -501,7 +501,7 @@ function navGroupsForRole(role) {
     { id: "people", label: "People Management", icon: UsersRound, tabs: ["Students", "Teachers", "Student Assistants", "Sections", "Subjects"] },
     { id: "economy", label: "Economy", icon: Coins, tabs: ["Transactions", "Shop", "Appearance Shop", "Approvals"] },
     { id: "experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Name Wheel", "Profile"] },
-    { id: "admin", label: "Administration", icon: Settings2, tabs: ["Reports", "Feedback", "Audit Logs", "Settings", "Account"] }
+    { id: "admin", label: "Administration", icon: Settings2, tabs: ["Reports", "Feedback", "History", "Settings", "Account"] }
   ];
 }
 
@@ -805,10 +805,9 @@ function requiredModulesForTab(tab, role) {
     "Trade Requests": ["shop"],
     "Appearance Shop": ["appearance"],
     Approvals: ["requests"],
-    "Audit Logs": ["audit"],
     Feedback: ["feedback"],
     Settings: ["settings", "guild"],
-    History: ["transactions"],
+    History: role === "student" ? ["transactions"] : ["audit"],
     Profile: role === "student" ? ["profile", "transactions"] : [],
     Reports: ["transactions", "recitations", "activities"]
   };
@@ -835,11 +834,10 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
   if (tab === "Appearance Shop") return role === "student" ? <StudentAppearanceShop data={data} run={run} /> : <AppearanceShop data={data} run={run} />;
   if (tab === "Approvals") return <Approvals data={data} run={run} />;
-  if (tab === "Audit Logs") return <AuditLogs data={data} />;
   if (tab === "Feedback") return role === "student" ? <StudentFeedback data={data} run={run} /> : <StaffFeedback data={data} run={run} />;
   if (tab === "Settings") return <Settings data={data} run={run} />;
   if (tab === "Name Wheel") return <NameWheel data={data} />;
-  if (tab === "History") return <StudentHistory data={data} />;
+  if (tab === "History") return role === "student" ? <StudentHistory data={data} /> : <AuditLogs data={data} />;
   if (tab === "Profile") return role === "student" ? <StudentProfile data={data} run={run} /> : <TeacherProfile data={data} />;
   if (tab === "Reports") return <Reports data={data} />;
   if (tab === "Account") return <Account data={data} role={role} />;
@@ -856,6 +854,7 @@ function ModuleHeader({ tab, data }) {
     Activities: data.activities?.length,
     Quizzes: data.quizzes?.length,
     Transactions: data.transactions?.length,
+    History: data.auditLogs?.length ?? data.transactions?.length,
     Approvals: data.requests?.filter((request) => request.status === "pending").length,
     Feedback: data.feedback?.length
   };

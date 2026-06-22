@@ -104,10 +104,17 @@ app.set("trust proxy", 1);
   app[method] = (path, ...handlers) => original(path, ...handlers.map((handler, index) => {
     if (typeof handler !== "function" || handler.length === 4) return handler;
     return (req, res, next) => {
-      if (index === handlers.length - 1 && req.releaseMutationTurn) req.mutationHandlerStarted = true;
-      const result = Promise.resolve(handler(req, res, next)).catch(next);
-      return index === handlers.length - 1 && req.releaseMutationTurn
-        ? result.finally(req.releaseMutationTurn)
+      const queuedMutationHandler = index === handlers.length - 1 && req.releaseMutationTurn;
+      if (queuedMutationHandler) {
+        req.mutationHandlerStarted = true;
+        currentMutationRequest = req;
+      }
+      const result = Promise.resolve().then(() => handler(req, res, next)).catch(next);
+      return queuedMutationHandler
+        ? result.finally(() => {
+          if (currentMutationRequest === req) currentMutationRequest = null;
+          req.releaseMutationTurn();
+        })
         : result;
     };
   }));
@@ -206,6 +213,7 @@ let cachedAuthUsers = new Map();
 let dbLoadPromise = null;
 let dbWriteQueue = Promise.resolve();
 let assistantRewardPromise = null;
+let currentMutationRequest = null;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -904,11 +912,12 @@ async function readDb() {
       changed = true;
     }
   });
-  if (changed) await writeDb(db);
+  if (changed) await writeDb(db, { skipAudit: true });
   return db;
 }
 
-async function writeDb(db) {
+async function writeDb(db, { skipAudit = false } = {}) {
+  if (!skipAudit) recordAutomaticAuditLog(db, currentMutationRequest);
   const snapshot = cloneDb(db);
   dbWriteQueue = dbWriteQueue.catch(() => {}).then(() => persistDb(snapshot));
   return dbWriteQueue;
@@ -1964,7 +1973,20 @@ function auditLogRows(db, logs = db.auditLogs || []) {
     }));
 }
 
+function scopedAuditLogs(db, user, studentIds, subjectIds, sectionIds) {
+  if (user.role === "admin") return db.auditLogs || [];
+  if (user.role !== "teacher") return [];
+  return (db.auditLogs || []).filter((log) => {
+    const targets = new Set([log.targetStudentId, log.actorStudentId, ...(log.meta?.targetStudentIds || [])].filter(Boolean));
+    return log.actorId === user.id
+      || [...targets].some((studentId) => studentIds.has(studentId))
+      || (!!log.meta?.subjectId && subjectIds?.has(log.meta.subjectId))
+      || (!!log.meta?.section && (!sectionIds?.size || sectionIds.has(log.meta.section)));
+  });
+}
+
 function addAuditLog(db, user, action, details = {}) {
+  if (currentMutationRequest) currentMutationRequest.auditRecorded = true;
   db.auditLogs ||= [];
   db.auditLogs.push({
     id: randomUUID(),
@@ -1980,6 +2002,98 @@ function addAuditLog(db, user, action, details = {}) {
     actorStudentId: user?.studentId || "",
     createdAt: now()
   });
+  if (db.auditLogs.length > 5000) db.auditLogs.splice(0, db.auditLogs.length - 5000);
+}
+
+function recordAutomaticAuditLog(db, req) {
+  if (!req || req.auditRecorded || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return;
+  const action = automaticAuditAction(req);
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const activity = req.params?.id ? db.activities?.find((item) => item.id === req.params.id) : null;
+  const quiz = req.params?.id ? db.quizzes?.find((item) => item.id === req.params.id) : null;
+  const schedule = req.params?.id ? db.schedules?.find((item) => item.id === req.params.id) : null;
+  const week = body.weekId ? db.attendanceWeeks?.find((item) => item.id === body.weekId) : null;
+  const targetStudentIds = [...new Set([
+    ...(Array.isArray(body.studentIds) ? body.studentIds : []),
+    body.studentId,
+    req.user?.role === "student" ? req.user.studentId : ""
+  ].filter(Boolean))].slice(0, 300);
+  const subjectId = body.subjectId || activity?.subjectId || quiz?.subjectId || schedule?.subjectId || week?.subjectId || "";
+  const section = body.section || activity?.section || quiz?.section || schedule?.section || "";
+  const count = targetStudentIds.length || Number(body.createdCount || 0) || undefined;
+  addAuditLog(db, req.user, action, {
+    entityType: action.split(".")[0],
+    entityId: req.params?.id || "",
+    targetStudentId: targetStudentIds.length === 1 ? targetStudentIds[0] : "",
+    amount: body.amount == null ? null : Number(body.amount),
+    summary: automaticAuditSummary(action, count),
+    meta: {
+      method: req.method,
+      path: String(req.route?.path || req.path || "").replace(/^\/api\//, ""),
+      subjectId,
+      section,
+      targetStudentIds,
+      count: count || 0,
+      type: String(body.type || "").slice(0, 80),
+      status: String(body.status || "").slice(0, 80)
+    }
+  });
+}
+
+function automaticAuditAction(req) {
+  const path = String(req.route?.path || req.path || "").toLowerCase();
+  const operation = req.method === "DELETE" ? "delete" : req.method === "POST" ? "create" : "update";
+  if (path.includes("/activities/") && path.endsWith("/submit")) return "activity.submit";
+  if (path.includes("/quizzes/") && path.endsWith("/start")) return "quiz.start";
+  if (path.includes("/quizzes/") && path.endsWith("/submit")) return "quiz.submit";
+  if (path.includes("/quizzes/") && path.endsWith("/publish")) return "quiz.publish";
+  if (path.includes("/quizzes/") && path.endsWith("/close")) return "quiz.close";
+  if (path.includes("/attendance/")) return `attendance.${operation}`;
+  if (path.includes("/recitation")) return `recitation.${operation}`;
+  if (path.includes("/activities")) return `activity.${operation}`;
+  if (path.includes("/quizzes")) return `quiz.${operation}`;
+  if (path.includes("/student-assistants")) return `student_assistant.${operation}`;
+  if (path.includes("/transactions")) return `transaction.${operation}`;
+  if (path.includes("/appearance")) return `appearance.${operation}`;
+  if (path.includes("/shop")) return `shop.${operation}`;
+  if (path.includes("/requests")) return `request.${operation}`;
+  if (path.includes("/feedback")) return `feedback.${operation}`;
+  if (path.includes("/schedules")) return `schedule.${operation}`;
+  if (path.includes("/sections")) return `section.${operation}`;
+  if (path.includes("/subjects")) return `subject.${operation}`;
+  if (path.includes("/students")) return `student.${operation}`;
+  if (path.includes("/users") || path.includes("/auth/")) return `account.${operation}`;
+  if (path.includes("/settings")) return `settings.${operation}`;
+  if (path.includes("/guild")) return `guild.${operation}`;
+  if (path.includes("/push")) return `notification.${operation}`;
+  return `system.${operation}`;
+}
+
+function automaticAuditSummary(action, count) {
+  const [entity, operation] = action.split(".");
+  const labels = {
+    student_assistant: "student assistant",
+    activity: "activity",
+    attendance: "attendance",
+    recitation: "recitation",
+    quiz: "quiz",
+    transaction: "transaction",
+    appearance: "appearance",
+    shop: "shop",
+    request: "request",
+    feedback: "feedback",
+    schedule: "schedule",
+    section: "section",
+    subject: "subject",
+    student: "student",
+    account: "account",
+    settings: "settings",
+    guild: "guild",
+    notification: "notification",
+    system: "system"
+  };
+  const verbs = { create: "Created", update: "Updated", delete: "Deleted", submit: "Submitted", start: "Started", publish: "Published", close: "Closed" };
+  return `${verbs[operation] || "Changed"} ${count > 1 ? `${count} ` : ""}${labels[entity] || entity}${count > 1 ? " records" : ""}.`;
 }
 
 function tradeRequestParticipants(request) {
@@ -2734,7 +2848,7 @@ function filteredOverview(db, user, modules = null) {
   const includeSchedules = wantsModule(modules, "schedule");
   const includeGuild = wantsModule(modules, "guild") || wantsModule(modules, "settings");
   const includePeople = wantsModule(modules, "people");
-  const includeAudit = user.role === "admin" && wantsModule(modules, "audit");
+  const includeAudit = ["admin", "teacher"].includes(user.role) && wantsModule(modules, "audit");
   const fullActivities = includeActivities ? hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity) : [];
   const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds) : fullActivities;
   const transactions = includeTransactions ? db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc) : [];
@@ -2769,7 +2883,7 @@ function filteredOverview(db, user, modules = null) {
         : [],
     schedules: includeSchedules ? scheduleRows(db, visibleScheduleRows) : [],
     guildSystem: includeGuild ? guildSystemView(db, user) : {},
-    auditLogs: includeAudit ? auditLogRows(db).slice(0, 500) : []
+    auditLogs: includeAudit ? auditLogRows(db, scopedAuditLogs(db, user, studentIds, subjectIds, sectionIds)).slice(0, 500) : []
   };
 }
 
