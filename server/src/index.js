@@ -205,6 +205,7 @@ let cachedDbAt = 0;
 let cachedAuthUsers = new Map();
 let dbLoadPromise = null;
 let dbWriteQueue = Promise.resolve();
+let assistantRewardPromise = null;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -221,6 +222,8 @@ const quizDifficulties = ["Easy", "Moderate", "Hard", "Advanced"];
 const answerVisibilityOptions = ["immediate", "after_deadline", "scheduled", "never"];
 const quizQuestionTypes = ["multiple_choice", "true_false", "fill_blank", "matching", "multiple_select", "numerical", "computation"];
 const quizTypes = ["mixed", ...quizQuestionTypes];
+const STUDENT_ASSISTANT_DAILY_REWARD = 50;
+const STUDENT_ASSISTANT_REWARD_INTERVAL_MS = 15 * 60 * 1000;
 const defaultShopItems = [
   { id: "item_hint", tier: "Low", name: "Hint During Quiz", cost: 50, notes: "1 per quiz" },
   { id: "item_seat_choice", tier: "Low", name: "Seat Choice (1 Day)", cost: 80, notes: "" },
@@ -708,6 +711,7 @@ function scheduleDailyBackup() {
   const runBackup = async (reason) => {
     try {
       await ensureDb();
+      await runStudentAssistantRewardJob();
       await createDailyBackup(reason);
     } catch (err) {
       console.error("Daily backup failed:", err.message);
@@ -722,6 +726,37 @@ function scheduleDailyBackup() {
     }, msUntilNextLocalMidnight());
   };
   scheduleNext();
+}
+
+async function runStudentAssistantRewardJob() {
+  if (assistantRewardPromise) return assistantRewardPromise;
+  assistantRewardPromise = (async () => {
+    let releaseTurn;
+    const turn = new Promise((resolve) => { releaseTurn = resolve; });
+    const previous = mutationRequestQueue.catch(() => {});
+    mutationRequestQueue = previous.then(() => turn);
+    await previous;
+    try {
+      const db = await readDb();
+      const granted = grantStudentAssistantDailyRewards(db);
+      if (granted) await writeDb(db);
+      return granted;
+    } finally {
+      releaseTurn();
+    }
+  })().catch((error) => {
+    console.error("Student assistant reward job failed:", error.message);
+    return 0;
+  }).finally(() => {
+    assistantRewardPromise = null;
+  });
+  return assistantRewardPromise;
+}
+
+function scheduleStudentAssistantRewards() {
+  if (globalThis.__jcoinsAssistantRewardTimer) clearInterval(globalThis.__jcoinsAssistantRewardTimer);
+  globalThis.__jcoinsAssistantRewardTimer = setInterval(runStudentAssistantRewardJob, STUDENT_ASSISTANT_REWARD_INTERVAL_MS);
+  globalThis.__jcoinsAssistantRewardTimer.unref?.();
 }
 
 function cloneDb(db) {
@@ -789,6 +824,9 @@ async function readDb() {
   db.attendanceRecords ||= [];
   db.recitations ||= [];
   db.studentAssistants ||= [];
+  db.studentAssistants.forEach((assignment) => {
+    if (normalizeStudentAssistantAssignment(assignment)) changed = true;
+  });
   db.activities ||= [];
   db.quizzes ||= [];
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
@@ -1688,13 +1726,12 @@ function staffUserIdsForStudent(db, studentId) {
     && (!(user.sectionIds || []).length || user.sectionIds.includes(student.section)))).map((user) => user.id);
 }
 
-function activeStudentAssistant(db, user, date = today()) {
+function activeStudentAssistant(db, user, date = new Date()) {
   if (user.role !== "student" || !user.studentId) return null;
-  const target = String(date || today()).slice(0, 10);
+  const target = date instanceof Date ? date : new Date(date || now());
   return (db.studentAssistants || []).find((assignment) =>
     assignment.studentId === user.studentId
-    && assignment.weekStart <= target
-    && assignment.weekEnd >= target
+    && assistantAssignmentIsActive(assignment, target)
   ) || null;
 }
 
@@ -1739,8 +1776,82 @@ function ensureAssistantAccess(db, user) {
 
 function assistantCanUseDate(user, assignment, date) {
   if (user.role !== "student") return true;
-  const target = String(date || today()).slice(0, 10);
-  return !!assignment && assignment.weekStart <= target && assignment.weekEnd >= target;
+  const target = String(date || localDate()).slice(0, 10);
+  return !!assignment && assistantAssignmentStartDate(assignment) <= target && assistantAssignmentFinishDate(assignment) >= target;
+}
+
+function normalizeStudentAssistantAssignment(assignment) {
+  const previous = JSON.stringify([assignment.startAt, assignment.finishAt, assignment.weekStart, assignment.weekEnd, assignment.rewardStartsOn, assignment.dailyReward]);
+  const legacyStart = String(assignment.weekStart || localDate()).slice(0, 10);
+  const legacyEnd = String(assignment.weekEnd || legacyStart).slice(0, 10);
+  const start = validDate(assignment.startAt) || new Date(`${legacyStart}T00:00:00+08:00`);
+  const finish = validDate(assignment.finishAt) || new Date(`${legacyEnd}T23:59:59+08:00`);
+  assignment.startAt = start.toISOString();
+  assignment.finishAt = finish.toISOString();
+  assignment.weekStart = localDate(start);
+  assignment.weekEnd = localDate(finish);
+  assignment.rewardStartsOn ||= assignment.createdAt && assignment.startAt === assignment.createdAt ? assignment.weekStart : localDate();
+  assignment.dailyReward = STUDENT_ASSISTANT_DAILY_REWARD;
+  return previous !== JSON.stringify([assignment.startAt, assignment.finishAt, assignment.weekStart, assignment.weekEnd, assignment.rewardStartsOn, assignment.dailyReward]);
+}
+
+function validDate(value) {
+  const date = new Date(value || "");
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function assistantAssignmentStartDate(assignment) {
+  return localDate(validDate(assignment.startAt) || new Date(`${assignment.weekStart}T00:00:00+08:00`));
+}
+
+function assistantAssignmentFinishDate(assignment) {
+  return localDate(validDate(assignment.finishAt) || new Date(`${assignment.weekEnd}T23:59:59+08:00`));
+}
+
+function assistantAssignmentIsActive(assignment, at = new Date()) {
+  const target = at instanceof Date ? at : new Date(at);
+  const start = validDate(assignment.startAt) || new Date(`${assignment.weekStart}T00:00:00+08:00`);
+  const finish = validDate(assignment.finishAt) || new Date(`${assignment.weekEnd}T23:59:59+08:00`);
+  return !Number.isNaN(target.getTime()) && start <= target && finish >= target;
+}
+
+function grantStudentAssistantDailyRewards(db, at = new Date()) {
+  const existingKeys = new Set((db.transactions || []).filter((transaction) => transaction.meta?.kind === "student-assistant-daily")
+    .map((transaction) => `${transaction.meta.assignmentId}:${transaction.meta.rewardDate}`));
+  let granted = 0;
+  for (const assignment of db.studentAssistants || []) {
+    normalizeStudentAssistantAssignment(assignment);
+    const start = validDate(assignment.startAt);
+    const finish = validDate(assignment.finishAt);
+    if (!start || !finish || start > at || !db.students.some((student) => student.id === assignment.studentId)) continue;
+    const firstDate = [assistantAssignmentStartDate(assignment), assignment.rewardStartsOn || assistantAssignmentStartDate(assignment)].sort().at(-1);
+    const lastDate = [assistantAssignmentFinishDate(assignment), localDate(at)].sort()[0];
+    for (const rewardDate of dateRange(firstDate, lastDate)) {
+      const key = `${assignment.id}:${rewardDate}`;
+      if (existingKeys.has(key)) continue;
+      db.transactions.push(tx(assignment.studentId, "student_assistant", STUDENT_ASSISTANT_DAILY_REWARD, `Student assistant reward - ${rewardDate}`, now(), "system", {
+        kind: "student-assistant-daily",
+        assignmentId: assignment.id,
+        rewardDate,
+        section: assignment.section
+      }));
+      existingKeys.add(key);
+      granted += 1;
+    }
+  }
+  return granted;
+}
+
+function dateRange(startText, endText) {
+  if (!startText || !endText || startText > endText) return [];
+  const dates = [];
+  const cursor = new Date(`${startText}T00:00:00Z`);
+  const end = new Date(`${endText}T00:00:00Z`);
+  while (cursor <= end && dates.length < 370) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
 }
 
 function canUseSubject(user, subjectId) {
@@ -2656,8 +2767,10 @@ function assistantAssignmentRows(db, user) {
     ...assignment,
     studentName: studentName(db, assignment.studentId),
     assignedByName: db.users.find((user) => user.id === assignment.createdBy)?.username || "system",
-    active: assignment.weekStart <= today() && assignment.weekEnd >= today()
-  })).sort((a, b) => String(b.weekStart).localeCompare(String(a.weekStart)) || String(a.section).localeCompare(String(b.section)));
+    active: assistantAssignmentIsActive(assignment),
+    status: assistantAssignmentIsActive(assignment) ? "Active" : new Date(assignment.startAt).getTime() > Date.now() ? "Scheduled" : "Completed",
+    dailyReward: STUDENT_ASSISTANT_DAILY_REWARD
+  })).sort((a, b) => String(b.startAt).localeCompare(String(a.startAt)) || String(a.section).localeCompare(String(b.section)));
 }
 
 app.get("/api/health", (req, res) => res.json({ ok: true, storage: supabase ? "supabase" : "file" }));
@@ -3951,17 +4064,31 @@ app.post("/api/admin/student-assistants", auth, requireRole("admin", "teacher"),
   if (student.section !== section) return res.status(400).json({ error: "The selected student is not in that section." });
   const allowedStudentIds = scopedStudentIds(db, req.user);
   if (!allowedStudentIds.has(student.id) || !canUseSection(req.user, section)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
-  const weekStart = String(req.body.weekStart || today()).slice(0, 10);
-  const start = new Date(`${weekStart}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return res.status(400).json({ error: "Choose a valid week start date." });
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  const weekEnd = end.toISOString().slice(0, 10);
-  db.studentAssistants = (db.studentAssistants || []).filter((assignment) => !(assignment.section === section && assignment.weekStart === weekStart));
-  const assignment = { id: randomUUID(), studentId: student.id, section, weekStart, weekEnd, createdAt: now(), createdBy: req.user.id };
+  const start = validDate(req.body.startAt);
+  const finish = validDate(req.body.finishAt);
+  if (!start || !finish) return res.status(400).json({ error: "Choose valid start and finish dates with times." });
+  if (finish <= start) return res.status(400).json({ error: "Finish time must be after the start time." });
+  const overlaps = (db.studentAssistants || []).some((assignment) => assignment.section === section
+    && new Date(assignment.startAt || `${assignment.weekStart}T00:00:00+08:00`) < finish
+    && new Date(assignment.finishAt || `${assignment.weekEnd}T23:59:59+08:00`) > start);
+  if (overlaps) return res.status(409).json({ error: "This section already has a student assistant during part of that period." });
+  const assignment = {
+    id: randomUUID(),
+    studentId: student.id,
+    section,
+    startAt: start.toISOString(),
+    finishAt: finish.toISOString(),
+    weekStart: localDate(start),
+    weekEnd: localDate(finish),
+    rewardStartsOn: localDate(start),
+    dailyReward: STUDENT_ASSISTANT_DAILY_REWARD,
+    createdAt: now(),
+    createdBy: req.user.id
+  };
   db.studentAssistants.push(assignment);
+  const rewardsGranted = grantStudentAssistantDailyRewards(db);
   await writeDb(db);
-  res.status(201).json({ assignment });
+  res.status(201).json({ assignment, rewardsGranted });
 });
 
 app.delete("/api/admin/student-assistants/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
@@ -4660,6 +4787,7 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
 });
 
 scheduleDailyBackup();
+scheduleStudentAssistantRewards();
 app.use((err, req, res, _next) => {
   console.error(`API error [${req.requestId || "unknown"}]:`, err);
   if (res.headersSent) return _next(err);

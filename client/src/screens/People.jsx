@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { del, post, put, request, today } from "../api.js";
+import { del, post, put, request } from "../api.js";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { StudentFilterFields, studentMatchesFilters } from "../components/StudentMultiPicker.jsx";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
@@ -15,7 +15,7 @@ export default function People({ data, run, role, view = "students" }) {
   const [studentFilter, setStudentFilter] = useState({ section: "all", search: "" });
   const [batchRemoveFilter, setBatchRemoveFilter] = useState({ search: "", section: "all", guildId: "all" });
   const [batchRemoveConfirm, setBatchRemoveConfirm] = useState("");
-  const [assistantForm, setAssistantForm] = useState({ section: data.sections?.[0] || "", studentId: "", weekStart: today() });
+  const [assistantForm, setAssistantForm] = useState(() => defaultAssistantForm(data.sections?.[0] || ""));
   const [importRows, setImportRows] = useState([]);
   const [importError, setImportError] = useState("");
   const [importResult, setImportResult] = useState("");
@@ -179,22 +179,31 @@ export default function People({ data, run, role, view = "students" }) {
       {view === "assistants" && <ActionModal title="Assign Student Assistant">
         <form onSubmit={(e) => {
           e.preventDefault();
-          run(() => post("/admin/student-assistants", assistantForm), "Student assistant assigned");
+          run(() => post("/admin/student-assistants", {
+            ...assistantForm,
+            startAt: new Date(assistantForm.startAt).toISOString(),
+            finishAt: new Date(assistantForm.finishAt).toISOString()
+          }), "Student assistant assigned");
         }}>
           <Select label="Section" value={assistantForm.section} onChange={(section) => setAssistantForm({ ...assistantForm, section, studentId: "" })} options={sections.map((section) => ({ value: section, label: section }))} />
           <Select label="Student" value={assistantForm.studentId} onChange={(studentId) => setAssistantForm({ ...assistantForm, studentId })} options={[{ value: "", label: "Select student" }, ...assistantStudents.map((student) => ({ value: student.id, label: student.name }))]} />
-          <Field label="Week Start" type="date" value={assistantForm.weekStart} onChange={(weekStart) => setAssistantForm({ ...assistantForm, weekStart })} />
-          <button disabled={!assistantForm.section || !assistantForm.studentId}>Assign Assistant</button>
+          <div className="form-grid two">
+            <Field label="Starts" type="datetime-local" required value={assistantForm.startAt} onChange={(startAt) => setAssistantForm({ ...assistantForm, startAt })} />
+            <Field label="Finishes" type="datetime-local" required value={assistantForm.finishAt} onChange={(finishAt) => setAssistantForm({ ...assistantForm, finishAt })} />
+          </div>
+          <p className="muted-line">The assistant receives 50 JCoins automatically for each active day.</p>
+          <button disabled={!assistantForm.section || !assistantForm.studentId || !assistantForm.startAt || !assistantForm.finishAt}>Assign Assistant</button>
         </form>
       </ActionModal>}
     </div>
 
     {view === "assistants" && <Panel title="Student Assistants" wide defaultOpen>
-      <Table columns={["Week", "Section", "Student", "Status", "Assigned By", "Action"]} rows={(data.studentAssistants || []).map((assignment) => [
-        `${assignment.weekStart} to ${assignment.weekEnd}`,
+      <Table columns={["Period", "Section", "Student", "Reward", "Status", "Assigned By", "Action"]} rows={(data.studentAssistants || []).map((assignment) => [
+        `${formatAssignmentDateTime(assignment.startAt, assignment.weekStart)} to ${formatAssignmentDateTime(assignment.finishAt, assignment.weekEnd)}`,
         assignment.section,
         assignment.studentName,
-        assignment.active ? "Active" : "Scheduled",
+        `${assignment.dailyReward || 50} JC/day`,
+        assignment.status || (assignment.active ? "Active" : "Scheduled"),
         assignment.assignedByName,
         <button className="danger" onClick={() => confirm(`Remove ${assignment.studentName} as assistant for ${assignment.section}?`) && run(() => del(`/admin/student-assistants/${assignment.id}`), "Student assistant removed")}>Remove</button>
       ])} />
@@ -329,6 +338,24 @@ function generateTempPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const part = (length) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   return `JC-${part(4)}-${part(3)}`;
+}
+
+function defaultAssistantForm(section) {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  const finish = new Date(start);
+  finish.setDate(finish.getDate() + 6);
+  return { section, studentId: "", startAt: toDatetimeLocal(start), finishAt: toDatetimeLocal(finish) };
+}
+
+function toDatetimeLocal(date) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function formatAssignmentDateTime(value, fallbackDate) {
+  const date = new Date(value || `${fallbackDate}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? fallbackDate || "-" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function cleanStudentImportRow(row) {
