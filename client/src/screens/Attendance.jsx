@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
@@ -184,9 +184,44 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
 function AttendanceTable({ week, data, run, canManageWeeks }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState({ key: "name", date: "", direction: "asc" });
+  const [pendingStatuses, setPendingStatuses] = useState({});
   // data.students is already role-scoped by the server for teachers.
   const q = search.trim().toLowerCase();
-  const status = (studentId, date) => data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
+  const statusKey = (studentId, date) => `${studentId}|${date}`;
+  const savedStatus = (studentId, date) => data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
+  const status = (studentId, date) => {
+    const key = statusKey(studentId, date);
+    return Object.prototype.hasOwnProperty.call(pendingStatuses, key) ? pendingStatuses[key] : savedStatus(studentId, date);
+  };
+  useEffect(() => {
+    setPendingStatuses((current) => {
+      const next = { ...current };
+      let changed = false;
+      Object.entries(current).forEach(([key, value]) => {
+        const separator = key.lastIndexOf("|");
+        const studentId = key.slice(0, separator);
+        const date = key.slice(separator + 1);
+        if (savedStatus(studentId, date) === value) {
+          delete next[key];
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [data.attendanceRecords, week.id]);
+  async function saveStatus(studentId, date, nextStatus) {
+    const key = statusKey(studentId, date);
+    setPendingStatuses((current) => ({ ...current, [key]: nextStatus }));
+    const saved = await run(() => put("/admin/attendance/records", { weekId: week.id, date, studentId, status: nextStatus }), "Attendance saved");
+    if (!saved) {
+      setPendingStatuses((current) => {
+        if (current[key] !== nextStatus) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
+  }
   const students = data.students
     .filter((s) => (s.subjectIds || []).includes(week.subjectId) && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))))
     .sort((a, b) => compareAttendanceStudents(a, b, sort, status));
@@ -201,7 +236,7 @@ function AttendanceTable({ week, data, run, canManageWeeks }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
     </div>
-    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => run(() => put("/admin/attendance/records", { weekId: week.id, date: d, studentId: s.id, status: e.target.value }), "Attendance saved")}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => saveStatus(s.id, d, e.target.value)}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
   </>;
 }
 

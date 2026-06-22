@@ -3728,6 +3728,7 @@ app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (r
   try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
   const assistantCredit = assistantCreditRemark(db, req.user);
   const { weekId, date, studentId, status } = req.body;
+  if (!["", "check", "late"].includes(status)) return res.status(400).json({ error: "Invalid attendance status." });
   if (!assistantCanUseDate(req.user, assistantAssignment, date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
   if (!allowedStudentIds.has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
