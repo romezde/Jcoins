@@ -119,7 +119,15 @@ app.set("trust proxy", 1);
     };
   }));
 });
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
+const ASSISTANT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
+const uploadAssistantReference = multer({ storage: multer.memoryStorage(), limits: { fileSize: ASSISTANT_FILE_LIMIT_BYTES } }).single("file");
+function assistantReferenceUpload(req, res, next) {
+  uploadAssistantReference(req, res, (err) => {
+    if (err?.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Reference file is too large. Maximum size is 25 MB." });
+    if (err) return res.status(400).json({ error: err.message || "The reference file could not be uploaded." });
+    return next();
+  });
+}
 app.use((req, res, next) => {
   req.requestId = randomUUID();
   res.setHeader("X-Request-Id", req.requestId);
@@ -4604,7 +4612,7 @@ async function askGemini({ message, referenceText, context }) {
   throw new Error(lastError || "AI request failed.");
 }
 
-app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistantLimit, upload.single("file"), async (req, res) => {
+app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistantLimit, assistantReferenceUpload, async (req, res) => {
   try {
     const db = await readDb();
     const message = String(req.body.message || "").trim();

@@ -94,6 +94,10 @@ function QuizFormModal({ data, run, quiz = null }) {
   const groupStudents = studentsForQuiz(data, form);
 
   async function generateDraft() {
+    if (aiFile && aiFile.size > 25 * 1024 * 1024) {
+      setAiMessage("Reference file is too large. Maximum size is 25 MB.");
+      return;
+    }
     setAiMessage("Generating quiz draft...");
     const payload = new FormData();
     payload.append("message", aiPrompt || `Create an auto-gradable ${form.difficulty} quiz.`);
@@ -144,7 +148,7 @@ function QuizFormModal({ data, run, quiz = null }) {
       </div>
       <Panel title="AI Draft Helper" defaultOpen={false}>
         <Field label="Ask AI" value={aiPrompt} onChange={setAiPrompt} />
-        <label>Reference File<input type="file" accept=".pptx,.docx,.pdf,.xlsx,.csv,.txt" onChange={(e) => setAiFile(e.target.files?.[0] || null)} /></label>
+        <label>Reference File<input type="file" accept=".pptx,.docx,.pdf,.xlsx,.csv,.txt" onChange={(e) => { const file = e.target.files?.[0] || null; setAiFile(file); setAiMessage(file && file.size > 25 * 1024 * 1024 ? "Reference file is too large. Maximum size is 25 MB." : ""); }} /></label>
         <button type="button" className="soft" onClick={generateDraft}>Generate Editable Draft</button>
         {aiMessage && <p className="muted-line">{aiMessage}</p>}
       </Panel>
