@@ -3687,6 +3687,8 @@ app.post("/api/admin/quizzes/:id/publish", auth, requireRole("admin", "teacher")
   if (!quiz) return res.status(404).json({ error: "Quiz not found." });
   if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
   normalizeQuiz(quiz, db);
+  if (quiz.status === "published") return res.json({ quiz: publicQuiz(quiz, db, req.user), alreadyPublished: true });
+  if (quiz.status === "closed") return res.status(400).json({ error: "A closed quiz cannot be published again." });
   if (!quiz.questions.length) return res.status(400).json({ error: "Add at least one question before publishing." });
   quiz.status = "published";
   quiz.publishedAt = now();

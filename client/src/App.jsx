@@ -275,7 +275,8 @@ function RoleApp({ session, logout }) {
         source.addEventListener("open", () => setLiveStatus("live"));
         source.addEventListener("change", () => {
           setLiveStatus("live");
-          scheduleRefresh();
+          // Spread simultaneous classroom refreshes so one update does not create a request spike.
+          scheduleRefresh(700 + Math.floor(Math.random() * 2800));
         });
         source.addEventListener("error", () => {
           setLiveStatus("reconnecting");
