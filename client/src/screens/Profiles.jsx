@@ -48,7 +48,7 @@ export function StudentActivities({ data, run }) {
     id: activity.id,
     activity: activity.title,
     subject: activity.subjectName,
-    deadline: activity.deadline,
+    deadline: row.effectiveDeadline || activity.deadline,
     status: row.status || (row.submitted ? "Submitted" : "Missing"),
     submittedAt: row.submittedAt,
     daysLate: row.daysLate,

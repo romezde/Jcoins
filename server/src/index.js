@@ -2251,6 +2251,24 @@ function normalizeActivityDeadline(value) {
   return `${today()}T23:59`;
 }
 
+function activityDeadlineForSubmission(activity, submission = {}) {
+  if (!submission.extendedDeadline) return activity.deadline;
+  const originalDate = parseActivityDateTime(activity.deadline, true);
+  const extensionDate = parseActivityDateTime(submission.extendedDeadline, true);
+  return originalDate && extensionDate && extensionDate > originalDate ? submission.extendedDeadline : activity.deadline;
+}
+
+function activityExtensionDeadline(activity, value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(text)) throw new Error("Choose a valid extension date and time.");
+  const deadline = normalizeActivityDeadline(text);
+  const originalDate = parseActivityDateTime(activity.deadline, true);
+  const extensionDate = parseActivityDateTime(deadline, true);
+  if (!originalDate || !extensionDate || extensionDate <= originalDate) throw new Error("The individual deadline must be later than the original deadline.");
+  return deadline;
+}
+
 function cleanActivityFile(file = {}) {
   const fileName = String(file.fileName || "").trim().slice(0, 180);
   const fileType = String(file.fileType || "").trim().slice(0, 120);
@@ -2585,7 +2603,8 @@ function hydrateActivities(db) {
     const rows = db.students.filter((s) => (s.subjectIds || []).includes(a.subjectId)).map((s) => {
       const sub = submissions.find((x) => x.studentId === s.id) || {};
       const submittedAt = sub.submittedAt || sub.dateSubmitted || "";
-      const late = sub.submitted ? activityDaysLate(a.deadline, submittedAt) : 0;
+      const effectiveDeadline = activityDeadlineForSubmission(a, sub);
+      const late = sub.submitted ? activityDaysLate(effectiveDeadline, submittedAt) : 0;
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
       const maxScoreAllowed = activityMaxScoreAllowed(late);
       const score = sub.score === "" || sub.score == null ? "" : Math.max(0, Math.min(Number(sub.score || 0), maxScoreAllowed));
@@ -2595,6 +2614,8 @@ function hydrateActivities(db) {
       return {
         studentId: s.id,
         studentName: s.name,
+        extendedDeadline: sub.extendedDeadline || "",
+        effectiveDeadline,
         submitted: !!sub.submitted,
         status: sub.submitted ? late ? "Late" : "Submitted" : "Missing",
         dateSubmitted: submittedAt,
@@ -2621,7 +2642,7 @@ function syncActivityRewards(db, activity, createdBy) {
   const basePoints = activityBase(db, activity.type);
   for (const submission of activity.submissions || []) {
     const submittedAt = submission.submittedAt || submission.dateSubmitted || "";
-    const daysLate = submission.submitted ? activityDaysLate(activity.deadline, submittedAt) : 0;
+    const daysLate = submission.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, submission), submittedAt) : 0;
     const earned = submission.submitted ? Math.max(0, basePoints - daysLate * Number(db.settings.activities.latePenaltyPerDay || 0)) : 0;
     const maxScoreAllowed = activityMaxScoreAllowed(daysLate);
     if (submission.score !== "" && submission.score != null) submission.score = Math.max(0, Math.min(Number(submission.score || 0), maxScoreAllowed));
@@ -3833,6 +3854,13 @@ app.put("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), asyn
   activity.subjectId = subjectId;
   activity.dateCreated = String(req.body.dateCreated ?? activity.dateCreated).slice(0, 10) || today();
   activity.deadline = normalizeActivityDeadline(req.body.deadline ?? activity.deadline);
+  (activity.submissions || []).forEach((submission) => {
+    if (submission.extendedDeadline && activityDeadlineForSubmission(activity, submission) === activity.deadline) {
+      delete submission.extendedDeadline;
+      delete submission.extensionUpdatedAt;
+      delete submission.extensionUpdatedBy;
+    }
+  });
   activity.type = type;
   activity.maxScore = 100;
   activity.remarks = String(req.body.remarks ?? activity.remarks ?? "").trim().slice(0, 500);
@@ -3853,6 +3881,48 @@ app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), a
   res.json({ ok: true });
 });
 
+app.put("/api/admin/activities/:id/extensions", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  const studentId = String(req.body.studentId || "");
+  const student = db.students.find((item) => item.id === studentId);
+  if (!canUseSubject(req.user, activity.subjectId) || !scopedStudentIds(db, req.user).has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(400).json({ error: "This student is not enrolled in the activity subject." });
+  let extendedDeadline;
+  try {
+    extendedDeadline = activityExtensionDeadline(activity, req.body.extendedDeadline);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  activity.submissions ||= [];
+  let submission = activity.submissions.find((item) => item.studentId === studentId);
+  if (!submission) {
+    submission = { studentId };
+    activity.submissions.push(submission);
+  }
+  if (extendedDeadline) {
+    submission.extendedDeadline = extendedDeadline;
+    submission.extensionUpdatedAt = now();
+    submission.extensionUpdatedBy = req.user.id;
+  } else {
+    delete submission.extendedDeadline;
+    delete submission.extensionUpdatedAt;
+    delete submission.extensionUpdatedBy;
+  }
+  syncActivityRewards(db, activity, req.user.id);
+  await writeDb(db);
+  queuePushToUsers(db, db.users.filter((user) => user.studentId === studentId).map((user) => user.id), {
+    title: extendedDeadline ? "Activity deadline extended" : "Activity deadline updated",
+    body: extendedDeadline
+      ? `${activity.title} is now due ${extendedDeadline.replace("T", " ")}.`
+      : `${activity.title} now uses the class deadline.`,
+    url: "/activities",
+    tag: `activity-extension-${activity.id}-${studentId}`
+  });
+  res.json({ studentId, extendedDeadline });
+});
+
 app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const activity = db.activities.find((a) => a.id === req.params.id);
@@ -3867,7 +3937,7 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   sub.submitted = !!req.body.submitted;
   sub.submittedAt = req.body.submittedAt || req.body.dateSubmitted || (sub.submitted ? now() : "");
   sub.dateSubmitted = sub.submittedAt;
-  const late = sub.submitted ? activityDaysLate(activity.deadline, sub.submittedAt) : 0;
+  const late = sub.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, sub), sub.submittedAt) : 0;
   const maxScoreAllowed = activityMaxScoreAllowed(late);
   const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
   sub.score = Number.isFinite(score) || score === "" ? score : "";

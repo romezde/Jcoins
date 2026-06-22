@@ -2794,6 +2794,22 @@ td button {
 .activity-upload-box input {
   min-width: 0;
 }
+.activity-extension-control {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+}
+.activity-extension-control input {
+  min-width: 0;
+  width: 100%;
+}
+.activity-extension-control .inline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.activity-extension-control .inline:has(button:only-child) {
+  grid-template-columns: 1fr;
+}
 .activity-file-list {
   display: grid;
   gap: 6px;

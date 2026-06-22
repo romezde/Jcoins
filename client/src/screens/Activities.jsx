@@ -38,7 +38,7 @@ function ActivityFormModal({ data, run, activity = null }) {
     maxScore: 100,
     remarks: ""
   });
-  const hasSubmissions = !!activity?.rows?.some((row) => row.submitted || row.remarks || row.score !== "");
+  const hasSubmissions = !!activity?.rows?.some((row) => row.submitted || row.extendedDeadline || row.remarks || row.score !== "");
   useEffect(() => {
     if (activity) setForm(activityFormValues(activity));
   }, [activity?.title, activity?.subjectId, activity?.dateCreated, activity?.deadline, activity?.type, activity?.remarks]);
@@ -71,10 +71,11 @@ function ActivityCard({ activity, data, run }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
     </div>
-    <Table columns={["Student", "Status", "Submitted At", "Late", "Max Score", "Actual Score", "File", "Earned", "Remarks"]} rows={rows.map((r) => [
+    <Table columns={["Student", "Status", "Submitted At", "Individual Deadline", "Late", "Max Score", "Actual Score", "File", "Earned", "Remarks"]} rows={rows.map((r) => [
       r.studentName,
       r.status || (r.submitted ? "Submitted" : "Missing"),
       r.submittedAt ? formatActivityDateTime(r.submittedAt) : "-",
+      <ActivityExtensionControl activity={activity} row={r} run={run} />,
       r.daysLate,
       r.maxScoreAllowed,
       <input className="score-input" type="number" min="0" max={r.maxScoreAllowed} defaultValue={r.score ?? ""} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: e.target.value, remarks: r.remarks }), "Score saved")} />,
@@ -83,6 +84,26 @@ function ActivityCard({ activity, data, run }) {
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
+}
+
+function ActivityExtensionControl({ activity, row, run }) {
+  const [deadline, setDeadline] = useState(() => toOptionalDatetimeLocal(row.extendedDeadline));
+  useEffect(() => setDeadline(toOptionalDatetimeLocal(row.extendedDeadline)), [row.extendedDeadline]);
+  const save = (value) => run(() => put(`/admin/activities/${activity.id}/extensions`, {
+    studentId: row.studentId,
+    extendedDeadline: value
+  }), value ? "Deadline extended" : "Extension removed");
+  return <div className="activity-extension-control">
+    <input type="datetime-local" min={toDatetimeLocal(activity.deadline)} value={deadline} onChange={(event) => setDeadline(event.target.value)} aria-label={`Individual deadline for ${row.studentName}`} />
+    <div className="inline">
+      <button type="button" className="soft" disabled={!deadline || deadline === toOptionalDatetimeLocal(row.extendedDeadline)} onClick={() => save(deadline)}>Save</button>
+      {row.extendedDeadline && <button type="button" className="danger" onClick={() => {
+        if (!confirm(`Remove ${row.studentName}'s individual deadline? Late limits, score, and JCoins will be recalculated using the class deadline.`)) return;
+        setDeadline("");
+        save("");
+      }}>Clear</button>}
+    </div>
+  </div>;
 }
 
 function deleteActivity(activity, run) {
@@ -108,7 +129,8 @@ function exportActivity(activity) {
     "Activity",
     "Subject",
     "Date Created",
-    "Deadline",
+    "Original Deadline",
+    "Student Deadline",
     "Type",
     "Base JCoins",
     "Max Score",
@@ -126,6 +148,7 @@ function exportActivity(activity) {
     activity.subjectName,
     activity.dateCreated,
     formatActivityDateTime(activity.deadline),
+    formatActivityDateTime(row.effectiveDeadline || activity.deadline),
     activity.type,
     activity.basePoints,
     100,
@@ -145,6 +168,10 @@ function toDatetimeLocal(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return `${text}T23:59`;
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return text.slice(0, 16);
   return text || `${today()}T23:59`;
+}
+
+function toOptionalDatetimeLocal(value) {
+  return value ? toDatetimeLocal(value) : "";
 }
 
 function formatActivityDateTime(value) {
