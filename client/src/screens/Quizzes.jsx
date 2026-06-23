@@ -60,7 +60,7 @@ export default function Quizzes({ data, run, role }) {
         <QuizActions quiz={quiz} data={data} run={run} />
       ])} />
     </Panel>
-    {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} run={run} />)}
+    {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
   </div>;
 }
 
@@ -92,6 +92,7 @@ function QuizFormModal({ data, run, quiz = null }) {
   const [aiFile, setAiFile] = useState(null);
   const [aiMessage, setAiMessage] = useState("");
   const groupStudents = studentsForQuiz(data, form);
+  const hasAttempts = !!quiz && ((quiz.submittedCount || 0) > 0 || (quiz.submissions || []).some((submission) => submission.activeAttempt));
 
   async function generateDraft() {
     if (aiFile && aiFile.size > 25 * 1024 * 1024) {
@@ -123,6 +124,7 @@ function QuizFormModal({ data, run, quiz = null }) {
 
   function submit(e) {
     e.preventDefault();
+    if (hasAttempts && !confirm("Save changes to this quiz? Existing attempts and scores will keep their original version. New attempts and retakes will use the edited version.")) return;
     run(() => quiz
       ? put(`/admin/quizzes/${quiz.id}`, cleanQuizForm(form))
       : post("/admin/quizzes", cleanQuizForm(form)), quiz ? "Quiz updated" : "Quiz draft created");
@@ -132,8 +134,8 @@ function QuizFormModal({ data, run, quiz = null }) {
     <form onSubmit={submit}>
       <div className="form-grid two">
         <Field label="Quiz Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
-        <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, retakeStudentIds: [] })} options={data.subjects} />
-        <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={(data.sections || []).map((section) => ({ value: section, label: section }))} />
+        <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, retakeStudentIds: [] })} options={hasAttempts ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
+        <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={(hasAttempts ? [form.section] : data.sections || []).map((section) => ({ value: section, label: section }))} />
         <Select label="Difficulty" value={form.difficulty} onChange={(difficulty) => setForm({ ...form, difficulty })} options={(data.settings.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} (${item.points} JC)` }))} />
         <Select label="Quiz Type" value={form.quizType || "mixed"} onChange={(quizType) => setForm({ ...form, quizType, questions: quizType === "mixed" ? form.questions : form.questions.map((question) => convertQuestionType(question, quizType)) })} options={quizTypeOptions} />
         <Field label="Deadline" type="date" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
@@ -142,6 +144,7 @@ function QuizFormModal({ data, run, quiz = null }) {
         <Select label="Answer Reveal" value={form.answerVisibility} onChange={(answerVisibility) => setForm({ ...form, answerVisibility })} options={answerVisibility} />
         {form.answerVisibility === "scheduled" && <Field label="Reveal Date/Time" type="datetime-local" value={form.answerRevealAt} onChange={(answerRevealAt) => setForm({ ...form, answerRevealAt })} />}
       </div>
+      {hasAttempts && <div className="notice">Existing attempts and scores are protected. Saved edits apply only to new attempts and retakes; subject and section stay locked.</div>}
       <div className="checklist compact-checks">
         <label className="check"><input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} />Shuffle questions</label>
         <label className="check"><input type="checkbox" checked={form.shuffleOptions} onChange={(e) => setForm({ ...form, shuffleOptions: e.target.checked })} />Shuffle options</label>
@@ -153,9 +156,11 @@ function QuizFormModal({ data, run, quiz = null }) {
         {aiMessage && <p className="muted-line">{aiMessage}</p>}
       </Panel>
       <QuestionEditor quizType={form.quizType || "mixed"} questions={form.questions} setQuestions={(questions) => setForm({ ...form, questions, passingScore: Math.min(Number(form.passingScore || questions.length), Math.max(1, questions.length)) })} />
-      <Select label="Retakes" value={form.retakeMode} onChange={(retakeMode) => setForm({ ...form, retakeMode })} options={[{ value: "none", label: "No retakes" }, { value: "all", label: "Retakes for everyone" }, { value: "selected", label: "Retakes for selected students" }]} />
-      {form.retakeMode === "selected" && <DropdownChecklist label="Students allowed to retake" items={groupStudents.map((student) => ({ id: student.id, name: student.name }))} selected={form.retakeStudentIds} onChange={(retakeStudentIds) => setForm({ ...form, retakeStudentIds })} />}
-      <button>Create Draft</button>
+      <div className="quiz-retake-controls">
+        <label className="check"><input type="checkbox" checked={form.retakeMode === "all"} onChange={(event) => setForm({ ...form, retakeMode: event.target.checked ? "all" : form.retakeStudentIds.length ? "selected" : "none", retakeStudentIds: event.target.checked ? [] : form.retakeStudentIds })} />Allow all students to retake</label>
+        {form.retakeMode !== "all" && <DropdownChecklist label="Specific students allowed to retake" items={groupStudents.map((student) => ({ id: student.id, name: student.name }))} selected={form.retakeStudentIds} onChange={(retakeStudentIds) => setForm({ ...form, retakeMode: retakeStudentIds.length ? "selected" : "none", retakeStudentIds })} />}
+      </div>
+      <button>{quiz ? "Save Changes" : "Create Draft"}</button>
     </form>
   </ActionModal>;
 }
@@ -231,15 +236,16 @@ function deleteQuiz(quiz, run) {
 
 function QuizActions({ quiz, data, run }) {
   return <div className="inline">
-    {quiz.status === "draft" && <QuizFormModal data={data} run={run} quiz={quiz} />}
+    <QuizFormModal data={data} run={run} quiz={quiz} />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
+    {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
     <button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete</button>
   </div>;
 }
 
-function QuizCard({ quiz, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button>}>
+function QuizCard({ quiz, data, run }) {
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypeLabel(quiz.quizType)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;

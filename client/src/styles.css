@@ -4494,6 +4494,15 @@ td button {
   background: rgba(15, 23, 42, .44);
 }
 
+.quiz-retake-controls {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .44);
+}
+
 .correct-answer {
   border-color: rgba(52,211,153,.55);
   background: rgba(52,211,153,.12);
