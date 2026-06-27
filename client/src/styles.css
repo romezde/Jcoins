@@ -640,6 +640,64 @@ input::placeholder {
 .attendance-month-tabs {
   padding-bottom: 4px;
 }
+.attendance-class-panel {
+  display: grid;
+  gap: 14px;
+}
+.attendance-class-search {
+  width: min(100%, 420px);
+}
+.attendance-class-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.attendance-class-card {
+  min-width: 0;
+  min-height: 76px;
+  justify-content: flex-start;
+  border: 1px solid var(--line);
+  background: rgba(15, 23, 42, .62);
+  color: var(--text);
+  text-align: left;
+}
+.attendance-class-card > span {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  flex: 1;
+}
+.attendance-class-card strong,
+.attendance-class-card small {
+  overflow-wrap: anywhere;
+}
+.attendance-class-card small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-weight: 800;
+}
+.attendance-class-card b {
+  min-width: 30px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, .12);
+  color: #cffafe;
+  text-align: center;
+}
+.attendance-class-card.active {
+  border-color: rgba(34, 211, 238, .75);
+  background: rgba(8, 145, 178, .18);
+  box-shadow: inset 3px 0 0 var(--cyan);
+}
+.attendance-empty {
+  color: var(--muted);
+  font-weight: 800;
+}
+.attendance-week-toolbar {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
 .stacked-panel {
   display: grid;
   gap: 16px;
@@ -3860,6 +3918,9 @@ td button {
     justify-items: start;
   }
   .filter-bar, .transaction-filter-bar { grid-template-columns: 1fr; }
+  .attendance-class-grid { grid-template-columns: 1fr; }
+  .attendance-class-card { min-height: 68px; padding: 10px 12px; }
+  .attendance-week-toolbar { grid-template-columns: 1fr; }
   .quiz-session-head {
     align-items: stretch;
     flex-direction: column;

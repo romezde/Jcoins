@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { BookOpenCheck, Users } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
@@ -7,11 +8,16 @@ export default function Attendance({ data, run, role }) {
   const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
-  const [exportFilter, setExportFilter] = useState({ subjectId: "all", section: "all" });
-  const [weekFilter, setWeekFilter] = useState({ subjectId: "all", section: "all", search: "" });
+  const [selectedClassKey, setSelectedClassKey] = useState("");
+  const [classSearch, setClassSearch] = useState("");
+  const [weekSearch, setWeekSearch] = useState("");
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
-  const sections = [...new Set((data.students || []).map((student) => student.section).filter(Boolean))].sort();
-  const filteredWeeks = useMemo(() => filterAttendanceWeeks(sortedWeeks, data, weekFilter), [data.attendanceWeeks, data.students, weekFilter]);
+  const attendanceClasses = useMemo(() => buildAttendanceClasses(data), [data.subjects, data.students, data.attendanceWeeks]);
+  const visibleClasses = useMemo(() => filterAttendanceClasses(attendanceClasses, classSearch), [attendanceClasses, classSearch]);
+  const activeClass = attendanceClasses.find((item) => item.key === selectedClassKey) || null;
+  const filteredWeeks = useMemo(() => activeClass
+    ? filterAttendanceWeeks(sortedWeeks, activeClass.subjectId, weekSearch)
+    : [], [data.attendanceWeeks, activeClass?.key, weekSearch]);
   const monthGroups = useMemo(() => groupWeeksByMonth(filteredWeeks), [filteredWeeks]);
   const currentMonth = activeMonth && monthGroups.some((group) => group.key === activeMonth) ? activeMonth : monthGroups[0]?.key || "";
   const currentGroup = monthGroups.find((group) => group.key === currentMonth);
@@ -27,37 +33,70 @@ export default function Attendance({ data, run, role }) {
         <button>Add Week</button>
       </form>
     </ActionModal>}
-    <section className="panel wide attendance-month-panel">
+    <section className="panel wide attendance-class-panel">
       <div className="section-head">
-        <div className="section-title">Attendance Month</div>
+        <div className="section-title"><BookOpenCheck size={20} /> Attendance Classes</div>
+        <span className="filter-count">{visibleClasses.length} class{visibleClasses.length === 1 ? "" : "es"}</span>
+      </div>
+      <div className="attendance-class-search">
+        <Field label="Search Subject or Section" value={classSearch} onChange={setClassSearch} />
+      </div>
+      <div className="attendance-class-grid">
+        {visibleClasses.map((item) => <button type="button" key={item.key} className={`attendance-class-card${activeClass?.key === item.key ? " active" : ""}`} onClick={() => { setSelectedClassKey(item.key); setActiveMonth(""); }}>
+          <BookOpenCheck size={20} />
+          <span><strong>{item.subjectName}</strong><small><Users size={14} /> {item.sectionLabel} · {item.studentCount} student{item.studentCount === 1 ? "" : "s"}</small></span>
+          <b>{item.weekCount}</b>
+        </button>)}
+      </div>
+      {!visibleClasses.length && <div className="attendance-empty">No subject and section match your search.</div>}
+    </section>
+    {activeClass && <section className="panel wide attendance-month-panel">
+      <div className="section-head">
+        <div className="section-title">{activeClass.subjectName} · {activeClass.sectionLabel}</div>
         <span className="filter-count">{visibleWeeks.length} week{visibleWeeks.length === 1 ? "" : "s"}</span>
       </div>
       {monthGroups.length > 0 && <div className="tabs attendance-month-tabs">
         {monthGroups.map((group) => <button type="button" key={group.key} className={currentMonth === group.key ? "active" : ""} onClick={() => setActiveMonth(group.key)}>{group.label}</button>)}
       </div>}
-      <div className="filter-bar transaction-filter-bar">
-        <Select label="Show Subject" value={weekFilter.subjectId} onChange={(subjectId) => setWeekFilter({ ...weekFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
-        <Select label="Show Section" value={weekFilter.section} onChange={(section) => setWeekFilter({ ...weekFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
-        <Field label="Search Weeks" value={weekFilter.search} onChange={(search) => setWeekFilter({ ...weekFilter, search })} />
+      <div className="filter-bar attendance-week-toolbar">
+        <Field label="Search Weeks" value={weekSearch} onChange={setWeekSearch} />
+        <button type="button" disabled={!currentGroup} onClick={() => exportAttendanceMonth(currentGroup, data, { subjectId: activeClass.subjectId, section: activeClass.section })}>Export This Class</button>
       </div>
-      <div className="filter-bar transaction-filter-bar">
-        <Select label="Export Subject" value={exportFilter.subjectId} onChange={(subjectId) => setExportFilter({ ...exportFilter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
-        <Select label="Export Section" value={exportFilter.section} onChange={(section) => setExportFilter({ ...exportFilter, section })} options={[{ value: "all", label: "All sections" }, ...sections.map((section) => ({ value: section, label: `Section ${section}` })), ...((data.students || []).some((student) => !student.section) ? [{ value: "__none", label: "No section" }] : [])]} />
-        <button type="button" disabled={!currentGroup} onClick={() => exportAttendanceMonth(currentGroup, data, exportFilter)}>Export Month Spreadsheet</button>
-      </div>
-    </section>
+    </section>}
     {visibleWeeks.map((w, index) => <Panel title={attendanceWeekTitle(w)} wide defaultOpen={index === 0} key={w.id} actions={canManageWeeks ? <div className="inline"><input type="date" value={dateByWeek[w.id] || today()} onChange={(e) => setDateByWeek({ ...dateByWeek, [w.id]: e.target.value })} /><button onClick={() => run(() => post(`/admin/attendance/weeks/${w.id}/dates`, { date: dateByWeek[w.id] || today() }), "Date added")}>Add Date</button><button className="danger" onClick={() => confirm(`Delete ${w.title}? This removes all dates, attendance records, and JCoins for this week.`) && run(() => del(`/admin/attendance/weeks/${w.id}`), "Week deleted")}>Delete Week</button></div> : null}>
-      <AttendanceTable week={w} data={data} run={run} canManageWeeks={canManageWeeks} />
+      <AttendanceTable week={w} section={activeClass.section} data={data} run={run} canManageWeeks={canManageWeeks} />
     </Panel>)}
-    {!monthGroups.length && <section className="panel wide">{data.attendanceWeeks.length ? "No attendance weeks match your filters." : "No attendance weeks yet."}</section>}
+    {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view its attendance weeks.</section>}
+    {activeClass && !monthGroups.length && <section className="panel wide attendance-empty">No attendance weeks found for this class.</section>}
   </div>;
 }
 
-function filterAttendanceWeeks(weeks, data, filter) {
-  const q = String(filter.search || "").trim().toLowerCase();
+function buildAttendanceClasses(data) {
+  return (data.subjects || []).flatMap((subject) => {
+    const students = (data.students || []).filter((student) => (student.subjectIds || []).includes(subject.id));
+    const sections = [...new Set(students.map((student) => String(student.section || "")))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return sections.map((section) => ({
+      key: `${subject.id}::${section || "__none"}`,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      section,
+      sectionLabel: section ? `Section ${section}` : "No section",
+      studentCount: students.filter((student) => String(student.section || "") === section).length,
+      weekCount: (data.attendanceWeeks || []).filter((week) => week.subjectId === subject.id).length
+    }));
+  }).sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
+}
+
+function filterAttendanceClasses(classes, search) {
+  const q = String(search || "").trim().toLowerCase();
+  if (!q) return classes;
+  return classes.filter((item) => `${item.subjectName} ${item.sectionLabel}`.toLowerCase().includes(q));
+}
+
+function filterAttendanceWeeks(weeks, subjectId, search) {
+  const q = String(search || "").trim().toLowerCase();
   return weeks.filter((week) => {
-    if (filter.subjectId !== "all" && week.subjectId !== filter.subjectId) return false;
-    if (filter.section !== "all" && !weekHasSection(week, data.students || [], filter.section)) return false;
+    if (week.subjectId !== subjectId) return false;
     if (!q) return true;
     return [
       week.title,
@@ -66,13 +105,6 @@ function filterAttendanceWeeks(weeks, data, filter) {
       ...(week.dates || [])
     ].some((value) => String(value || "").toLowerCase().includes(q));
   });
-}
-
-function weekHasSection(week, students, section) {
-  return students.some((student) =>
-    (student.subjectIds || []).includes(week.subjectId)
-    && (section === "__none" ? !student.section : student.section === section)
-  );
 }
 
 function weekSortValue(week) {
@@ -181,7 +213,7 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
   return { value: "", className: "absent" };
 }
 
-function AttendanceTable({ week, data, run, canManageWeeks }) {
+function AttendanceTable({ week, section, data, run, canManageWeeks }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState({ key: "name", date: "", direction: "asc" });
   const [pendingStatuses, setPendingStatuses] = useState({});
@@ -223,7 +255,7 @@ function AttendanceTable({ week, data, run, canManageWeeks }) {
     }
   }
   const students = data.students
-    .filter((s) => (s.subjectIds || []).includes(week.subjectId) && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))))
+    .filter((s) => (s.subjectIds || []).includes(week.subjectId) && String(s.section || "") === section && (!q || [s.name, s.username, s.section, s.rank].some((value) => String(value || "").toLowerCase().includes(q))))
     .sort((a, b) => compareAttendanceStudents(a, b, sort, status));
   function toggleSort(next) {
     setSort((current) => current.key === next.key && current.date === (next.date || "")
@@ -236,7 +268,7 @@ function AttendanceTable({ week, data, run, canManageWeeks }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
     </div>
-    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check" }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "" }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => saveStatus(s.id, d, e.target.value)}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check", section }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "", section }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => saveStatus(s.id, d, e.target.value)}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
   </>;
 }
 

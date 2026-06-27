@@ -3942,7 +3942,12 @@ app.post("/api/admin/attendance/check-all", auth, requireStaffOrAssistant, async
   if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const week = db.attendanceWeeks.find((w) => w.id === req.body.weekId);
   if (!week) return res.status(404).json({ error: "Week not found." });
-  const students = actionScopeStudents(db, req.user).filter((s) => (s.subjectIds || []).includes(week.subjectId));
+  const hasSectionScope = Object.prototype.hasOwnProperty.call(req.body, "section");
+  const requestedSection = String(req.body.section || "");
+  const students = actionScopeStudents(db, req.user).filter((s) =>
+    (s.subjectIds || []).includes(week.subjectId)
+    && (!hasSectionScope || String(s.section || "") === requestedSection)
+  );
   students.forEach((student) => {
     let record = db.attendanceRecords.find((r) => r.weekId === week.id && r.date === req.body.date && r.studentId === student.id);
     if (!record) {
