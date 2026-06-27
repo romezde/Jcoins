@@ -93,6 +93,7 @@ const STORAGE_ROW_TYPES = [
 ];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
+const BACKUP_MIRROR_DIR = String(process.env.JCOINS_BACKUP_MIRROR_DIR || "").trim();
 const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 6 * 60 * 60 * 1000));
 const RUN_SCHEDULED_JOBS = !["0", "false", "no"].includes(String(process.env.RUN_SCHEDULED_JOBS || "true").trim().toLowerCase());
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
@@ -697,8 +698,7 @@ async function backupExists(date = localDate()) {
   return !!data && Array.isArray(data.state?.storageRows);
 }
 
-async function pruneLocalBackups() {
-  const backupDir = path.join(dataDir, "backups");
+async function pruneBackupDirectory(backupDir) {
   try {
     const files = (await readdir(backupDir))
       .filter((file) => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(file))
@@ -708,6 +708,16 @@ async function pruneLocalBackups() {
   } catch {
     // Local backup pruning should never block the running classroom app.
   }
+}
+
+async function mirrorLocalBackup(backupPath) {
+  if (!BACKUP_MIRROR_DIR) return;
+  await mkdir(BACKUP_MIRROR_DIR, { recursive: true });
+  const destination = path.join(BACKUP_MIRROR_DIR, path.basename(backupPath));
+  const temporaryPath = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+  await copyFile(backupPath, temporaryPath);
+  await rename(temporaryPath, destination);
+  await pruneBackupDirectory(BACKUP_MIRROR_DIR);
 }
 
 async function pruneSupabaseBackups() {
@@ -728,7 +738,11 @@ async function pruneSupabaseBackups() {
 
 async function createDailyBackup(reason = "scheduled") {
   const date = localDate();
-  if (await backupExists(date)) return false;
+  const localBackupPath = path.join(dataDir, "backups", `${backupRowId(date)}.json`);
+  if (await backupExists(date)) {
+    if (!supabase) await mirrorLocalBackup(localBackupPath);
+    return false;
+  }
   const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
   const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: await readSupplementalStorageRows() };
   if (supabase) {
@@ -741,8 +755,9 @@ async function createDailyBackup(reason = "scheduled") {
   }
   const backupDir = path.join(dataDir, "backups");
   await mkdir(backupDir, { recursive: true });
-  await writeJsonAtomic(path.join(backupDir, `${backupRowId(date)}.json`), backup);
-  await pruneLocalBackups();
+  await writeJsonAtomic(localBackupPath, backup);
+  await mirrorLocalBackup(localBackupPath);
+  await pruneBackupDirectory(backupDir);
   return true;
 }
 
