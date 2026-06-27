@@ -796,7 +796,7 @@ function requiredModulesForTab(tab, role) {
     Teachers: ["people"],
     "Student Assistants": ["people"],
     Sections: ["people"],
-    Attendance: ["attendance"],
+    Attendance: ["attendance", "transactions"],
     Recitation: ["recitations"],
     Activities: ["activities"],
     Quizzes: ["quizzes"],

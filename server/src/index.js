@@ -89,7 +89,7 @@ const STORAGE_ROW_TYPES = [
 ];
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
-const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 60000));
+const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 6 * 60 * 60 * 1000));
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -219,6 +219,7 @@ let cachedDb = null;
 let cachedDbAt = 0;
 let cachedAuthUsers = new Map();
 let dbLoadPromise = null;
+let ensureDbPromise = null;
 let dbWriteQueue = Promise.resolve();
 let assistantRewardPromise = null;
 let currentMutationRequest = null;
@@ -509,23 +510,31 @@ function guildSystemView(db, user) {
 }
 
 async function ensureDb() {
-  if (supabase) {
-    const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("state").eq("id", "main").maybeSingle();
-    if (error) throw supabaseSetupError(error);
-    if (!data) {
-      const db = await createInitialDb();
-      const { error: insertError } = await supabase.from(SUPABASE_STATE_TABLE).insert({ id: "main", state: db });
-      if (insertError && insertError.code !== "23505") throw supabaseSetupError(insertError);
-    }
-    return;
+  if (!ensureDbPromise) {
+    ensureDbPromise = (async () => {
+      if (supabase) {
+        const { data, error } = await supabase.from(SUPABASE_STATE_TABLE).select("id").eq("id", "main").maybeSingle();
+        if (error) throw supabaseSetupError(error);
+        if (!data) {
+          const db = await createInitialDb();
+          const { error: insertError } = await supabase.from(SUPABASE_STATE_TABLE).insert({ id: "main", state: db });
+          if (insertError && insertError.code !== "23505") throw supabaseSetupError(insertError);
+        }
+        return;
+      }
+      await mkdir(dataDir, { recursive: true });
+      try {
+        await readFile(dbPath, "utf8");
+      } catch {
+        const db = await createInitialDb();
+        await writeFile(dbPath, JSON.stringify(db, null, 2));
+      }
+    })().catch((error) => {
+      ensureDbPromise = null;
+      throw error;
+    });
   }
-  await mkdir(dataDir, { recursive: true });
-  try {
-    await readFile(dbPath, "utf8");
-  } catch {
-    const db = await createInitialDb();
-    await writeFile(dbPath, JSON.stringify(db, null, 2));
-  }
+  return ensureDbPromise;
 }
 
 function supabaseSetupError(error) {
@@ -533,7 +542,7 @@ function supabaseSetupError(error) {
   const setupHint = /does not exist|schema cache|relation/i.test(text)
     ? ` Make sure the ${SUPABASE_STATE_TABLE} table exists. Run server/supabase/schema.sql in Supabase SQL Editor.`
     : "";
-  const message = `Supabase storage error: ${text}.${setupHint}`;
+  const message = `Supabase database error: ${text}.${setupHint}`;
   const wrapped = new Error(message);
   wrapped.cause = error;
   return wrapped;
@@ -792,8 +801,8 @@ function cachedDbIsFresh() {
 
 async function readRawDb() {
   await dbWriteQueue.catch(() => {});
-  await ensureDb();
   if (cachedDbIsFresh()) return cloneDb(cachedDb);
+  await ensureDb();
   if (!dbLoadPromise) {
     dbLoadPromise = (async () => {
       const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
@@ -2854,14 +2863,23 @@ function recitationBonus(db, studentId, week) {
 }
 
 function syncAttendanceTransaction(db, record, week, userId = "system", noteSuffix = "") {
-  const existing = db.transactions.find((t) => t.meta?.kind === "attendance" && t.meta.recordId === record.id);
-  const amount = record.status === "check" ? db.settings.attendance.onTimePoints : record.status === "late" ? db.settings.attendance.latePoints : 0;
+  const existingIndex = db.transactions.findIndex((t) => t.meta?.kind === "attendance" && t.meta.recordId === record.id);
+  const existing = existingIndex >= 0 ? db.transactions[existingIndex] : null;
+  const configuredAmount = record.status === "check" ? db.settings.attendance.onTimePoints : record.status === "late" ? db.settings.attendance.latePoints : 0;
+  const amount = Number(configuredAmount) || 0;
   const baseNote = `${subjectName(db, week?.subjectId)} attendance ${record.date}`;
   const transactionNote = noteSuffix ? `${baseNote} | ${noteSuffix}` : baseNote;
+  if (!amount) {
+    if (existing) db.transactions.splice(existingIndex, 1);
+    return;
+  }
   if (existing) {
     existing.amount = amount;
     existing.note = transactionNote;
-  } else if (amount) {
+    existing.studentId = record.studentId;
+    existing.type = "attendance";
+    existing.meta = { ...(existing.meta || {}), kind: "attendance", recordId: record.id, weekId: record.weekId, date: record.date };
+  } else {
     db.transactions.push(tx(record.studentId, "attendance", amount, transactionNote, now(), userId, { kind: "attendance", recordId: record.id, weekId: record.weekId, date: record.date }));
   }
 }
