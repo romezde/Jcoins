@@ -13,5 +13,14 @@ $stderrLog = Join-Path $logDir "server.err.log"
 Set-Location $PSScriptRoot
 $env:NODE_ENV = "production"
 
-& $node "src/index.js" 1>> $stdoutLog 2>> $stderrLog
-exit $LASTEXITCODE
+while ($true) {
+  try {
+    & $node "src/index.js" 1>> $stdoutLog 2>> $stderrLog
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $exitCode = 1
+    "[$(Get-Date -Format o)] Launcher error: $($_.Exception.Message)" | Add-Content -LiteralPath $stderrLog
+  }
+  "[$(Get-Date -Format o)] Server exited with code $exitCode. Restarting in 10 seconds." | Add-Content -LiteralPath $stderrLog
+  Start-Sleep -Seconds 10
+}
