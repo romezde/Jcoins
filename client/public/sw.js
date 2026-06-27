@@ -1,4 +1,4 @@
-const CACHE_NAME = "jcoins-shell-v2";
+const CACHE_NAME = "jcoins-shell-v3";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/jcoin.svg", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
