@@ -4,7 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -16,11 +16,15 @@ import webpush from "web-push";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { PDFParse } = require("pdf-parse");
-const dataDir = path.resolve(__dirname, "../data");
+const configuredDataDir = String(process.env.JCOINS_DATA_DIR || "").trim();
+const dataDir = configuredDataDir ? path.resolve(configuredDataDir) : path.resolve(__dirname, "../data");
 const dbPath = path.join(dataDir, "db.json");
+const previousDbPath = path.join(dataDir, "db.previous.json");
+const localActivityFileDir = path.join(dataDir, "activity-files");
 const PORT = Number(process.env.PORT || 4000);
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const JCOINS_STORAGE_MODE = String(process.env.JCOINS_STORAGE_MODE || "").trim().toLowerCase();
+const SUPABASE_URL = JCOINS_STORAGE_MODE === "local" ? "" : process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = JCOINS_STORAGE_MODE === "local" ? "" : process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || "jcoins_app_state";
 const configuredJwtSecret = String(process.env.JWT_SECRET || "").trim();
 const jwtSecretIsPlaceholder = !configuredJwtSecret || [
@@ -90,6 +94,7 @@ const STORAGE_ROW_TYPES = [
 const BACKUP_TIME_ZONE = process.env.BACKUP_TIME_ZONE || "Asia/Manila";
 const BACKUP_RETENTION_DAYS = Math.max(1, Number(process.env.BACKUP_RETENTION_DAYS || 30));
 const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 6 * 60 * 60 * 1000));
+const RUN_SCHEDULED_JOBS = !["0", "false", "no"].includes(String(process.env.RUN_SCHEDULED_JOBS || "true").trim().toLowerCase());
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -226,6 +231,22 @@ let currentMutationRequest = null;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
+
+async function writeJsonAtomic(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temporaryPath, JSON.stringify(value));
+  await rename(temporaryPath, filePath);
+}
+
+async function writeLocalDb(db) {
+  try {
+    await copyFile(dbPath, previousDbPath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  await writeJsonAtomic(dbPath, db);
+}
 const localDate = (date = new Date(), timeZone = BACKUP_TIME_ZONE) => new Intl.DateTimeFormat("en-CA", {
   timeZone,
   year: "numeric",
@@ -527,7 +548,7 @@ async function ensureDb() {
         await readFile(dbPath, "utf8");
       } catch {
         const db = await createInitialDb();
-        await writeFile(dbPath, JSON.stringify(db, null, 2));
+        await writeLocalDb(db);
       }
     })().catch((error) => {
       ensureDbPromise = null;
@@ -709,7 +730,7 @@ async function createDailyBackup(reason = "scheduled") {
   const date = localDate();
   if (await backupExists(date)) return false;
   const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
-  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: supabase ? await readSupplementalStorageRows() : [] };
+  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: await readSupplementalStorageRows() };
   if (supabase) {
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -720,13 +741,23 @@ async function createDailyBackup(reason = "scheduled") {
   }
   const backupDir = path.join(dataDir, "backups");
   await mkdir(backupDir, { recursive: true });
-  await writeFile(path.join(backupDir, `${backupRowId(date)}.json`), JSON.stringify(backup, null, 2));
+  await writeJsonAtomic(path.join(backupDir, `${backupRowId(date)}.json`), backup);
   await pruneLocalBackups();
   return true;
 }
 
 async function readSupplementalStorageRows() {
-  if (!supabase) return [];
+  if (!supabase) {
+    try {
+      const files = (await readdir(localActivityFileDir)).filter((file) => file.endsWith(".json"));
+      const rows = [];
+      for (const file of files) rows.push(JSON.parse(await readFile(path.join(localActivityFileDir, file), "utf8")));
+      return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      throw error;
+    }
+  }
   const groups = await Promise.all(STORAGE_ROW_TYPES.map((type) => readStorageRowsByPrefix(type.prefix, "id,state,updated_at")));
   const rows = groups.flat();
   return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -1005,8 +1036,10 @@ async function persistDb(db) {
     broadcastChange();
     return;
   }
-  await writeFile(dbPath, JSON.stringify(db, null, 2));
-  cacheDb(db);
+  const { db: dbToStore, files } = extractActivityFileRows(db);
+  await upsertActivityFileRows(files);
+  await writeLocalDb(dbToStore);
+  cacheDb(dbToStore);
   broadcastChange();
 }
 
@@ -1102,7 +1135,15 @@ function extractActivityFileRows(db) {
 }
 
 async function upsertActivityFileRows(files) {
-  if (!supabase || !files.length) return;
+  if (!files.length) return;
+  if (!supabase) {
+    await mkdir(localActivityFileDir, { recursive: true });
+    for (const file of files) {
+      const row = { ...file, updated_at: now() };
+      await writeJsonAtomic(localActivityFilePath(file.id), row);
+    }
+    return;
+  }
   for (let index = 0; index < files.length; index += 25) {
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -1112,7 +1153,15 @@ async function upsertActivityFileRows(files) {
 }
 
 async function readActivityFileRow(activityId, studentId, fileIndex) {
-  if (!supabase) return null;
+  if (!supabase) {
+    try {
+      const row = JSON.parse(await readFile(localActivityFilePath(activityFileRowId(activityId, studentId, fileIndex)), "utf8"));
+      return row?.state || null;
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    }
+  }
   const { data, error } = await supabase
     .from(SUPABASE_STATE_TABLE)
     .select("state")
@@ -1120,6 +1169,10 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
     .maybeSingle();
   if (error) throw supabaseSetupError(error);
   return data?.state || null;
+}
+
+function localActivityFilePath(rowId) {
+  return path.join(localActivityFileDir, `${encodeURIComponent(rowId)}.json`);
 }
 
 async function readStorageRowsByPrefix(prefix, fields = "id,state") {
@@ -1184,7 +1237,17 @@ function reconstructedDataCounts(db) {
 
 async function storageHealthSummary(db) {
   const reconstructedCounts = reconstructedDataCounts(db);
-  const rowCounts = await Promise.all(STORAGE_ROW_TYPES.map((type) => countStorageRowsByPrefix(type.prefix)));
+  let localActivityFileCount = 0;
+  if (!supabase) {
+    try {
+      localActivityFileCount = (await readdir(localActivityFileDir)).filter((file) => file.endsWith(".json")).length;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  const rowCounts = supabase
+    ? await Promise.all(STORAGE_ROW_TYPES.map((type) => countStorageRowsByPrefix(type.prefix)))
+    : STORAGE_ROW_TYPES.map((type) => type.key === "activityFiles" ? localActivityFileCount : reconstructedCounts[type.key] ?? 0);
   const rows = STORAGE_ROW_TYPES.map((type, index) => {
     const visibleCount = reconstructedCounts[type.key] ?? null;
     const rowCount = rowCounts[index];
@@ -5120,8 +5183,10 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
   res.json({ request });
 });
 
-scheduleDailyBackup();
-scheduleStudentAssistantRewards();
+if (RUN_SCHEDULED_JOBS) {
+  scheduleDailyBackup();
+  scheduleStudentAssistantRewards();
+}
 app.use((err, req, res, _next) => {
   console.error(`API error [${req.requestId || "unknown"}]:`, err);
   if (res.headersSent) return _next(err);
