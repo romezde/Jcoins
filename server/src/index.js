@@ -3709,6 +3709,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   const existingStudentsById = new Map(db.students.map((student) => [student.id, student]));
   const incomingUsernames = new Set();
   const skipped = [];
+  const pendingUpdates = [];
   const allowedSubjects = req.user.role === "teacher" ? new Set(req.user.subjectIds || []) : null;
   const allowedSections = req.user.role === "teacher" ? new Set(req.user.sectionIds || []) : null;
   const subjectLookup = new Map(db.subjects.flatMap((subject) => [
@@ -3734,21 +3735,26 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
       if (!username) throw new Error(`Row ${rowNumber}: username is required.`);
       if (!tempPassword || tempPassword.length < 6) throw new Error(`Row ${rowNumber}: temporary password must be at least 6 characters.`);
       const normalizedUsername = username.toLowerCase();
-      const existingUser = existingUsersByUsername.get(normalizedUsername);
-      if (existingUser) {
-        const existingStudent = existingStudentsById.get(existingUser.studentId);
-        const sameStudent = existingStudent && normalizeStudentName(existingStudent.name) === normalizeStudentName(name);
-        if (!sameStudent) throw new Error(`Row ${rowNumber}: username "${username}" belongs to another account. Use a unique username for ${name}.`);
-        skipped.push({ rowNumber, name, username, reason: "already exists" });
-        return null;
-      }
       if (incomingUsernames.has(normalizedUsername)) throw new Error(`Row ${rowNumber}: username "${username}" is repeated in this file.`);
+      incomingUsernames.add(normalizedUsername);
       if (!Number.isFinite(startingJCoins) || startingJCoins < 0) throw new Error(`Row ${rowNumber}: starting JCoins must be zero or greater.`);
       if (!section || !db.sections.includes(section)) throw new Error(`Row ${rowNumber}: choose an existing section.`);
       if (!subjectIds.length || subjectIds.some((id) => !id)) throw new Error(`Row ${rowNumber}: enter valid subject names or IDs.`);
       if (allowedSections?.size && !allowedSections.has(section)) throw new Error(`Row ${rowNumber}: section "${section}" is outside your assigned class scope.`);
       if (allowedSubjects && subjectIds.some((id) => !allowedSubjects.has(id))) throw new Error(`Row ${rowNumber}: one or more subjects are outside your assigned class scope.`);
-      incomingUsernames.add(normalizedUsername);
+      const existingUser = existingUsersByUsername.get(normalizedUsername);
+      if (existingUser) {
+        const existingStudent = existingStudentsById.get(existingUser.studentId);
+        const sameStudent = existingStudent && normalizeStudentName(existingStudent.name) === normalizeStudentName(name);
+        if (!sameStudent) throw new Error(`Row ${rowNumber}: username "${username}" belongs to another account. Use a unique username for ${name}.`);
+        const missingSubjectIds = subjectIds.filter((id) => !(existingStudent.subjectIds || []).includes(id));
+        if (missingSubjectIds.length || existingStudent.section !== section) {
+          pendingUpdates.push({ student: existingStudent, section, previousSection: existingStudent.section || "", missingSubjectIds, name, username });
+        } else {
+          skipped.push({ rowNumber, name, username, reason: "account and subjects already exist" });
+        }
+        return null;
+      }
       return { name, username, tempPassword, section, startingJCoins, subjectIds };
     }).filter(Boolean);
   } catch (err) {
@@ -3756,6 +3762,12 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   }
 
   const created = [];
+  const updated = [];
+  pendingUpdates.forEach((item) => {
+    item.student.section = item.section;
+    item.student.subjectIds = [...new Set([...(item.student.subjectIds || []), ...item.missingSubjectIds])];
+    updated.push({ id: item.student.id, name: item.name, username: item.username, previousSection: item.previousSection, section: item.section, addedSubjectIds: item.missingSubjectIds });
+  });
   for (const item of prepared) {
     const student = { id: randomUUID(), name: item.name, section: item.section, subjectIds: item.subjectIds, createdAt: now() };
     db.students.push(student);
@@ -3765,7 +3777,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   }
   db.sections.sort();
   await writeDb(db);
-  res.status(created.length ? 201 : 200).json({ createdCount: created.length, created, skippedCount: skipped.length, skipped });
+  res.status(created.length ? 201 : 200).json({ createdCount: created.length, created, updatedCount: updated.length, updated, skippedCount: skipped.length, skipped });
 });
 
 app.post("/api/admin/students/batch-delete", auth, requireRole("admin", "teacher"), async (req, res) => {

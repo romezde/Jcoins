@@ -89,8 +89,9 @@ export default function People({ data, run, role, view = "students" }) {
       result = await post("/admin/students/bulk", { students: importRows });
       setImportRows([]);
       const imported = `${result.createdCount} student${result.createdCount === 1 ? "" : "s"} imported`;
+      const updated = result.updatedCount ? `; ${result.updatedCount} existing student${result.updatedCount === 1 ? "" : "s"} updated` : "";
       const skipped = result.skippedCount ? `; ${result.skippedCount} existing student${result.skippedCount === 1 ? "" : "s"} skipped` : "";
-      setImportResult(`${imported}${skipped}.`);
+      setImportResult(`${imported}${updated}${skipped}.`);
     }, "Students imported");
   }
   async function uploadStudentPhoto(studentId, file) {
@@ -133,7 +134,7 @@ export default function People({ data, run, role, view = "students" }) {
 
       {view === "students" && <ActionModal title="Import Students">
         <form onSubmit={importStudents}>
-          <p className="muted-line">Download the Excel template, use the dropdowns, then upload the completed .xlsx file. CSV still works too.</p>
+          <p className="muted-line">Download the Excel template, use the dropdowns, then upload the completed .xlsx file. Matching accounts will receive the file's section and subjects without changing their password or balance. CSV still works too.</p>
           <div className="button-row">
             <button type="button" className="soft" onClick={downloadTemplate}>Download Template</button>
           </div>
