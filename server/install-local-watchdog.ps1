@@ -2,8 +2,9 @@ $ErrorActionPreference = "Stop"
 
 $taskName = "JCoins Server Watchdog"
 $watchScript = Join-Path $PSScriptRoot "watch-local.ps1"
+$hiddenRunner = Join-Path $PSScriptRoot "run-hidden.vbs"
 $user = "$env:USERDOMAIN\$env:USERNAME"
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchScript`""
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$hiddenRunner`" `"$watchScript`""
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $minuteTrigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
