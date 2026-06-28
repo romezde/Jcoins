@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, Users } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select } from "../components/ui.jsx";
+import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Attendance({ data, run, role }) {
@@ -9,11 +9,9 @@ export default function Attendance({ data, run, role }) {
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
   const [selectedClassKey, setSelectedClassKey] = useState("");
-  const [classSearch, setClassSearch] = useState("");
   const [weekSearch, setWeekSearch] = useState("");
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
-  const attendanceClasses = useMemo(() => buildAttendanceClasses(data), [data.subjects, data.students, data.attendanceWeeks]);
-  const visibleClasses = useMemo(() => filterAttendanceClasses(attendanceClasses, classSearch), [attendanceClasses, classSearch]);
+  const attendanceClasses = useMemo(() => buildSubjectSectionClasses(data, (subjectId) => (data.attendanceWeeks || []).filter((week) => week.subjectId === subjectId).length), [data.subjects, data.students, data.attendanceWeeks]);
   const activeClass = attendanceClasses.find((item) => item.key === selectedClassKey) || null;
   const filteredWeeks = useMemo(() => activeClass
     ? filterAttendanceWeeks(sortedWeeks, activeClass.subjectId, weekSearch)
@@ -33,23 +31,7 @@ export default function Attendance({ data, run, role }) {
         <button>Add Week</button>
       </form>
     </ActionModal>}
-    <section className="panel wide attendance-class-panel">
-      <div className="section-head">
-        <div className="section-title"><BookOpenCheck size={20} /> Attendance Classes</div>
-        <span className="filter-count">{visibleClasses.length} class{visibleClasses.length === 1 ? "" : "es"}</span>
-      </div>
-      <div className="attendance-class-search">
-        <Field label="Search Subject or Section" value={classSearch} onChange={setClassSearch} />
-      </div>
-      <div className="attendance-class-grid">
-        {visibleClasses.map((item) => <button type="button" key={item.key} className={`attendance-class-card${activeClass?.key === item.key ? " active" : ""}`} onClick={() => { setSelectedClassKey(item.key); setActiveMonth(""); }}>
-          <BookOpenCheck size={20} />
-          <span><strong>{item.subjectName}</strong><small><Users size={14} /> {item.sectionLabel} · {item.studentCount} student{item.studentCount === 1 ? "" : "s"}</small></span>
-          <b>{item.weekCount}</b>
-        </button>)}
-      </div>
-      {!visibleClasses.length && <div className="attendance-empty">No subject and section match your search.</div>}
-    </section>
+    <SubjectSectionPicker classes={attendanceClasses} selectedKey={selectedClassKey} onSelect={(key) => { setSelectedClassKey(key); setActiveMonth(""); }} title="Attendance Classes" itemLabel="weeks" />
     {activeClass && <section className="panel wide attendance-month-panel">
       <div className="section-head">
         <div className="section-title">{activeClass.subjectName} · {activeClass.sectionLabel}</div>
@@ -69,28 +51,6 @@ export default function Attendance({ data, run, role }) {
     {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view its attendance weeks.</section>}
     {activeClass && !monthGroups.length && <section className="panel wide attendance-empty">No attendance weeks found for this class.</section>}
   </div>;
-}
-
-function buildAttendanceClasses(data) {
-  return (data.subjects || []).flatMap((subject) => {
-    const students = (data.students || []).filter((student) => (student.subjectIds || []).includes(subject.id));
-    const sections = [...new Set(students.map((student) => String(student.section || "")))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return sections.map((section) => ({
-      key: `${subject.id}::${section || "__none"}`,
-      subjectId: subject.id,
-      subjectName: subject.name,
-      section,
-      sectionLabel: section ? `Section ${section}` : "No section",
-      studentCount: students.filter((student) => String(student.section || "") === section).length,
-      weekCount: (data.attendanceWeeks || []).filter((week) => week.subjectId === subject.id).length
-    }));
-  }).sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
-}
-
-function filterAttendanceClasses(classes, search) {
-  const q = String(search || "").trim().toLowerCase();
-  if (!q) return classes;
-  return classes.filter((item) => `${item.subjectName} ${item.sectionLabel}`.toLowerCase().includes(q));
 }
 
 function filterAttendanceWeeks(weeks, subjectId, search) {

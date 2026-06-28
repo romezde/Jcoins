@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
+import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Activities({ data, run }) {
-  const [filter, setFilter] = useState({ subjectId: "all", search: "" });
+  const [selectedClassKey, setSelectedClassKey] = useState("");
+  const [filter, setFilter] = useState({ search: "" });
+  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId) => data.activities.filter((activity) => activity.subjectId === subjectId).length), [data.subjects, data.students, data.activities]);
+  const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
   const filteredActivities = data.activities.filter((activity) => {
-    const subjectMatch = filter.subjectId === "all" || activity.subjectId === filter.subjectId;
+    const subjectMatch = activeClass && activity.subjectId === activeClass.subjectId;
     const q = filter.search.trim().toLowerCase();
     const searchMatch = !q || [activity.title, activity.subjectName, activity.dateCreated, activity.deadline, activity.type, activity.remarks].some((value) => String(value || "").toLowerCase().includes(q));
     return subjectMatch && searchMatch;
@@ -16,15 +20,19 @@ export default function Activities({ data, run }) {
 
   return <div className="dashboard-grid">
     <ActivityFormModal data={data} run={run} />
-    <Panel title="Activity List" wide defaultOpen>
+    <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Activity Classes" itemLabel="activities" />
+    {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen>
       <div className="filter-bar">
-        <Select label="Subject" value={filter.subjectId} onChange={(subjectId) => setFilter({ ...filter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
         <Field label="Search Activities" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
         <div className="filter-count">{filteredActivities.length} activit{filteredActivities.length === 1 ? "y" : "ies"}</div>
       </div>
-      <Table columns={["Activity", "Subject", "Created", "Tracker", "Deadline", "Type", "Score", "Remarks", "Action"]} rows={filteredActivities.map((a) => [a.title, a.subjectName, a.dateCreated, a.tracker, formatActivityDateTime(a.deadline), a.type, "0-100", a.remarks, <div className="inline"><ActivityFormModal data={data} run={run} activity={a} /><button type="button" className="soft" onClick={() => exportActivity(a)}>Export Spreadsheet</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>])} />
-    </Panel>
-    {filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} data={data} run={run} />)}
+      <Table columns={["Activity", "Subject", "Section", "Created", "Tracker", "Deadline", "Type", "Score", "Remarks", "Action"]} rows={filteredActivities.map((a) => {
+        const classRows = activityRowsForSection(a, data, activeClass.section);
+        return [a.title, a.subjectName, activeClass.sectionLabel, a.dateCreated, `${classRows.filter((row) => row.submitted).length}/${classRows.length}`, formatActivityDateTime(a.deadline), a.type, "0-100", a.remarks, <div className="inline"><ActivityFormModal data={data} run={run} activity={a} /><button type="button" className="soft" onClick={() => exportActivity(a, classRows)}>Export Spreadsheet</button><button className="danger" onClick={() => deleteActivity(a, run)}>Delete</button></div>];
+      })} />
+    </Panel>}
+    {activeClass && filteredActivities.map((a) => <ActivityCard key={a.id} activity={a} section={activeClass.section} sectionLabel={activeClass.sectionLabel} data={data} run={run} />)}
+    {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view its activities.</section>}
   </div>;
 }
 
@@ -61,12 +69,14 @@ function ActivityFormModal({ data, run, activity = null }) {
   </ActionModal>;
 }
 
-function ActivityCard({ activity, data, run }) {
+function ActivityCard({ activity, section, sectionLabel, data, run }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
-  const rows = activity.rows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.score, row.remarks, row.fileNames, row.fileName, row.status].some((value) => String(value || "").toLowerCase().includes(q)));
-  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{activity.tracker} submitted</strong><ActivityFormModal data={data} run={run} activity={activity} /><button type="button" className="soft" onClick={() => exportActivity(activity)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
-    <p className="muted-line">{activity.subjectName} | {activity.type} | deadline {formatActivityDateTime(activity.deadline)} | base {activity.basePoints} JC | actual score 0-100</p>
+  const classRows = activityRowsForSection(activity, data, section);
+  const rows = classRows.filter((row) => !q || [row.studentName, row.dateSubmitted, row.daysLate, row.earned, row.score, row.remarks, row.fileNames, row.fileName, row.status].some((value) => String(value || "").toLowerCase().includes(q)));
+  const tracker = `${classRows.filter((row) => row.submitted).length}/${classRows.length}`;
+  return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{tracker} submitted</strong><ActivityFormModal data={data} run={run} activity={activity} /><button type="button" className="soft" onClick={() => exportActivity(activity, classRows)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
+    <p className="muted-line">{activity.subjectName} | {sectionLabel} | {activity.type} | deadline {formatActivityDateTime(activity.deadline)} | base {activity.basePoints} JC | actual score 0-100</p>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
@@ -123,7 +133,12 @@ function activityFormValues(activity) {
   };
 }
 
-function exportActivity(activity) {
+function activityRowsForSection(activity, data, section) {
+  const studentIds = new Set((data.students || []).filter((student) => String(student.section || "") === section && (student.subjectIds || []).includes(activity.subjectId)).map((student) => student.id));
+  return (activity.rows || []).filter((row) => studentIds.has(row.studentId));
+}
+
+function exportActivity(activity, rows = activity.rows) {
   exportSpreadsheet(`activity-${safeFilePart(activity.title)}-${safeFilePart(activity.subjectName)}.xls`, [
     "Student",
     "Activity",
@@ -142,7 +157,7 @@ function exportActivity(activity) {
     "File",
     "Remarks",
     "JCoins Earned"
-  ], [...activity.rows].sort((a, b) => String(a.studentName).localeCompare(String(b.studentName))).map((row) => [
+  ], [...rows].sort((a, b) => String(a.studentName).localeCompare(String(b.studentName))).map((row) => [
     row.studentName,
     activity.title,
     activity.subjectName,

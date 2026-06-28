@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import { del, post, postForm, put, today } from "../api.js";
 import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
+import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 
 const questionTypeOptions = [
   { value: "multiple_choice", label: "Multiple Choice" },
@@ -30,21 +31,24 @@ const answerVisibility = [
 ];
 
 export default function Quizzes({ data, run, role }) {
-  const [filter, setFilter] = useState({ subjectId: "all", section: "all", status: "all", search: "" });
+  const [selectedClassKey, setSelectedClassKey] = useState("");
+  const [filter, setFilter] = useState({ status: "all", search: "" });
+  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => (data.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section).length), [data.subjects, data.students, data.quizzes]);
+  const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
   const quizzes = (data.quizzes || []).filter((quiz) => {
     const q = filter.search.trim().toLowerCase();
-    return (filter.subjectId === "all" || quiz.subjectId === filter.subjectId)
-      && (filter.section === "all" || quiz.section === filter.section)
+    return activeClass
+      && quiz.subjectId === activeClass.subjectId
+      && quiz.section === activeClass.section
       && (filter.status === "all" || quiz.status === filter.status)
       && (!q || [quiz.title, quiz.subjectName, quiz.section, quiz.difficulty, quiz.status].some((value) => String(value || "").toLowerCase().includes(q)));
   });
   if (role === "student") return <StudentQuizzes data={data} run={run} />;
   return <div className="dashboard-grid">
     <QuizFormModal data={data} run={run} />
-    <Panel title="Quiz List" wide defaultOpen>
+    <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Quiz Classes" itemLabel="quizzes" />
+    {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen>
       <div className="filter-bar">
-        <Select label="Subject" value={filter.subjectId} onChange={(subjectId) => setFilter({ ...filter, subjectId })} options={[{ value: "all", label: "All subjects" }, ...data.subjects.map((subject) => ({ value: subject.id, label: subject.name }))]} />
-        <Select label="Section" value={filter.section} onChange={(section) => setFilter({ ...filter, section })} options={[{ value: "all", label: "All sections" }, ...(data.sections || []).map((section) => ({ value: section, label: section }))]} />
         <Select label="Status" value={filter.status} onChange={(status) => setFilter({ ...filter, status })} options={[{ value: "all", label: "All" }, { value: "draft", label: "Draft" }, { value: "published", label: "Published" }, { value: "closed", label: "Closed" }]} />
         <Field label="Search" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
       </div>
@@ -59,8 +63,9 @@ export default function Quizzes({ data, run, role }) {
         quiz.tracker,
         <QuizActions quiz={quiz} data={data} run={run} />
       ])} />
-    </Panel>
-    {quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
+    </Panel>}
+    {activeClass && quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
+    {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view its quizzes.</section>}
   </div>;
 }
 
