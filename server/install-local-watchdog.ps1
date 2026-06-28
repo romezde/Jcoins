@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 
+& (Join-Path $PSScriptRoot "install-local-server.ps1") | Out-Null
+
 $taskName = "JCoins Server Watchdog"
 $watchScript = Join-Path $PSScriptRoot "watch-local.ps1"
 $hiddenRunner = Join-Path $PSScriptRoot "run-hidden.vbs"
