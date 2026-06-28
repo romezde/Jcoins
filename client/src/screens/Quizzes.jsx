@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import { del, post, postForm, put, today } from "../api.js";
-import { ActionModal, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
+import { ActionModal, Checklist, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 
 const questionTypeOptions = [
@@ -14,6 +14,7 @@ const questionTypeOptions = [
   { value: "computation", label: "Computation with Final Answer" }
 ];
 const quizTypeOptions = [{ value: "mixed", label: "Mixed Question Types" }, ...questionTypeOptions];
+const quizTypeChecklistItems = questionTypeOptions.map((option) => ({ id: option.value, name: option.label }));
 const blankQuestion = (type = "multiple_choice") => {
   const base = { id: crypto.randomUUID(), type, prompt: "", options: [], answer: "" };
   if (type === "true_false") return { ...base, options: ["True", "False"], answer: "True" };
@@ -57,7 +58,7 @@ export default function Quizzes({ data, run, role }) {
         quiz.subjectName,
         quiz.section,
         statusLabel(quiz.status),
-        `${quiz.difficulty} (${quiz.rewardValue} JC) | ${quizTypeLabel(quiz.quizType)}`,
+        `${quiz.difficulty} (${quiz.rewardValue} JC) | ${quizTypesLabel(quiz)}`,
         `${quiz.timeLimitMinutes} min`,
         quiz.deadline,
         quiz.tracker,
@@ -74,6 +75,7 @@ function QuizFormModal({ data, run, quiz = null }) {
   const firstSection = data.sections[0] || "";
   const [form, setForm] = useState(() => quiz ? {
     ...quiz,
+    quizTypes: quizTypesForQuiz(quiz),
     questions: quiz.questions.map(cloneQuestion),
     retakeStudentIds: [...(quiz.retakeStudentIds || [])]
   } : ({
@@ -81,7 +83,8 @@ function QuizFormModal({ data, run, quiz = null }) {
     subjectId: firstSubject,
     section: firstSection,
     difficulty: "Easy",
-    quizType: "mixed",
+    quizType: "multiple_choice",
+    quizTypes: ["multiple_choice"],
     deadline: today(),
     timeLimitMinutes: 30,
     passingScore: 1,
@@ -106,17 +109,23 @@ function QuizFormModal({ data, run, quiz = null }) {
     }
     setAiMessage("Generating quiz draft...");
     const payload = new FormData();
-    payload.append("message", aiPrompt || `Create an auto-gradable ${form.difficulty} quiz.`);
+    const allowedTypes = selectedQuizTypes(form);
+    const typeNames = allowedTypes.map((type) => questionTypeOptions.find((option) => option.value === type)?.label || type).join(", ");
+    payload.append("message", `${aiPrompt || `Create an auto-gradable ${form.difficulty} quiz.`}\nUse only these question types: ${typeNames}.`);
     if (aiFile) payload.append("file", aiFile);
     try {
       const result = await postForm("/assistant/chat", payload);
       if (result.quizDraft?.questions?.length) {
-        const questions = result.quizDraft.questions.map((question) => cloneQuestion({ ...blankQuestion(question.type), ...question, id: crypto.randomUUID() }));
+        const questions = result.quizDraft.questions.map((question, index) => {
+          const type = allowedTypes.includes(question.type) ? question.type : allowedTypes[index % allowedTypes.length];
+          return cloneQuestion({ ...blankQuestion(type), ...question, type, id: crypto.randomUUID() });
+        });
         setForm({
           ...form,
           title: result.quizDraft.title || form.title,
           difficulty: result.quizDraft.difficulty || form.difficulty,
-          quizType: result.quizDraft.quizType || (new Set(questions.map((question) => question.type)).size === 1 ? questions[0].type : "mixed"),
+          quizType: allowedTypes.length === 1 ? allowedTypes[0] : "mixed",
+          quizTypes: allowedTypes,
           questions,
           passingScore: Math.min(Number(result.quizDraft.passingScore || questions.length), questions.length)
         });
@@ -142,13 +151,17 @@ function QuizFormModal({ data, run, quiz = null }) {
         <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, retakeStudentIds: [] })} options={hasAttempts ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
         <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={(hasAttempts ? [form.section] : data.sections || []).map((section) => ({ value: section, label: section }))} />
         <Select label="Difficulty" value={form.difficulty} onChange={(difficulty) => setForm({ ...form, difficulty })} options={(data.settings.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} (${item.points} JC)` }))} />
-        <Select label="Quiz Type" value={form.quizType || "mixed"} onChange={(quizType) => setForm({ ...form, quizType, questions: quizType === "mixed" ? form.questions : form.questions.map((question) => convertQuestionType(question, quizType)) })} options={quizTypeOptions} />
         <Field label="Deadline" type="date" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
         <Field label="Time Limit (minutes)" type="number" min="1" max="240" step="1" required value={form.timeLimitMinutes} onChange={(timeLimitMinutes) => setForm({ ...form, timeLimitMinutes })} />
         <Field label="Passing Score" type="number" value={form.passingScore} onChange={(passingScore) => setForm({ ...form, passingScore })} />
         <Select label="Answer Reveal" value={form.answerVisibility} onChange={(answerVisibility) => setForm({ ...form, answerVisibility })} options={answerVisibility} />
         {form.answerVisibility === "scheduled" && <Field label="Reveal Date/Time" type="datetime-local" value={form.answerRevealAt} onChange={(answerRevealAt) => setForm({ ...form, answerRevealAt })} />}
       </div>
+      <Checklist title="Quiz Types" items={quizTypeChecklistItems} selected={selectedQuizTypes(form)} compact onChange={(quizTypes) => {
+        if (!quizTypes.length) return;
+        const fallbackType = quizTypes[0];
+        setForm({ ...form, quizTypes, quizType: quizTypes.length === 1 ? fallbackType : "mixed", questions: form.questions.map((question) => quizTypes.includes(question.type) ? question : convertQuestionType(question, fallbackType)) });
+      }} />
       {hasAttempts && <div className="notice">Existing attempts and scores are protected. Saved edits apply only to new attempts and retakes; subject and section stay locked.</div>}
       <div className="checklist compact-checks">
         <label className="check"><input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} />Shuffle questions</label>
@@ -160,7 +173,7 @@ function QuizFormModal({ data, run, quiz = null }) {
         <button type="button" className="soft" onClick={generateDraft}>Generate Editable Draft</button>
         {aiMessage && <p className="muted-line">{aiMessage}</p>}
       </Panel>
-      <QuestionEditor quizType={form.quizType || "mixed"} questions={form.questions} setQuestions={(questions) => setForm({ ...form, questions, passingScore: Math.min(Number(form.passingScore || questions.length), Math.max(1, questions.length)) })} />
+      <QuestionEditor quizTypes={selectedQuizTypes(form)} questions={form.questions} setQuestions={(questions) => setForm({ ...form, questions, passingScore: Math.min(Number(form.passingScore || questions.length), Math.max(1, questions.length)) })} />
       <div className="quiz-retake-controls">
         <label className="check"><input type="checkbox" checked={form.retakeMode === "all"} onChange={(event) => setForm({ ...form, retakeMode: event.target.checked ? "all" : form.retakeStudentIds.length ? "selected" : "none", retakeStudentIds: event.target.checked ? [] : form.retakeStudentIds })} />Allow all students to retake</label>
         {form.retakeMode !== "all" && <DropdownChecklist label="Specific students allowed to retake" items={groupStudents.map((student) => ({ id: student.id, name: student.name }))} selected={form.retakeStudentIds} onChange={(retakeStudentIds) => setForm({ ...form, retakeMode: retakeStudentIds.length ? "selected" : "none", retakeStudentIds })} />}
@@ -170,7 +183,8 @@ function QuizFormModal({ data, run, quiz = null }) {
   </ActionModal>;
 }
 
-function QuestionEditor({ quizType, questions, setQuestions }) {
+function QuestionEditor({ quizTypes, questions, setQuestions }) {
+  const allowedTypes = quizTypes.length ? quizTypes : ["multiple_choice"];
   function update(index, next) {
     setQuestions(questions.map((question, itemIndex) => itemIndex === index ? next : question));
   }
@@ -181,11 +195,11 @@ function QuestionEditor({ quizType, questions, setQuestions }) {
         <strong>Question {index + 1}</strong>
         <button type="button" className="danger" disabled={questions.length === 1} onClick={() => setQuestions(questions.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
       </div>
-      <Select label="Question Type" value={question.type} onChange={(type) => update(index, convertQuestionType(question, type))} options={quizType === "mixed" ? questionTypeOptions : questionTypeOptions.filter((option) => option.value === quizType)} />
+      <Select label="Question Type" value={question.type} onChange={(type) => update(index, convertQuestionType(question, type))} options={questionTypeOptions.filter((option) => allowedTypes.includes(option.value))} />
       <Field label="Prompt" value={question.prompt} onChange={(prompt) => update(index, { ...question, prompt })} />
       <QuestionAnswerEditor question={question} onChange={(next) => update(index, next)} />
     </section>)}
-    <button type="button" className="soft" onClick={() => setQuestions([...questions, blankQuestion(quizType === "mixed" ? "multiple_choice" : quizType)])}>Add Question</button>
+    <button type="button" className="soft" onClick={() => setQuestions([...questions, blankQuestion(allowedTypes[0])])}>Add Question</button>
   </div>;
 }
 
@@ -251,7 +265,7 @@ function QuizActions({ quiz, data, run }) {
 
 function QuizCard({ quiz, data, run }) {
   return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
-    <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypeLabel(quiz.quizType)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
+    <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
 }
@@ -312,7 +326,7 @@ function StudentQuizPanel({ quiz, attempt, run, onFinished }) {
   }, [remaining, attempt?.dueAt, quiz.canSubmit]);
   return <Panel title={quiz.title} wide defaultOpen>
     <div className="quiz-session-head">
-      <p className="muted-line">{quiz.subjectName} | {quiz.difficulty} | {quizTypeLabel(quiz.quizType)} | reward up to {quiz.rewardValue} JC | passing {quiz.passingScore}/{quiz.questions.length}</p>
+      <p className="muted-line">{quiz.subjectName} | {quiz.difficulty} | {quizTypesLabel(quiz)} | reward up to {quiz.rewardValue} JC | passing {quiz.passingScore}/{quiz.questions.length}</p>
       {attempt?.dueAt && <strong className={remaining <= 60 ? "quiz-timer warning" : "quiz-timer"}>{formatTimer(remaining)}</strong>}
     </div>
     {quiz.submission?.latest && <div className="notice">Latest score: {quiz.submission.latest.correct}/{quiz.submission.latest.total}. Best reward: {quiz.submission.bestAwarded} JCoins.</div>}
@@ -360,8 +374,11 @@ function StudentQuestionInput({ question, value, disabled, showAnswers, onChange
 }
 
 function cleanQuizForm(form) {
+  const quizTypes = selectedQuizTypes(form);
   return {
     ...form,
+    quizTypes,
+    quizType: quizTypes.length === 1 ? quizTypes[0] : "mixed",
     passingScore: Number(form.passingScore || 1),
     timeLimitMinutes: Number(form.timeLimitMinutes || 30),
     questions: form.questions.map(cleanQuestionForSubmit)
@@ -414,6 +431,25 @@ function statusLabel(status) {
 
 function quizTypeLabel(type) {
   return quizTypeOptions.find((option) => option.value === type)?.label || "Mixed Question Types";
+}
+
+function selectedQuizTypes(form) {
+  const selected = Array.isArray(form.quizTypes) ? form.quizTypes.filter((type) => questionTypeOptions.some((option) => option.value === type)) : [];
+  if (selected.length) return [...new Set(selected)];
+  return quizTypesForQuiz(form);
+}
+
+function quizTypesForQuiz(quiz) {
+  const stored = Array.isArray(quiz.quizTypes) ? quiz.quizTypes.filter((type) => questionTypeOptions.some((option) => option.value === type)) : [];
+  if (stored.length) return [...new Set(stored)];
+  const fromQuestions = [...new Set((quiz.questions || []).map((question) => question.type).filter((type) => questionTypeOptions.some((option) => option.value === type)))];
+  if (fromQuestions.length) return fromQuestions;
+  if (questionTypeOptions.some((option) => option.value === quiz.quizType)) return [quiz.quizType];
+  return ["multiple_choice"];
+}
+
+function quizTypesLabel(quiz) {
+  return quizTypesForQuiz(quiz).map((type) => quizTypeLabel(type)).join(", ");
 }
 
 function revealLabel(quiz) {

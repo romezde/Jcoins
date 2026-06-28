@@ -2466,12 +2466,15 @@ function normalizeQuiz(quiz, db) {
   quiz.subjectId ||= db.subjects[0]?.id || "";
   quiz.section = String(quiz.section || "").trim();
   quiz.difficulty = quizDifficulties.includes(quiz.difficulty) ? quiz.difficulty : "Easy";
-  quiz.quizType = quizTypes.includes(quiz.quizType) ? quiz.quizType : "mixed";
   quiz.rewardValue = Number.isFinite(Number(quiz.rewardValue)) ? Number(quiz.rewardValue) : quizRewardValue(db, quiz.difficulty);
   quiz.deadline ||= today();
   quiz.timeLimitMinutes = Math.max(0, Math.min(240, Number(quiz.timeLimitMinutes || 0)));
   quiz.status = ["draft", "published", "closed"].includes(quiz.status) ? quiz.status : "draft";
   quiz.questions = (Array.isArray(quiz.questions) ? quiz.questions : []).map(cleanQuizQuestion);
+  const storedQuizTypes = Array.isArray(quiz.quizTypes) ? quiz.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
+  const inferredQuizTypes = quizQuestionTypes.includes(quiz.quizType) ? [quiz.quizType] : [...new Set(quiz.questions.map((question) => question.type))];
+  quiz.quizTypes = [...new Set(storedQuizTypes.length ? storedQuizTypes : inferredQuizTypes.length ? inferredQuizTypes : ["multiple_choice"] )];
+  quiz.quizType = quiz.quizTypes.length === 1 ? quiz.quizTypes[0] : "mixed";
   quiz.passingScore = Math.max(1, Math.min(Number(quiz.passingScore || Math.ceil(quiz.questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100) || 1), Math.max(1, quiz.questions.length)));
   quiz.retakeMode = ["none", "all", "selected"].includes(quiz.retakeMode) ? quiz.retakeMode : "none";
   quiz.retakeStudentIds = Array.isArray(quiz.retakeStudentIds) ? quiz.retakeStudentIds : [];
@@ -4221,6 +4224,19 @@ function quizFromBody(db, body, user, existing = {}) {
   if (!canUseSubject(user, subjectId) || !canUseSection(user, section)) throw new Error("This quiz is outside your assigned class scope.");
   const questions = (Array.isArray(body.questions) ? body.questions : existing.questions || []).map(cleanQuizQuestion);
   if (!questions.length) throw new Error("Add at least one question.");
+  const requestedQuizTypes = Array.isArray(body.quizTypes) ? body.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
+  const existingQuizTypes = Array.isArray(existing.quizTypes) ? existing.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
+  const legacyQuizType = body.quizType ?? existing.quizType;
+  const quizTypesFromQuestions = [...new Set(questions.map((question) => question.type))];
+  const selectedQuizTypes = [...new Set(requestedQuizTypes.length
+    ? requestedQuizTypes
+    : existingQuizTypes.length
+      ? existingQuizTypes
+      : quizQuestionTypes.includes(legacyQuizType)
+        ? [legacyQuizType]
+        : quizTypesFromQuestions)];
+  if (!selectedQuizTypes.length) throw new Error("Choose at least one quiz type.");
+  if (questions.some((question) => !selectedQuizTypes.includes(question.type))) throw new Error("Every question must use one of the checked quiz types.");
   const difficulty = quizDifficulties.includes(body.difficulty || existing.difficulty) ? body.difficulty || existing.difficulty : "Easy";
   const passingScore = Math.max(1, Math.min(Number(body.passingScore || existing.passingScore || Math.ceil(questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100)), questions.length));
   const requestedTimeLimit = Number(body.timeLimitMinutes ?? existing.timeLimitMinutes ?? 30);
@@ -4235,7 +4251,8 @@ function quizFromBody(db, body, user, existing = {}) {
     subjectId,
     section,
     difficulty,
-    quizType: quizTypes.includes(body.quizType ?? existing.quizType) ? body.quizType ?? existing.quizType : "mixed",
+    quizType: selectedQuizTypes.length === 1 ? selectedQuizTypes[0] : "mixed",
+    quizTypes: selectedQuizTypes,
     rewardValue: Number(existing.rewardValue ?? quizRewardValue(db, difficulty)),
     deadline: String(body.deadline ?? existing.deadline ?? today()).slice(0, 10),
     timeLimitMinutes,
