@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { BellRing } from "lucide-react";
+import { BellRing, Trash2 } from "lucide-react";
 import { del, post, put } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
@@ -56,7 +56,7 @@ export default function Schedule({ data, run, role }) {
       </section>
     </div>}
     <Panel title="Today" wide defaultOpen>
-      <ScheduleCards schedules={todaySchedules} />
+      <ScheduleCards schedules={todaySchedules} canEdit={canEdit} run={run} />
     </Panel>
     {canEdit && <div className="quick-actions wide">
       <ActionModal title="Add Schedule">
@@ -81,6 +81,7 @@ export default function Schedule({ data, run, role }) {
           <button disabled={!importRows.length}>Import Schedule</button>
         </form>
       </ActionModal>
+      <DeleteAllSchedules schedules={data.schedules || []} run={run} />
     </div>}
     <Panel title="Weekly Calendar" wide defaultOpen>
       <div className="filter-bar">
@@ -92,7 +93,7 @@ export default function Schedule({ data, run, role }) {
       <div className="schedule-week">
         {days.map((day) => <section key={day} className="schedule-day">
           <h3>{day}</h3>
-          <ScheduleCards schedules={filtered.filter((schedule) => schedule.day === day)} compact />
+          <ScheduleCards schedules={filtered.filter((schedule) => schedule.day === day)} compact canEdit={canEdit} run={run} />
         </section>)}
       </div>
     </Panel>
@@ -102,7 +103,7 @@ export default function Schedule({ data, run, role }) {
   </div>;
 }
 
-function ScheduleCards({ schedules, compact = false }) {
+function ScheduleCards({ schedules, compact = false, canEdit = false, run }) {
   if (!schedules.length) return <div className="empty-card">No schedule.</div>;
   return <div className={compact ? "schedule-card-list compact" : "schedule-card-list"}>
     {schedules.map((schedule) => <article key={schedule.id} className="schedule-card">
@@ -112,8 +113,23 @@ function ScheduleCards({ schedules, compact = false }) {
       {schedule.room && <small>{schedule.room}</small>}
       {schedule.note && <small>{schedule.note}</small>}
       <em>{reminderLabel(schedule.reminderMinutes)}</em>
+      {canEdit && <button type="button" className="danger schedule-card-delete" title="Delete schedule" aria-label={`Delete ${schedule.subjectName} schedule`} onClick={() => confirm(`Delete ${schedule.subjectName} on ${schedule.day}?`) && run(() => del(`/admin/schedules/${schedule.id}`), "Schedule deleted")}><Trash2 size={16} /></button>}
     </article>)}
   </div>;
+}
+
+function DeleteAllSchedules({ schedules, run }) {
+  const [confirmation, setConfirmation] = useState("");
+  return <ActionModal title="Delete All Schedules" icon={Trash2}>
+    <form onSubmit={async (event) => {
+      event.preventDefault();
+      if (await run(() => del("/admin/schedules"), "All schedules deleted")) setConfirmation("");
+    }}>
+      <p className="muted-line">This permanently deletes all {schedules.length} schedules you are allowed to manage.</p>
+      <Field label='Type "DELETE ALL" to confirm' value={confirmation} onChange={setConfirmation} />
+      <button className="danger" disabled={!schedules.length || confirmation !== "DELETE ALL"}><Trash2 size={16} />Delete All Schedules</button>
+    </form>
+  </ActionModal>;
 }
 
 function ScheduleForm({ form, setForm, subjects, sections }) {

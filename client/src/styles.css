@@ -1898,6 +1898,20 @@ input::placeholder {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
+.schedule-card {
+  position: relative;
+}
+.schedule-card-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.schedule-card:has(.schedule-card-delete) {
+  padding-right: 54px;
+}
 .schedule-card-list.compact {
   grid-template-columns: 1fr;
 }

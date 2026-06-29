@@ -3668,6 +3668,17 @@ app.put("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), async
   res.json({ schedule });
 });
 
+app.delete("/api/admin/schedules", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const removableIds = new Set(db.schedules
+    .filter((schedule) => canUseSubject(req.user, schedule.subjectId) && canUseSection(req.user, schedule.section))
+    .map((schedule) => schedule.id));
+  db.schedules = db.schedules.filter((schedule) => !removableIds.has(schedule.id));
+  req.body = { ...(req.body || {}), createdCount: removableIds.size };
+  await writeDb(db);
+  res.json({ ok: true, deletedCount: removableIds.size });
+});
+
 app.delete("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const schedule = db.schedules.find((item) => item.id === req.params.id);
