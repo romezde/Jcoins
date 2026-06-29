@@ -3530,6 +3530,20 @@ td button {
   padding: 5px 7px;
   font-size: 11px;
 }
+.attendance-cancelled-label,
+.attendance-cancelled-cell {
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 800;
+}
+.attendance-cancelled-label {
+  margin-top: 6px;
+}
+.attendance-cancelled-cell {
+  display: inline-block;
+  max-width: 126px;
+  line-height: 1.25;
+}
 .attendance-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

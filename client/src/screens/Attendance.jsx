@@ -5,16 +5,16 @@ import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
 export default function Attendance({ data, run, role }) {
-  const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", title: "Week 1", firstDate: today() });
+  const [week, setWeek] = useState({ subjectId: data.subjects[0]?.id || "", section: data.sections?.[0] || "", title: "Week 1", firstDate: today() });
   const [dateByWeek, setDateByWeek] = useState({});
   const [activeMonth, setActiveMonth] = useState("");
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [weekSearch, setWeekSearch] = useState("");
   const sortedWeeks = [...data.attendanceWeeks].sort((a, b) => weekSortValue(b).localeCompare(weekSortValue(a)));
-  const attendanceClasses = useMemo(() => buildSubjectSectionClasses(data, (subjectId) => (data.attendanceWeeks || []).filter((week) => week.subjectId === subjectId).length), [data.subjects, data.students, data.attendanceWeeks]);
+  const attendanceClasses = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => (data.attendanceWeeks || []).filter((week) => week.subjectId === subjectId && (!week.section || week.section === section)).length), [data.subjects, data.students, data.attendanceWeeks]);
   const activeClass = attendanceClasses.find((item) => item.key === selectedClassKey) || null;
   const filteredWeeks = useMemo(() => activeClass
-    ? filterAttendanceWeeks(sortedWeeks, activeClass.subjectId, weekSearch)
+    ? filterAttendanceWeeks(sortedWeeks, activeClass.subjectId, activeClass.section, weekSearch)
     : [], [data.attendanceWeeks, activeClass?.key, weekSearch]);
   const monthGroups = useMemo(() => groupWeeksByMonth(filteredWeeks), [filteredWeeks]);
   const currentMonth = activeMonth && monthGroups.some((group) => group.key === activeMonth) ? activeMonth : monthGroups[0]?.key || "";
@@ -26,12 +26,13 @@ export default function Attendance({ data, run, role }) {
     {canManageWeeks && <ActionModal title="Add Attendance Week">
       <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/attendance/weeks", week), "Week added"); }}>
         <Select label="Subject" value={week.subjectId} onChange={(v) => setWeek({ ...week, subjectId: v })} options={data.subjects} />
+        <Select label="Section" value={week.section} onChange={(v) => setWeek({ ...week, section: v })} options={(data.sections || []).map((section) => ({ value: section, label: section }))} />
         <Field label="Week Title" value={week.title} onChange={(v) => setWeek({ ...week, title: v })} />
         <Field label="First Date" type="date" value={week.firstDate} onChange={(v) => setWeek({ ...week, firstDate: v })} />
         <button>Add Week</button>
       </form>
     </ActionModal>}
-    <SubjectSectionPicker classes={attendanceClasses} selectedKey={selectedClassKey} onSelect={(key) => { setSelectedClassKey(key); setActiveMonth(""); }} title="Attendance Classes" itemLabel="weeks" />
+    <SubjectSectionPicker classes={attendanceClasses} selectedKey={selectedClassKey} onSelect={(key) => { const chosen = attendanceClasses.find((item) => item.key === key); setSelectedClassKey(key); setActiveMonth(""); if (chosen) setWeek((current) => ({ ...current, subjectId: chosen.subjectId, section: chosen.section })); }} title="Attendance Classes" itemLabel="weeks" />
     {activeClass && <section className="panel wide attendance-month-panel">
       <div className="section-head">
         <div className="section-title">{activeClass.subjectName} · {activeClass.sectionLabel}</div>
@@ -53,10 +54,11 @@ export default function Attendance({ data, run, role }) {
   </div>;
 }
 
-function filterAttendanceWeeks(weeks, subjectId, search) {
+function filterAttendanceWeeks(weeks, subjectId, section, search) {
   const q = String(search || "").trim().toLowerCase();
   return weeks.filter((week) => {
     if (week.subjectId !== subjectId) return false;
+    if (week.section && week.section !== section) return false;
     if (!q) return true;
     return [
       week.title,
@@ -73,7 +75,7 @@ function weekSortValue(week) {
 
 function attendanceWeekTitle(week) {
   const range = attendanceWeekRange(week);
-  return `${week.subjectName}: ${week.title}${range ? ` ${range}` : ""}`;
+  return `${week.subjectName}: ${week.title}${range ? ` ${range}` : ""}${week.scheduleLinked ? " · Scheduled" : ""}`;
 }
 
 function attendanceWeekRange(week) {
@@ -110,7 +112,7 @@ function exportAttendanceMonth(group, data, filter) {
   if (!group) return;
   const weeks = group.weeks.filter((week) => filter.subjectId === "all" || week.subjectId === filter.subjectId);
   const dates = [...new Set(weeks.flatMap((week) => week.dates || []))].sort();
-  const headers = ["Name", ...dates, "Days Present", "Days Late", "Days Absent", "Total JCoins Earned"];
+  const headers = ["Name", ...dates, "Days Present", "Days Late", "Days Excused", "Days Absent", "Total JCoins Earned"];
   const includeSubject = filter.subjectId === "all";
   const includeSection = filter.section === "all";
   if (includeSection) headers.splice(0, 0, "Section");
@@ -132,11 +134,12 @@ function exportAttendanceMonth(group, data, filter) {
       if (includeSubject) row.push(subjectName);
       if (includeSection) row.push(student.section || "No section");
       row.push(student.name);
-      const summary = { present: 0, late: 0, absent: 0, earned: 0 };
+      const summary = { present: 0, late: 0, excused: 0, absent: 0, earned: 0 };
       dates.forEach((date) => row.push(attendanceExportCell(data, weeksForSubject, student.id, date, summary)));
       row.push(
         { value: summary.present, className: "summary" },
         { value: summary.late, className: "summary" },
+        { value: summary.excused, className: "summary" },
         { value: summary.absent, className: "summary" },
         { value: summary.earned, className: "summary" }
       );
@@ -157,6 +160,7 @@ function exportCellValue(cell) {
 function attendanceExportCell(data, weeks, studentId, date, summary) {
   const week = weeks.find((item) => (item.dates || []).includes(date));
   if (!week) return "";
+  if ((week.cancelledDates || []).includes(date)) return { value: "Holiday / Cancelled", className: "summary" };
   const status = data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
   if (status === "check") {
     summary.present += 1;
@@ -169,6 +173,12 @@ function attendanceExportCell(data, weeks, studentId, date, summary) {
     summary.earned += Number(data.settings.attendance.latePoints || 0);
     return { value: "-", className: "late" };
   }
+  if (status === "excused") {
+    summary.present += 1;
+    summary.excused += 1;
+    summary.earned += Number(data.settings.attendance.latePoints || 0);
+    return { value: "Excused", className: "late" };
+  }
   summary.absent += 1;
   return { value: "", className: "absent" };
 }
@@ -179,6 +189,7 @@ function AttendanceTable({ week, section, data, run, canManageWeeks }) {
   const [pendingStatuses, setPendingStatuses] = useState({});
   // data.students is already role-scoped by the server for teachers.
   const q = search.trim().toLowerCase();
+  const cancelledDates = new Set(week.cancelledDates || []);
   const statusKey = (studentId, date) => `${studentId}|${date}`;
   const savedStatus = (studentId, date) => data.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status || "";
   const status = (studentId, date) => {
@@ -228,14 +239,17 @@ function AttendanceTable({ week, section, data, run, canManageWeeks }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{students.length} student{students.length === 1 ? "" : "s"}</div>
     </div>
-    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{week.dates.map((d) => <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button><div className="mini-actions"><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check", section }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "", section }))}>Uncheck</button>{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>)}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{week.dates.map((d) => <td key={d}><select value={status(s.id, d)} onChange={(e) => saveStatus(s.id, d, e.target.value)}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option></select></td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap attendance-table-wrap"><table className="attendance-grid-table"><thead><tr><th><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "name" })}>Student {sortMark("name")}</button></th>{(week.dates || []).map((d) => {
+      const cancelled = cancelledDates.has(d);
+      return <th key={d}><button type="button" className="table-sort-button" onClick={() => toggleSort({ key: "date", date: d })}>{d} {sortMark("date", d)}</button>{cancelled && <div className="attendance-cancelled-label">Holiday / Cancelled</div>}<div className="mini-actions">{!cancelled && <><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "check", section }))}>Check All</button><button onClick={() => run(() => post("/admin/attendance/check-all", { weekId: week.id, date: d, status: "", section }))}>Uncheck</button></>}{canManageWeeks && <button type="button" className={cancelled ? "soft" : "danger"} onClick={() => run(() => put(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}/cancelled`, { cancelled: !cancelled }), cancelled ? "Class date restored" : "Marked Holiday / Cancelled")}>{cancelled ? "Restore Class" : "Holiday / Cancelled"}</button>}{canManageWeeks && <button className="danger" onClick={() => confirm(`Delete attendance date ${d}? This removes records and JCoins for this date.`) && run(() => del(`/admin/attendance/weeks/${week.id}/dates/${encodeURIComponent(d)}`), "Date deleted")}>Delete Date</button>}</div></th>;
+    })}</tr></thead><tbody>{students.map((s) => <tr key={s.id}><td>{s.name}</td>{(week.dates || []).map((d) => <td key={d}>{cancelledDates.has(d) ? <span className="attendance-cancelled-cell">Holiday / Cancelled</span> : <select value={status(s.id, d)} onChange={(e) => saveStatus(s.id, d, e.target.value)}><option value="">Absent</option><option value="check">On Time</option><option value="late">Late</option><option value="excused">Excused</option></select>}</td>)}</tr>)}</tbody></table></div>
   </>;
 }
 
 function compareAttendanceStudents(a, b, sort, status) {
   const direction = sort.direction === "desc" ? -1 : 1;
   if (sort.key === "date") {
-    const order = { "": 0, late: 1, check: 2 };
+    const order = { "": 0, excused: 1, late: 2, check: 3 };
     const diff = (order[status(a.id, sort.date)] ?? 0) - (order[status(b.id, sort.date)] ?? 0);
     if (diff) return diff * direction;
   }

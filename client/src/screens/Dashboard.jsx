@@ -105,6 +105,7 @@ export default function Dashboard({ data }) {
           <Legend />
           <Bar dataKey="onTime" name="On Time" fill="#34d399" radius={[6, 6, 0, 0]} />
           <Bar dataKey="late" name="Late" fill="#facc15" radius={[6, 6, 0, 0]} />
+          <Bar dataKey="excused" name="Excused" fill="#38bdf8" radius={[6, 6, 0, 0]} />
           <Bar dataKey="absent" name="Absent" fill="#fb7185" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -210,11 +211,12 @@ function dailyCounts(items, dateOf, key) {
 }
 
 function dailyAttendance(records) {
-  const map = Object.fromEntries(lastNDays().map((date) => [date, { date, onTime: 0, late: 0, absent: 0 }]));
+  const map = Object.fromEntries(lastNDays().map((date) => [date, { date, onTime: 0, late: 0, excused: 0, absent: 0 }]));
   records.forEach((record) => {
     if (!map[record.date]) return;
     if (record.status === "check") map[record.date].onTime += 1;
     else if (record.status === "late") map[record.date].late += 1;
+    else if (record.status === "excused") map[record.date].excused += 1;
     else map[record.date].absent += 1;
   });
   return Object.values(map);

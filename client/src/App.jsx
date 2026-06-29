@@ -890,6 +890,7 @@ function studentAssistantData(data) {
 
 function weekOverlapsAssignment(week, assignment) {
   if (!assignment) return true;
+  if (week.section && assignment.section && week.section !== assignment.section) return false;
   const startDate = String(assignment.weekStart || assignment.startAt || "").slice(0, 10);
   const finishDate = String(assignment.weekEnd || assignment.finishAt || "").slice(0, 10);
   return (week.dates || []).some((date) => date >= startDate && date <= finishDate);

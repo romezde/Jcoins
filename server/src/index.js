@@ -810,7 +810,8 @@ async function runStudentAssistantRewardJob() {
     try {
       const db = await readDb();
       const granted = grantStudentAssistantDailyRewards(db);
-      if (granted) await writeDb(db);
+      const attendanceWeeksChanged = syncScheduledAttendanceWeeks(db);
+      if (granted || attendanceWeeksChanged) await writeDb(db);
       return granted;
     } finally {
       releaseTurn();
@@ -889,6 +890,16 @@ async function readDb() {
   db.attendanceWeeks.forEach((week, index) => {
     if (!week.createdAt) {
       week.createdAt = week.dates?.[0] || new Date(Date.now() - (db.attendanceWeeks.length - index) * 1000).toISOString();
+      changed = true;
+    }
+    const section = String(week.section || "").trim();
+    if (week.section !== section) {
+      week.section = section;
+      changed = true;
+    }
+    const cancelledDates = [...new Set((Array.isArray(week.cancelledDates) ? week.cancelledDates : []).filter((date) => (week.dates || []).includes(date)))].sort();
+    if (JSON.stringify(week.cancelledDates || []) !== JSON.stringify(cancelledDates)) {
+      week.cancelledDates = cancelledDates;
       changed = true;
     }
   });
@@ -1958,6 +1969,92 @@ function dateRange(startText, endText) {
   return dates;
 }
 
+function addIsoDays(dateText, amount) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayForDate(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  return addIsoDays(dateText, -daysSinceMonday);
+}
+
+function scheduledAttendanceWeekTitle(weekStart) {
+  const date = new Date(`${weekStart}T00:00:00Z`);
+  return `Week of ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`;
+}
+
+function syncScheduledAttendanceWeeks(db, referenceDate = localDate()) {
+  const weekStart = mondayForDate(referenceDate);
+  const weekEnd = addIsoDays(weekStart, 6);
+  const groups = new Map();
+  (db.schedules || [])
+    .filter((schedule) => String(schedule.type || "Class").trim().toLowerCase() === "class")
+    .filter((schedule) => schedule.subjectId && schedule.section && dayOrder.includes(schedule.day))
+    .forEach((schedule) => {
+      const key = `${schedule.subjectId}|${schedule.section}`;
+      if (!groups.has(key)) groups.set(key, { subjectId: schedule.subjectId, section: schedule.section, days: new Set() });
+      groups.get(key).days.add(schedule.day);
+    });
+  const sectionCountBySubject = new Map();
+  groups.forEach((group) => {
+    if (!sectionCountBySubject.has(group.subjectId)) sectionCountBySubject.set(group.subjectId, new Set());
+    sectionCountBySubject.get(group.subjectId).add(group.section);
+  });
+  let changes = 0;
+  groups.forEach((group) => {
+    const scheduledDates = [...group.days]
+      .map((day) => addIsoDays(weekStart, dayOrder.indexOf(day)))
+      .sort();
+    let week = db.attendanceWeeks.find((item) =>
+      item.scheduleWeekStart === weekStart
+      && item.subjectId === group.subjectId
+      && item.section === group.section
+    );
+    if (!week && sectionCountBySubject.get(group.subjectId)?.size === 1) {
+      week = db.attendanceWeeks.find((item) =>
+        item.subjectId === group.subjectId
+        && !item.section
+        && !item.scheduleWeekStart
+        && (item.dates || []).some((date) => date >= weekStart && date <= weekEnd)
+      );
+      if (week) {
+        week.section = group.section;
+        week.scheduleWeekStart = weekStart;
+        week.scheduleLinked = true;
+        changes += 1;
+      }
+    }
+    if (!week) {
+      week = {
+        id: randomUUID(),
+        subjectId: group.subjectId,
+        section: group.section,
+        title: scheduledAttendanceWeekTitle(weekStart),
+        dates: scheduledDates,
+        cancelledDates: [],
+        scheduleWeekStart: weekStart,
+        scheduleLinked: true,
+        autoCreated: true,
+        createdAt: now(),
+        createdBy: "system"
+      };
+      db.attendanceWeeks.push(week);
+      changes += 1;
+      return;
+    }
+    const nextDates = [...new Set([...(week.dates || []), ...scheduledDates])].sort();
+    if (JSON.stringify(nextDates) !== JSON.stringify(week.dates || [])) {
+      week.dates = nextDates;
+      changes += 1;
+    }
+    week.cancelledDates ||= [];
+  });
+  return changes;
+}
+
 function canUseSubject(user, subjectId) {
   return user.role === "admin" || (user.subjectIds || []).includes(subjectId);
 }
@@ -2864,15 +2961,19 @@ function emptyDailyMap(key) {
 function dashboardSummary(db, user, students, studentIds, activitySummaries) {
   const todayText = today();
   const teacherSubjectIds = user.role === "teacher" ? new Set(user.subjectIds || []) : null;
+  const teacherSectionIds = user.role === "teacher" ? new Set(user.sectionIds || []) : null;
   const scopedTransactions = db.transactions.filter((transaction) => studentIds.has(transaction.studentId));
   const scopedRecitations = db.recitations.filter((recitation) => studentIds.has(recitation.studentId));
   const scopedAttendance = db.attendanceRecords.filter((record) => studentIds.has(record.studentId));
-  const visibleAttendanceWeeks = db.attendanceWeeks.filter((week) => !teacherSubjectIds || teacherSubjectIds.has(week.subjectId));
+  const visibleAttendanceWeeks = db.attendanceWeeks.filter((week) =>
+    (!teacherSubjectIds || teacherSubjectIds.has(week.subjectId))
+    && (!week.section || !teacherSectionIds?.size || teacherSectionIds.has(week.section))
+  );
   const pendingRequests = requestRows(db, db.requests.filter((request) => canUseRequest(db, user, request) && request.status === "pending").sort(byDateDesc));
   const jcoinDailyMap = Object.fromEntries(lastNDays().map((date) => [date, { date, given: 0, removed: 0 }]));
   const transactionDailyMap = emptyDailyMap("transactions");
   const recitationDailyMap = emptyDailyMap("recitations");
-  const attendanceDailyMap = Object.fromEntries(lastNDays().map((date) => [date, { date, onTime: 0, late: 0, absent: 0 }]));
+  const attendanceDailyMap = Object.fromEntries(lastNDays().map((date) => [date, { date, onTime: 0, late: 0, excused: 0, absent: 0 }]));
   let produced = 0;
   let removed = 0;
   let todaysTransactionsCount = 0;
@@ -2893,8 +2994,11 @@ function dashboardSummary(db, user, students, studentIds, activitySummaries) {
   });
   scopedAttendance.forEach((record) => {
     if (!attendanceDailyMap[record.date]) return;
+    const week = db.attendanceWeeks.find((item) => item.id === record.weekId);
+    if ((week?.cancelledDates || []).includes(record.date)) return;
     if (record.status === "check") attendanceDailyMap[record.date].onTime += 1;
     else if (record.status === "late") attendanceDailyMap[record.date].late += 1;
+    else if (record.status === "excused") attendanceDailyMap[record.date].excused += 1;
     else attendanceDailyMap[record.date].absent += 1;
   });
   const submittedCount = activitySummaries.reduce((sum, activity) => sum + Number(activity.submittedCount || 0), 0);
@@ -2931,14 +3035,19 @@ function activeShopPrice(db, itemId, date = today()) {
   return { ...item, discount, activeCost: Math.round(Number(item.cost || 0) * (1 - discount / 100)) };
 }
 
+function activeAttendanceDates(week) {
+  const cancelledDates = new Set(week.cancelledDates || []);
+  return (week.dates || []).filter((date) => !cancelledDates.has(date));
+}
+
 function attendanceBonus(db, studentId, week) {
-  const dates = week.dates || [];
+  const dates = activeAttendanceDates(week);
   if (!dates.length) return false;
   return dates.every((date) => db.attendanceRecords.find((r) => r.weekId === week.id && r.studentId === studentId && r.date === date)?.status === "check");
 }
 
 function recitationBonus(db, studentId, week) {
-  const dates = week.dates || [];
+  const dates = activeAttendanceDates(week);
   if (!dates.length) return false;
   return dates.every((date) => db.recitations.some((r) => r.subjectId === week.subjectId && r.studentId === studentId && r.date === date));
 }
@@ -2946,7 +3055,8 @@ function recitationBonus(db, studentId, week) {
 function syncAttendanceTransaction(db, record, week, userId = "system", noteSuffix = "") {
   const existingIndex = db.transactions.findIndex((t) => t.meta?.kind === "attendance" && t.meta.recordId === record.id);
   const existing = existingIndex >= 0 ? db.transactions[existingIndex] : null;
-  const configuredAmount = record.status === "check" ? db.settings.attendance.onTimePoints : record.status === "late" ? db.settings.attendance.latePoints : 0;
+  const isCancelled = (week?.cancelledDates || []).includes(record.date);
+  const configuredAmount = isCancelled ? 0 : record.status === "check" ? db.settings.attendance.onTimePoints : ["late", "excused"].includes(record.status) ? db.settings.attendance.latePoints : 0;
   const amount = Number(configuredAmount) || 0;
   const baseNote = `${subjectName(db, week?.subjectId)} attendance ${record.date}`;
   const transactionNote = noteSuffix ? `${baseNote} | ${noteSuffix}` : baseNote;
@@ -2981,7 +3091,10 @@ function syncWeekBonus(db, studentId, week, kind, earned, amount, userId = "syst
 }
 
 function syncWeekBonuses(db, week, userId = "system", noteSuffix = "") {
-  const students = db.students.filter((student) => (student.subjectIds || []).includes(week.subjectId));
+  const students = db.students.filter((student) =>
+    (student.subjectIds || []).includes(week.subjectId)
+    && (!week.section || student.section === week.section)
+  );
   students.forEach((student) => {
     syncWeekBonus(db, student.id, week, "attendance-week-bonus", attendanceBonus(db, student.id, week), Number(db.settings.attendance.weeklyBonus || 0), userId, noteSuffix);
     syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), userId, noteSuffix);
@@ -3051,7 +3164,10 @@ function filteredOverview(db, user, modules = null) {
     students,
     users: includePeople && user.role === "admin" ? db.users.map((u) => userWithStudent(u, db)) : [],
     transactions,
-    attendanceWeeks: includeAttendance ? db.attendanceWeeks.filter((w) => !subjectIds || subjectIds.has(w.subjectId)).map((w) => ({ ...w, subjectName: subjectName(db, w.subjectId) })) : [],
+    attendanceWeeks: includeAttendance ? db.attendanceWeeks.filter((w) =>
+      (!subjectIds || subjectIds.has(w.subjectId))
+      && (!w.section || !sectionIds?.size || sectionIds.has(w.section))
+    ).map((w) => ({ ...w, subjectName: subjectName(db, w.subjectId) })) : [],
     attendanceRecords: includeAttendance ? db.attendanceRecords.filter((r) => studentIds.has(r.studentId)) : [],
     recitations: includeRecitations ? db.recitations.filter((r) => studentIds.has(r.studentId)).map((r) => ({ ...r, studentName: studentName(db, r.studentId), subjectName: subjectName(db, r.subjectId) })).sort(byDateDesc) : [],
     activities: includeActivities ? fullActivities : activitySummaries,
@@ -3313,7 +3429,7 @@ app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
     .map((entry) => ({ ...entry, item: appearanceItem(db, entry.itemId) }))
     .filter((entry) => entry.item) : [];
   const gifts = includeAppearance ? appearanceGiftRows(db, student.id) : [];
-  const weeks = includeProfile ? db.attendanceWeeks.filter((w) => (student.subjectIds || []).includes(w.subjectId)).map((w) => ({
+  const weeks = includeProfile ? db.attendanceWeeks.filter((w) => (student.subjectIds || []).includes(w.subjectId) && (!w.section || w.section === student.section)).map((w) => ({
     ...w,
     subjectName: subjectName(db, w.subjectId),
     attendanceBonus: attendanceBonus(db, student.id, w),
@@ -3625,6 +3741,7 @@ app.post("/api/admin/schedules", auth, requireRole("admin", "teacher"), async (r
   }
   const schedule = { id: randomUUID(), ...input, createdAt: now(), createdBy: req.user.id, updatedAt: now() };
   db.schedules.push(schedule);
+  syncScheduledAttendanceWeeks(db);
   await writeDb(db);
   res.status(201).json({ schedule });
 });
@@ -3649,6 +3766,7 @@ app.post("/api/admin/schedules/bulk", auth, requireRole("admin", "teacher"), asy
   const createdAt = now();
   const created = prepared.map((item) => ({ id: randomUUID(), ...item.data, createdAt, createdBy: req.user.id, updatedAt: createdAt }));
   db.schedules.push(...created);
+  syncScheduledAttendanceWeeks(db);
   await writeDb(db);
   res.status(201).json({ createdCount: created.length, schedules: created });
 });
@@ -3664,6 +3782,7 @@ app.put("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), async
     return res.status(400).json({ error: err.message });
   }
   Object.assign(schedule, input, { updatedAt: now() });
+  syncScheduledAttendanceWeeks(db);
   await writeDb(db);
   res.json({ schedule });
 });
@@ -3675,6 +3794,7 @@ app.delete("/api/admin/schedules", auth, requireRole("admin", "teacher"), async 
     .map((schedule) => schedule.id));
   db.schedules = db.schedules.filter((schedule) => !removableIds.has(schedule.id));
   req.body = { ...(req.body || {}), createdCount: removableIds.size };
+  syncScheduledAttendanceWeeks(db);
   await writeDb(db);
   res.json({ ok: true, deletedCount: removableIds.size });
 });
@@ -3685,6 +3805,7 @@ app.delete("/api/admin/schedules/:id", auth, requireRole("admin", "teacher"), as
   if (!schedule) return res.status(404).json({ error: "Schedule not found." });
   if (!canUseSubject(req.user, schedule.subjectId) || !canUseSection(req.user, schedule.section)) return res.status(403).json({ error: "This schedule is outside your assigned scope." });
   db.schedules = db.schedules.filter((item) => item.id !== schedule.id);
+  syncScheduledAttendanceWeeks(db);
   await writeDb(db);
   res.json({ ok: true });
 });
@@ -3844,7 +3965,7 @@ app.get("/api/admin/students/:id/profile-photo", auth, requireRole("admin", "tea
     .sort(byDateDesc)
     .slice(0, 20);
   const weeks = db.attendanceWeeks
-    .filter((week) => (student.subjectIds || []).includes(week.subjectId))
+    .filter((week) => (student.subjectIds || []).includes(week.subjectId) && (!week.section || week.section === student.section))
     .map((week) => ({
       ...week,
       subjectName: subjectName(db, week.subjectId),
@@ -3888,8 +4009,11 @@ app.delete("/api/admin/students/:id", auth, requireRole("admin", "teacher"), asy
 app.post("/api/admin/attendance/weeks", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  const section = String(req.body.section || "").trim();
+  if (!section || !db.sections.includes(section)) return res.status(400).json({ error: "Choose an existing section." });
+  if (!canUseSection(req.user, section)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
   const firstDate = String(req.body.firstDate || "").slice(0, 10);
-  const week = { id: randomUUID(), subjectId: req.body.subjectId, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: firstDate ? [firstDate] : [], createdAt: now() };
+  const week = { id: randomUUID(), subjectId: req.body.subjectId, section, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: firstDate ? [firstDate] : [], cancelledDates: [], createdAt: now() };
   week.dates.sort();
   db.attendanceWeeks.push(week);
   await writeDb(db);
@@ -3900,7 +4024,7 @@ app.delete("/api/admin/attendance/weeks/:id", auth, requireRole("admin", "teache
   const db = await readDb();
   const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
   if (!week) return res.status(404).json({ error: "Week not found." });
-  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  if (!canUseSubject(req.user, week.subjectId) || (week.section && !canUseSection(req.user, week.section))) return res.status(403).json({ error: "This attendance week is outside your assigned class scope." });
   removeAttendanceWeek(db, week.id);
   await writeDb(db);
   res.json({ ok: true });
@@ -3910,7 +4034,7 @@ app.post("/api/admin/attendance/weeks/:id/dates", auth, requireRole("admin", "te
   const db = await readDb();
   const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
   if (!week) return res.status(404).json({ error: "Week not found." });
-  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  if (!canUseSubject(req.user, week.subjectId) || (week.section && !canUseSection(req.user, week.section))) return res.status(403).json({ error: "This attendance week is outside your assigned class scope." });
   const date = req.body.date || today();
   if (!week.dates.includes(date)) week.dates.push(date);
   week.dates.sort();
@@ -3923,15 +4047,36 @@ app.delete("/api/admin/attendance/weeks/:id/dates/:date", auth, requireRole("adm
   const db = await readDb();
   const week = db.attendanceWeeks.find((w) => w.id === req.params.id);
   if (!week) return res.status(404).json({ error: "Week not found." });
-  if (!canUseSubject(req.user, week.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  if (!canUseSubject(req.user, week.subjectId) || (week.section && !canUseSection(req.user, week.section))) return res.status(403).json({ error: "This attendance week is outside your assigned class scope." });
   const date = decodeURIComponent(req.params.date);
   const removedRecordIds = new Set(db.attendanceRecords.filter((r) => r.weekId === week.id && r.date === date).map((r) => r.id));
   week.dates = (week.dates || []).filter((d) => d !== date);
+  week.cancelledDates = (week.cancelledDates || []).filter((d) => d !== date);
   db.attendanceRecords = db.attendanceRecords.filter((r) => !(r.weekId === week.id && r.date === date));
   db.transactions = db.transactions.filter((t) => !(t.meta?.kind === "attendance" && removedRecordIds.has(t.meta.recordId)));
   syncWeekBonuses(db, week, req.user.id);
   await writeDb(db);
   res.json({ ok: true });
+});
+
+app.put("/api/admin/attendance/weeks/:id/dates/:date/cancelled", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const week = db.attendanceWeeks.find((item) => item.id === req.params.id);
+  if (!week) return res.status(404).json({ error: "Week not found." });
+  if (!canUseSubject(req.user, week.subjectId) || (week.section && !canUseSection(req.user, week.section))) return res.status(403).json({ error: "This attendance week is outside your assigned class scope." });
+  const date = decodeURIComponent(req.params.date);
+  if (!(week.dates || []).includes(date)) return res.status(404).json({ error: "Attendance date not found." });
+  const cancelled = req.body.cancelled !== false;
+  const cancelledDates = new Set(week.cancelledDates || []);
+  if (cancelled) cancelledDates.add(date);
+  else cancelledDates.delete(date);
+  week.cancelledDates = [...cancelledDates].sort();
+  db.attendanceRecords.filter((record) => record.weekId === week.id && record.date === date).forEach((record) => {
+    syncAttendanceTransaction(db, record, week, req.user.id);
+  });
+  syncWeekBonuses(db, week, req.user.id);
+  await writeDb(db);
+  res.json({ week, cancelled });
 });
 
 app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (req, res) => {
@@ -3940,14 +4085,15 @@ app.put("/api/admin/attendance/records", auth, requireStaffOrAssistant, async (r
   try { assistantAssignment = ensureAssistantAccess(db, req.user); } catch (err) { if (req.user.role === "student") return res.status(403).json({ error: err.message }); }
   const assistantCredit = assistantCreditRemark(db, req.user);
   const { weekId, date, studentId, status } = req.body;
-  if (!["", "check", "late"].includes(status)) return res.status(400).json({ error: "Invalid attendance status." });
+  if (!["", "check", "late", "excused"].includes(status)) return res.status(400).json({ error: "Invalid attendance status." });
   if (!assistantCanUseDate(req.user, assistantAssignment, date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const allowedStudentIds = actionScopedStudentIds(db, req.user);
   if (!allowedStudentIds.has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
   const week = db.attendanceWeeks.find((w) => w.id === weekId);
   if (!week) return res.status(404).json({ error: "Week not found." });
+  if ((week.cancelledDates || []).includes(date)) return res.status(400).json({ error: "This class date is marked Holiday / Cancelled." });
   const student = db.students.find((item) => item.id === studentId);
-  if (!student || !(student.subjectIds || []).includes(week.subjectId)) return res.status(400).json({ error: "This student is not enrolled in this subject." });
+  if (!student || !(student.subjectIds || []).includes(week.subjectId) || (week.section && student.section !== week.section)) return res.status(400).json({ error: "This student is not enrolled in this attendance class." });
   let record = db.attendanceRecords.find((r) => r.weekId === weekId && r.date === date && r.studentId === studentId);
   if (!record) {
     record = { id: randomUUID(), weekId, date, studentId, status: "" };
@@ -3968,11 +4114,13 @@ app.post("/api/admin/attendance/check-all", auth, requireStaffOrAssistant, async
   if (!assistantCanUseDate(req.user, assistantAssignment, req.body.date)) return res.status(403).json({ error: "Student assistants can only manage dates inside their assigned week." });
   const week = db.attendanceWeeks.find((w) => w.id === req.body.weekId);
   if (!week) return res.status(404).json({ error: "Week not found." });
+  if (!["", "check", "late", "excused"].includes(req.body.status ?? "check")) return res.status(400).json({ error: "Invalid attendance status." });
+  if ((week.cancelledDates || []).includes(req.body.date)) return res.status(400).json({ error: "This class date is marked Holiday / Cancelled." });
   const hasSectionScope = Object.prototype.hasOwnProperty.call(req.body, "section");
-  const requestedSection = String(req.body.section || "");
+  const requestedSection = String(hasSectionScope ? req.body.section || "" : week.section || "");
   const students = actionScopeStudents(db, req.user).filter((s) =>
     (s.subjectIds || []).includes(week.subjectId)
-    && (!hasSectionScope || String(s.section || "") === requestedSection)
+    && (!requestedSection || String(s.section || "") === requestedSection)
   );
   students.forEach((student) => {
     let record = db.attendanceRecords.find((r) => r.weekId === week.id && r.date === req.body.date && r.studentId === student.id);
@@ -4019,7 +4167,7 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
     db.transactions.push(tx(recitation.studentId, "recitation", amount, `Recitation: ${recitation.remarks || subjectName(db, recitation.subjectId)}`, recitation.createdAt, req.user.id, { kind: "recitation", recitationId: recitation.id, subjectId: recitation.subjectId }));
   });
   db.attendanceWeeks.filter((week) => week.subjectId === req.body.subjectId && (week.dates || []).includes(req.body.date || today())).forEach((week) => {
-    students.forEach((student) => syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), req.user.id, assistantCredit));
+    students.filter((student) => !week.section || student.section === week.section).forEach((student) => syncWeekBonus(db, student.id, week, "recitation-week-bonus", recitationBonus(db, student.id, week), Number(db.settings.recitation.weeklyBonus || 0), req.user.id, assistantCredit));
   });
   await writeDb(db);
   res.status(201).json({ createdCount: recitations.length, recitations });
