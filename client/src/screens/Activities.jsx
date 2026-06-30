@@ -83,7 +83,7 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
     </div>
     <Table columns={["Student", "Status", "Submitted At", "Individual Deadline", "Late", "Max Score", "Actual Score", "File", "Earned", "Remarks"]} rows={rows.map((r) => [
       r.studentName,
-      r.status || (r.submitted ? "Submitted" : "Missing"),
+      <ActivitySubmissionControl activity={activity} row={r} run={run} />,
       r.submittedAt ? formatActivityDateTime(r.submittedAt) : "-",
       <ActivityExtensionControl activity={activity} row={r} run={run} />,
       r.daysLate,
@@ -94,6 +94,28 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
+}
+
+function ActivitySubmissionControl({ activity, row, run }) {
+  const uploaded = row.submissionMethod === "upload";
+  const updateSubmission = (submitted) => {
+    if (!submitted && !confirm(`Mark ${row.studentName}'s physical work as not submitted? Their activity JCoins will be removed.`)) return;
+    run(() => put(`/admin/activities/${activity.id}/submissions`, {
+      studentId: row.studentId,
+      submitted,
+      submittedAt: submitted ? row.submittedAt : "",
+      submissionMethod: submitted ? "physical" : "",
+      score: row.score,
+      remarks: row.remarks
+    }), submitted ? "Physical work marked submitted" : "Submission removed");
+  };
+  return <div className="activity-submission-control">
+    <label className="check">
+      <input type="checkbox" checked={row.submitted} disabled={uploaded} onChange={(event) => updateSubmission(event.target.checked)} />
+      Submitted
+    </label>
+    <span className="muted-line">{row.status || (row.submitted ? "Submitted" : "Missing")}</span>
+  </div>;
 }
 
 function ActivityExtensionControl({ activity, row, run }) {

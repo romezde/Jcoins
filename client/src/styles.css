@@ -2866,6 +2866,15 @@ td button {
 .activity-upload-box input {
   min-width: 0;
 }
+.activity-submission-control {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+}
+.activity-submission-control .muted-line {
+  margin: 0;
+  font-size: 12px;
+}
 .activity-extension-control {
   display: grid;
   gap: 6px;

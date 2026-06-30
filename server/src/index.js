@@ -2867,13 +2867,15 @@ function hydrateActivities(db) {
       const files = activitySubmissionFiles(sub);
       const publicFiles = files.map(publicActivityFile);
       const file = files[0] || null;
+      const submissionMethod = sub.submissionMethod || (files.length ? "upload" : sub.submitted ? "physical" : "");
       return {
         studentId: s.id,
         studentName: s.name,
         extendedDeadline: sub.extendedDeadline || "",
         effectiveDeadline,
         submitted: !!sub.submitted,
-        status: sub.submitted ? late ? "Late" : "Submitted" : "Missing",
+        status: sub.submitted ? `${late ? "Late" : "Submitted"}${submissionMethod === "physical" ? " - Physical" : ""}` : "Missing",
+        submissionMethod,
         dateSubmitted: submittedAt,
         submittedAt,
         daysLate: late,
@@ -4281,6 +4283,8 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   sub.submitted = !!req.body.submitted;
   sub.submittedAt = req.body.submittedAt || req.body.dateSubmitted || (sub.submitted ? now() : "");
   sub.dateSubmitted = sub.submittedAt;
+  if (sub.submitted && req.body.submissionMethod === "physical") sub.submissionMethod = "physical";
+  else if (!sub.submitted) delete sub.submissionMethod;
   const late = sub.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, sub), sub.submittedAt) : 0;
   const maxScoreAllowed = activityMaxScoreAllowed(late);
   const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
@@ -4350,6 +4354,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), asy
   sub.submitted = true;
   sub.submittedAt = submittedAt;
   sub.dateSubmitted = submittedAt;
+  sub.submissionMethod = "upload";
   sub.studentNote = String(req.body.studentNote || "").slice(0, 500);
   sub.files = files.map((file) => ({ ...file, uploadedAt: submittedAt }));
   sub.file = sub.files[0] || null;
