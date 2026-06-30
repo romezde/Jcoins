@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Printer } from "lucide-react";
+import { FileCheck2, Pencil, Printer } from "lucide-react";
 import { del, post, postForm, put, today } from "../api.js";
 import { ActionModal, Checklist, DropdownChecklist, Field, Panel, Select, Table } from "../components/ui.jsx";
 import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
@@ -257,6 +257,7 @@ function QuizActions({ quiz, data, run }) {
   return <div className="inline">
     <QuizFormModal data={data} run={run} quiz={quiz} />
     <button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button>
+    <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
@@ -265,7 +266,7 @@ function QuizActions({ quiz, data, run }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -492,6 +493,67 @@ function printQuizPaper(quiz) {
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => printWindow.print(), 300);
+}
+
+function printQuizAnswerKey(quiz) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Allow pop-ups for JCoins to open the printable answer key.");
+    return;
+  }
+  printWindow.opener = null;
+  const answers = (quiz.questions || []).map((question, index) => printableAnswerKeyQuestion(question, index)).join("");
+  printWindow.document.write(`<!doctype html>
+    <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Answer Key</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.45; }
+      header { padding-bottom: 12px; border-bottom: 2px solid #111; }
+      h1 { margin: 0 0 5px; font-size: 20pt; }
+      .meta { margin: 0; color: #333; }
+      .instructions { margin: 18px 0; padding: 9px 11px; border: 1px solid #999; }
+      .question { margin: 0 0 15px; break-inside: avoid; page-break-inside: avoid; }
+      .prompt { margin-bottom: 7px; font-weight: 700; white-space: pre-wrap; }
+      .answer { margin-left: 22px; padding: 7px 9px; border-left: 3px solid #111; background: #f1f1f1; font-weight: 700; white-space: pre-wrap; }
+      footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #999; text-align: center; font-size: 9pt; color: #555; }
+    </style></head><body>
+      <header><h1>${escapeQuizHtml(quiz.title)} - Answer Key</h1><p class="meta">${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)} | ${escapeQuizHtml(quiz.difficulty)} | ${quiz.questions?.length || 0} items</p></header>
+      <p class="instructions"><strong>Correction key:</strong> Use this teacher copy to check the printed quiz.</p>
+      <main>${answers}</main>
+      <footer>JCoins Arena | ${escapeQuizHtml(quiz.title)} | Answer Key</footer>
+    </body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 300);
+}
+
+function printableAnswerKeyQuestion(question, index) {
+  const prompt = `<div class="prompt">${index + 1}. ${escapeQuizHtml(question.prompt)}</div>`;
+  let answer = "";
+  if (["multiple_choice", "true_false"].includes(question.type)) {
+    const optionIndex = (question.options || []).indexOf(question.answer);
+    answer = `${optionIndex >= 0 ? `${String.fromCharCode(65 + optionIndex)}. ` : ""}${question.answer ?? ""}`;
+  } else if (question.type === "multiple_select") {
+    const correctAnswers = question.answers || (Array.isArray(question.answer) ? question.answer : [question.answer]);
+    answer = correctAnswers.map((value) => {
+      const optionIndex = (question.options || []).indexOf(value);
+      return `${optionIndex >= 0 ? `${String.fromCharCode(65 + optionIndex)}. ` : ""}${value ?? ""}`;
+    }).join("; ");
+  } else if (question.type === "fill_blank") {
+    answer = (question.acceptedAnswers || [question.answer]).join(" / ");
+  } else if (question.type === "matching") {
+    const pairs = question.matchingPairs || [];
+    const choices = rotatePrintableChoices(pairs.map((pair) => pair.right));
+    answer = pairs.map((pair, pairIndex) => {
+      const choiceIndex = choices.indexOf(pair.right);
+      return `${pairIndex + 1}-${choiceIndex >= 0 ? String.fromCharCode(65 + choiceIndex) : "?"} (${pair.left} - ${pair.right})`;
+    }).join("\n");
+  } else {
+    const tolerance = Number(question.tolerance || 0);
+    answer = `${question.answer ?? ""}${tolerance > 0 ? ` (accepted tolerance: +/- ${tolerance})` : ""}`;
+  }
+  return `<section class="question">${prompt}<div class="answer">${escapeQuizHtml(answer)}</div></section>`;
 }
 
 function printableQuestion(question, index) {
