@@ -158,6 +158,7 @@ app.use(cors({
 app.use(express.json({ limit: "25mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
+  req.receivedAt = started;
   res.on("finish", () => {
     if (!req.path.startsWith("/api")) return;
     const duration = Date.now() - started;
@@ -2607,8 +2608,8 @@ function canStudentSeeQuiz(db, quiz, studentId) {
   return !!student && student.section === quiz.section && (student.subjectIds || []).includes(quiz.subjectId);
 }
 
-function isQuizDeadlineOpen(quiz) {
-  return !quiz.deadline || new Date(`${quiz.deadline}T23:59:59`).getTime() >= Date.now();
+function isQuizDeadlineOpen(quiz, at = Date.now()) {
+  return !quiz.deadline || new Date(`${quiz.deadline}T23:59:59`).getTime() >= at;
 }
 
 function canRetakeQuiz(quiz, studentId, submission) {
@@ -2723,6 +2724,26 @@ function scoreQuiz(quiz, answers = {}) {
   const rewardValue = Number(quiz.rewardValue || 0);
   const awarded = Math.round(rewardValue * Math.min(correct / passingScore, 1));
   return { correct, total, passingScore, rewardValue, awarded };
+}
+
+function cleanQuizSubmissionAnswers(quiz, input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  return Object.fromEntries((quiz.questions || []).map((question) => {
+    const value = source[question.id];
+    if (question.type === "multiple_select") {
+      const options = new Set(question.options || []);
+      return [question.id, [...new Set((Array.isArray(value) ? value : []).map(String).filter((answer) => options.has(answer)))].slice(0, options.size)];
+    }
+    if (question.type === "matching") {
+      const choices = new Set((question.matchingPairs || []).map((pair) => pair.right));
+      const submitted = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+      return [question.id, Object.fromEntries((question.matchingPairs || []).map((pair) => {
+        const answer = String(submitted[pair.id] || "");
+        return [pair.id, choices.has(answer) ? answer : ""];
+      }))];
+    }
+    return [question.id, String(value ?? "").slice(0, 500)];
+  }));
 }
 
 function quizAnswerIsCorrect(question, submitted) {
@@ -4521,7 +4542,7 @@ app.post("/api/student/quizzes/:id/start", auth, requireRole("student"), async (
   normalizeQuiz(quiz, db);
   if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
   if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
-  if (!isQuizDeadlineOpen(quiz)) return res.status(400).json({ error: "The deadline has passed." });
+  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return res.status(400).json({ error: "The deadline has passed." });
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
   if (!submission) {
     submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
@@ -4552,9 +4573,18 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
   if (!quiz) return res.status(404).json({ error: "Quiz not found." });
   normalizeQuiz(quiz, db);
   if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
-  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
-  if (!isQuizDeadlineOpen(quiz)) return res.status(400).json({ error: "The deadline has passed." });
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
+  const requestedAttemptId = String(req.body.attemptId || "").trim();
+  const completedAttempt = requestedAttemptId && submission?.attempts?.find((attempt) => attempt.id === requestedAttemptId);
+  if (completedAttempt) {
+    return res.json({
+      attempt: publicCompletedQuizAttempt(completedAttempt),
+      submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded },
+      alreadySubmitted: true
+    });
+  }
+  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
+  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return res.status(400).json({ error: "The deadline has passed." });
   if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return res.status(400).json({ error: "No retake is available for this quiz." });
   if (!submission) {
     submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
@@ -4562,14 +4592,16 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
   }
   const activeAttempt = submission.activeAttempt;
   if (quiz.timeLimitMinutes > 0 && !activeAttempt) return res.status(400).json({ error: "Start the quiz before submitting." });
-  if (activeAttempt?.dueAt && Date.now() > new Date(activeAttempt.dueAt).getTime() + 90 * 1000) {
+  if (requestedAttemptId && activeAttempt?.id && requestedAttemptId !== activeAttempt.id) return res.status(409).json({ error: "This quiz attempt is no longer active. Reload the quiz before submitting." });
+  if (activeAttempt?.dueAt && req.receivedAt > new Date(activeAttempt.dueAt).getTime() + 90 * 1000) {
     finishTimedOutQuizAttempt(quiz, submission);
     await writeDb(db);
     return res.status(400).json({ error: "Time is up. This attempt was recorded as timed out." });
   }
-  const answers = req.body.answers && typeof req.body.answers === "object" ? req.body.answers : {};
   const attemptQuiz = quizForAttempt(quiz, activeAttempt);
+  const answers = cleanQuizSubmissionAnswers(attemptQuiz, req.body.answers);
   const result = scoreQuiz(attemptQuiz, answers);
+  const submittedAt = new Date(req.receivedAt).toISOString();
   const attempt = {
     id: activeAttempt?.id || randomUUID(),
     attemptNumber: activeAttempt?.attemptNumber || submission.attempts.length + 1,
@@ -4584,7 +4616,7 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
     startedAt: activeAttempt?.startedAt || now(),
     dueAt: activeAttempt?.dueAt || "",
     timedOut: false,
-    submittedAt: now()
+    submittedAt
   };
   submission.attempts.push(attempt);
   submission.activeAttempt = null;

@@ -15,9 +15,15 @@ $env:NODE_ENV = "production"
 
 while ($true) {
   try {
+    # Windows PowerShell turns a native process' stderr into PowerShell errors.
+    # Keep backend error logging from terminating the Node server itself.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $node "src/index.js" 1>> $stdoutLog 2>> $stderrLog
     $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
   } catch {
+    $ErrorActionPreference = $previousErrorActionPreference
     $exitCode = 1
     "[$(Get-Date -Format o)] Launcher error: $($_.Exception.Message)" | Add-Content -LiteralPath $stderrLog
   }

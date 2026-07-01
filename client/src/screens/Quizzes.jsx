@@ -300,29 +300,37 @@ function StudentQuizzes({ data, run }) {
         <button type="button" className="soft" onClick={() => openQuiz(quiz)}>{quiz.canSubmit ? quiz.submission?.activeAttempt ? "Continue" : "Answer" : "View"}</button>
       ])} />
     </Panel>
-    {activeQuiz && <StudentQuizPanel quiz={activeQuiz} attempt={activeAttempt || activeQuiz.submission?.activeAttempt} run={run} onFinished={() => setActiveAttempt(null)} />}
+    {activeQuiz && <StudentQuizPanel quiz={activeQuiz} attempt={activeAttempt || activeQuiz.submission?.activeAttempt} studentId={data.student?.id} run={run} onFinished={() => setActiveAttempt(null)} />}
   </div>;
 }
 
-function StudentQuizPanel({ quiz, attempt, run, onFinished }) {
-  const [answers, setAnswers] = useState({});
+function StudentQuizPanel({ quiz, attempt, studentId, run, onFinished }) {
+  const answerStorageKey = quizAnswerStorageKey(studentId, quiz.id, attempt?.id);
+  const [answers, setAnswers] = useState(() => readSavedQuizAnswers(answerStorageKey));
   const [remaining, setRemaining] = useState(() => secondsRemaining(attempt));
   const submittedRef = useRef(false);
   const showAnswers = quiz.submission?.showAnswers;
   async function submitQuiz() {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    const result = await run(() => post(`/student/quizzes/${quiz.id}/submit`, { answers }), remaining <= 0 ? "Time ended; quiz submitted" : "Quiz submitted");
+    const result = await run(() => post(`/student/quizzes/${quiz.id}/submit`, { answers, attemptId: attempt?.id || "" }), remaining <= 0 ? "Time ended; quiz submitted" : "Quiz submitted");
     if (!result) submittedRef.current = false;
-    else onFinished();
+    else {
+      removeSavedQuizAnswers(answerStorageKey);
+      onFinished();
+    }
   }
   useEffect(() => {
     submittedRef.current = false;
+    setAnswers(readSavedQuizAnswers(answerStorageKey));
     setRemaining(secondsRemaining(attempt));
     if (!attempt?.dueAt) return undefined;
     const timer = window.setInterval(() => setRemaining(secondsRemaining(attempt)), 1000);
     return () => window.clearInterval(timer);
-  }, [attempt?.id, attempt?.dueAt]);
+  }, [attempt?.id, attempt?.dueAt, answerStorageKey]);
+  useEffect(() => {
+    saveQuizAnswers(answerStorageKey, answers);
+  }, [answerStorageKey, answers]);
   useEffect(() => {
     if (attempt?.dueAt && remaining <= 0 && quiz.canSubmit) submitQuiz();
   }, [remaining, attempt?.dueAt, quiz.canSubmit]);
@@ -340,6 +348,35 @@ function StudentQuizPanel({ quiz, attempt, run, onFinished }) {
       {quiz.canSubmit ? <button>Submit Quiz</button> : <p className="muted-line">This quiz is not open for a new submission.</p>}
     </form>
   </Panel>;
+}
+
+function quizAnswerStorageKey(studentId, quizId, attemptId) {
+  return `jcoins:quiz-answers:${studentId || "student"}:${quizId}:${attemptId || "untimed"}`;
+}
+
+function readSavedQuizAnswers(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveQuizAnswers(key, answers) {
+  try {
+    localStorage.setItem(key, JSON.stringify(answers || {}));
+  } catch {
+    // Quiz answering must continue even when browser storage is unavailable.
+  }
+}
+
+function removeSavedQuizAnswers(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing else is required after a successful server submission.
+  }
 }
 
 function StudentQuestionInput({ question, value, disabled, showAnswers, onChange }) {

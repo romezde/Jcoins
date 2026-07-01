@@ -3,6 +3,7 @@ $ErrorActionPreference = "Continue"
 $serverTask = "JCoins Local Server"
 $logDir = Join-Path $env:LOCALAPPDATA "JCoins\logs"
 $watchdogLog = Join-Path $logDir "watchdog.log"
+$failureCountPath = Join-Path $logDir "watchdog-failures.txt"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 function Write-WatchdogLog($message) {
@@ -11,11 +12,26 @@ function Write-WatchdogLog($message) {
 
 function Test-JCoinsApi {
   try {
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:4000/api/health" -TimeoutSec 4
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:4000/api/health" -TimeoutSec 8
     return $response.StatusCode -eq 200
   } catch {
     return $false
   }
+}
+
+function Reset-HealthFailures {
+  Set-Content -LiteralPath $failureCountPath -Value "0"
+}
+
+function Add-HealthFailure {
+  $count = 0
+  if (Test-Path -LiteralPath $failureCountPath) {
+    $stored = Get-Content -LiteralPath $failureCountPath -ErrorAction SilentlyContinue
+    if ($stored -match '^\d+$') { $count = [int]$stored }
+  }
+  $count++
+  Set-Content -LiteralPath $failureCountPath -Value $count
+  return $count
 }
 
 function Stop-UnmanagedJCoinsProcess {
@@ -35,7 +51,17 @@ if (-not $task) {
 }
 
 if ((Test-JCoinsApi) -and $task.State -eq "Running") {
+  Reset-HealthFailures
   exit 0
+}
+
+$listener = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($task.State -eq "Running" -and $listener) {
+  $failureCount = Add-HealthFailure
+  if ($failureCount -lt 3) {
+    Write-WatchdogLog "Health check timed out while Node is still listening (attempt $failureCount of 3). Leaving the busy server running."
+    exit 0
+  }
 }
 
 Write-WatchdogLog "The server is unhealthy or unmanaged. Recovering it."
@@ -58,6 +84,7 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
   Start-Sleep -Seconds 1
   if (Test-JCoinsApi) {
     Write-WatchdogLog "Local server recovered successfully."
+    Reset-HealthFailures
     exit 0
   }
 }
