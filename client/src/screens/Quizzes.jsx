@@ -46,7 +46,7 @@ export default function Quizzes({ data, run, role }) {
   });
   if (role === "student") return <StudentQuizzes data={data} run={run} />;
   return <div className="dashboard-grid">
-    <QuizFormModal data={data} run={run} />
+    <QuizFormModal data={data} run={run} onCreated={(quiz) => setSelectedClassKey(`${quiz.subjectId}::${quiz.section || "__none"}`)} />
     <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Quiz Classes" itemLabel="quizzes" />
     {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen>
       <div className="filter-bar">
@@ -70,9 +70,9 @@ export default function Quizzes({ data, run, role }) {
   </div>;
 }
 
-function QuizFormModal({ data, run, quiz = null }) {
-  const firstSubject = data.subjects[0]?.id || "";
-  const firstSection = data.sections[0] || "";
+function QuizFormModal({ data, run, quiz = null, onCreated }) {
+  const firstSubject = data.subjects.find((subject) => quizSectionsForSubject(data, subject.id).length)?.id || data.subjects[0]?.id || "";
+  const firstSection = preferredQuizSection(data, firstSubject);
   const [form, setForm] = useState(() => quiz ? {
     ...quiz,
     quizTypes: quizTypesForQuiz(quiz),
@@ -136,20 +136,23 @@ function QuizFormModal({ data, run, quiz = null }) {
     }
   }
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     if (hasAttempts && !confirm("Save changes to this quiz? Existing attempts and scores will keep their original version. New attempts and retakes will use the edited version.")) return;
-    run(() => quiz
+    const result = await run(() => quiz
       ? put(`/admin/quizzes/${quiz.id}`, cleanQuizForm(form))
       : post("/admin/quizzes", cleanQuizForm(form)), quiz ? "Quiz updated" : "Quiz draft created");
+    if (!quiz && result?.quiz) onCreated?.(result.quiz);
   }
+
+  const sectionOptions = hasAttempts ? [form.section] : quizSectionsForSubject(data, form.subjectId);
 
   return <ActionModal title={quiz ? `Edit ${quiz.title}` : "Create Quiz"} buttonLabel={quiz ? "Edit" : "Create Quiz"} icon={quiz ? Pencil : undefined}>
     <form onSubmit={submit}>
       <div className="form-grid two">
         <Field label="Quiz Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
-        <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, retakeStudentIds: [] })} options={hasAttempts ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
-        <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={(hasAttempts ? [form.section] : data.sections || []).map((section) => ({ value: section, label: section }))} />
+        <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, section: preferredQuizSection(data, subjectId, form.section), retakeStudentIds: [] })} options={hasAttempts ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
+        <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section, retakeStudentIds: [] })} options={sectionOptions.map((section) => ({ value: section, label: section }))} />
         <Select label="Difficulty" value={form.difficulty} onChange={(difficulty) => setForm({ ...form, difficulty })} options={(data.settings.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} (${item.points} JC)` }))} />
         <Field label="Deadline" type="date" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
         <Field label="Time Limit (minutes)" type="number" min="1" max="240" step="1" required value={form.timeLimitMinutes} onChange={(timeLimitMinutes) => setForm({ ...form, timeLimitMinutes })} />
@@ -462,6 +465,18 @@ function formatTimer(seconds) {
 
 function studentsForQuiz(data, form) {
   return (data.students || []).filter((student) => student.section === form.section && (student.subjectIds || []).includes(form.subjectId));
+}
+
+function quizSectionsForSubject(data, subjectId) {
+  return [...new Set((data.students || [])
+    .filter((student) => (student.subjectIds || []).includes(subjectId) && student.section)
+    .map((student) => student.section))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function preferredQuizSection(data, subjectId, currentSection = "") {
+  const sections = quizSectionsForSubject(data, subjectId);
+  return sections.includes(currentSection) ? currentSection : sections[0] || "";
 }
 
 function statusLabel(status) {

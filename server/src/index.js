@@ -4453,6 +4453,7 @@ function quizFromBody(db, body, user, existing = {}) {
   const timeLimitMinutes = Math.round(requestedTimeLimit);
   const retakeMode = ["none", "all", "selected"].includes(body.retakeMode ?? existing.retakeMode) ? body.retakeMode ?? existing.retakeMode : "none";
   const eligibleStudentIds = new Set(db.students.filter((student) => student.section === section && (student.subjectIds || []).includes(subjectId)).map((student) => student.id));
+  if (!eligibleStudentIds.size) throw new Error("No students are enrolled in this subject and section.");
   const requestedRetakeStudentIds = Array.isArray(body.retakeStudentIds ?? existing.retakeStudentIds) ? body.retakeStudentIds ?? existing.retakeStudentIds : [];
   const retakeStudentIds = retakeMode === "selected" ? [...new Set(requestedRetakeStudentIds)].filter((studentId) => eligibleStudentIds.has(studentId)) : [];
   return {
