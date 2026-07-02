@@ -1388,6 +1388,34 @@ input::placeholder {
   line-height: 1.04;
   text-shadow: 0 0 26px rgba(250,204,21,.36);
 }
+.guild-members-panel {
+  display: grid;
+  gap: 12px;
+}
+.guild-member-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.guild-member-list > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, .55);
+}
+.guild-member-list > div.current {
+  border-color: rgba(250, 204, 21, .7);
+}
+.guild-member-list span {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 850;
+}
 .guild-kicker {
   color: #bae6fd !important;
   font-size: 14px;

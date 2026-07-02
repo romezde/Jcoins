@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, Lock, Sparkles, Wand2 } from "lucide-react";
+import { CheckCircle2, Lock, Sparkles, Users, Wand2 } from "lucide-react";
 import { post, request } from "../api.js";
 import { Field, Panel, Select, Table } from "../components/ui.jsx";
 
@@ -34,12 +34,29 @@ function StudentGuildAssessment({ guild, run }) {
   const complete = answeredCount === questions.length && questions.length > 0;
 
   if (response?.revealed && response.assignedGuild) {
-    return <section className="panel wide guild-result-card">
-      <div className="section-title"><Sparkles /> Sorting Complete</div>
-      <p className="guild-kicker">Congratulations!</p>
-      <h2>Welcome to the {response.assignedGuild.name}</h2>
-      <p>{response.assignedGuild.message}</p>
-    </section>;
+    const members = response.members || [];
+    return <div className="dashboard-grid">
+      <section className="panel wide guild-result-card">
+        <div className="section-title"><Sparkles /> Sorting Complete</div>
+        <p className="guild-kicker">Congratulations!</p>
+        <h2>Welcome to the {response.assignedGuild.name}</h2>
+        <p>{response.assignedGuild.message}</p>
+      </section>
+      <section className="panel wide guild-members-panel">
+        <div className="section-head">
+          <div className="section-title"><Users /> Guild Members</div>
+          <span className="filter-count">{members.length} member{members.length === 1 ? "" : "s"}</span>
+        </div>
+        <p className="muted-line">{response.assignedGuild.name} | {response.section || "Your section"}</p>
+        <div className="guild-member-list">
+          {members.map((member) => <div className={member.isCurrentStudent ? "current" : ""} key={member.studentId}>
+            <Users size={17} />
+            <strong>{member.studentName}</strong>
+            {member.isCurrentStudent && <span>You</span>}
+          </div>)}
+        </div>
+      </section>
+    </div>;
   }
 
   if (response) {

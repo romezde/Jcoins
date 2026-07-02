@@ -501,13 +501,27 @@ function guildSystemView(db, user) {
   };
   if (user.role === "student") {
     const response = guildResponse({ ...db, guildSystem: system }, user.studentId);
+    const student = db.students.find((item) => item.id === user.studentId);
+    const responseByStudentId = new Map(system.responses.map((item) => [item.studentId, item]));
+    const members = response?.revealed && response.assignedGuildId && student
+      ? db.students
+        .filter((item) => item.section === student.section)
+        .filter((item) => {
+          const memberResponse = responseByStudentId.get(item.id);
+          return memberResponse?.revealed && memberResponse.assignedGuildId === response.assignedGuildId;
+        })
+        .map((item) => ({ studentId: item.id, studentName: item.name, isCurrentStudent: item.id === student.id }))
+        .sort((a, b) => Number(b.isCurrentStudent) - Number(a.isCurrentStudent) || a.studentName.localeCompare(b.studentName))
+      : [];
     return {
       ...base,
       response: response ? {
         submittedAt: response.submittedAt,
         revealed: !!response.revealed,
         revealedAt: response.revealedAt || "",
-        assignedGuild: response.revealed ? publicGuild(response.assignedGuildId) : null
+        assignedGuild: response.revealed ? publicGuild(response.assignedGuildId) : null,
+        section: response.revealed ? student?.section || "" : "",
+        members
       } : null
     };
   }
