@@ -86,7 +86,12 @@ export default function People({ data, run, role, view = "students" }) {
     }
     let result = null;
     await run(async () => {
-      result = await post("/admin/students/bulk", { students: importRows });
+      try {
+        result = await post("/admin/students/bulk", { students: importRows });
+      } catch (err) {
+        setImportError(err.message);
+        throw err;
+      }
       setImportRows([]);
       const imported = `${result.createdCount} student${result.createdCount === 1 ? "" : "s"} imported`;
       const updated = result.updatedCount ? `; ${result.updatedCount} existing student${result.updatedCount === 1 ? "" : "s"} updated` : "";
