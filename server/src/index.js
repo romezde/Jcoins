@@ -1642,13 +1642,31 @@ function rateLimit({ windowMs, max, prefix, key = (req) => req.ip }) {
   };
 }
 
-const loginIpLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, prefix: "login-ip" });
-const loginAccountLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  prefix: "login-account",
-  key: (req) => String(req.body?.username || "").trim().toLowerCase()
-});
+const loginIpLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 1200, prefix: "login-ip" });
+const loginFailureBuckets = new Map();
+
+function recordLoginFailure(req, username) {
+  const nowMs = Date.now();
+  const keys = [`account:${username}`, `ip:${req.ip || "unknown"}`];
+  let highestCount = 0;
+  keys.forEach((key) => {
+    let bucket = loginFailureBuckets.get(key);
+    if (!bucket || bucket.resetAt <= nowMs) bucket = { count: 0, resetAt: nowMs + 15 * 60 * 1000 };
+    bucket.count += 1;
+    loginFailureBuckets.set(key, bucket);
+    highestCount = Math.max(highestCount, bucket.count);
+  });
+  if (loginFailureBuckets.size > 5000) {
+    for (const [key, bucket] of loginFailureBuckets.entries()) {
+      if (bucket.resetAt <= nowMs) loginFailureBuckets.delete(key);
+    }
+  }
+  return Math.min(1500, Math.max(0, highestCount - 3) * 150);
+}
+
+function clearLoginFailures(username) {
+  loginFailureBuckets.delete(`account:${username}`);
+}
 const registrationLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 250, prefix: "registration-ip" });
 const registrationAccountLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -3248,10 +3266,16 @@ app.get("/api/admin/storage-health", auth, requireRole("admin"), async (req, res
   res.json(await storageHealthSummary(db));
 });
 
-app.post("/api/auth/login", loginIpLimit, loginAccountLimit, async (req, res) => {
+app.post("/api/auth/login", loginIpLimit, async (req, res) => {
   const db = await readDb();
-  const user = db.users.find((u) => u.username.toLowerCase() === String(req.body.username || "").toLowerCase());
-  if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.passwordHash))) return res.status(401).json({ error: "Invalid username or password" });
+  const username = String(req.body.username || "").trim().toLowerCase();
+  const user = db.users.find((u) => u.username.toLowerCase() === username);
+  if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.passwordHash))) {
+    const delayMs = recordLoginFailure(req, username);
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return res.status(401).json({ error: "Invalid username or password" });
+  }
+  clearLoginFailures(username);
   res.json({ token: sign(user), user: publicUser(user) });
 });
 
