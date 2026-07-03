@@ -2803,6 +2803,33 @@ function normalizeQuizTextAnswer(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function publicStudentQuizQuestions(quiz, { showAnswers = false, shuffle = true } = {}) {
+  const questions = shuffle && quiz.shuffleQuestions ? [...quiz.questions].sort(() => Math.random() - 0.5) : quiz.questions;
+  return questions.map((question) => {
+    const canShuffleOptions = ["multiple_choice", "multiple_select"].includes(question.type);
+    const options = shuffle && quiz.shuffleOptions && canShuffleOptions ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
+    const studentQuestion = {
+      id: question.id,
+      type: question.type,
+      prompt: question.prompt,
+      options
+    };
+    if (question.type === "matching") {
+      studentQuestion.matchingItems = question.matchingPairs.map((pair) => ({ id: pair.id, text: pair.left }));
+      studentQuestion.options = question.matchingPairs.map((pair) => pair.right);
+      if (shuffle && quiz.shuffleOptions) studentQuestion.options.sort(() => Math.random() - 0.5);
+    }
+    if (showAnswers) {
+      studentQuestion.answer = question.answer;
+      if (question.type === "fill_blank") studentQuestion.acceptedAnswers = question.acceptedAnswers;
+      if (question.type === "multiple_select") studentQuestion.answers = question.answers;
+      if (question.type === "matching") studentQuestion.matchingAnswers = Object.fromEntries(question.matchingPairs.map((pair) => [pair.id, pair.right]));
+      if (["numerical", "computation"].includes(question.type)) studentQuestion.tolerance = question.tolerance;
+    }
+    return studentQuestion;
+  });
+}
+
 function publicQuiz(quiz, db, user) {
   const submissions = quiz.submissions || [];
   const students = quizStudents(db, quiz);
@@ -2837,39 +2864,18 @@ function publicQuiz(quiz, db, user) {
     const latest = submission?.attempts?.at(-1);
     const showAnswers = canShowQuizAnswers(quiz);
     const activeQuiz = quizForAttempt(quiz, submission?.activeAttempt);
-    const visibleQuestions = activeQuiz.shuffleQuestions ? [...activeQuiz.questions].sort(() => Math.random() - 0.5) : activeQuiz.questions;
+    const latestQuiz = latest ? quizForAttempt(quiz, latest) : null;
     return {
       ...studentBase,
       rows: [],
-      questions: visibleQuestions.map((question) => {
-        const canShuffleOptions = ["multiple_choice", "multiple_select"].includes(question.type);
-        const options = quiz.shuffleOptions && canShuffleOptions ? [...question.options].sort(() => Math.random() - 0.5) : question.options;
-        const studentQuestion = {
-          id: question.id,
-          type: question.type,
-          prompt: question.prompt,
-          options
-        };
-        if (question.type === "matching") {
-          studentQuestion.matchingItems = question.matchingPairs.map((pair) => ({ id: pair.id, text: pair.left }));
-          studentQuestion.options = question.matchingPairs.map((pair) => pair.right);
-          if (quiz.shuffleOptions) studentQuestion.options.sort(() => Math.random() - 0.5);
-        }
-        if (showAnswers) {
-          studentQuestion.answer = question.answer;
-          if (question.type === "fill_blank") studentQuestion.acceptedAnswers = question.acceptedAnswers;
-          if (question.type === "multiple_select") studentQuestion.answers = question.answers;
-          if (question.type === "matching") studentQuestion.matchingAnswers = Object.fromEntries(question.matchingPairs.map((pair) => [pair.id, pair.right]));
-          if (["numerical", "computation"].includes(question.type)) studentQuestion.tolerance = question.tolerance;
-        }
-        return studentQuestion;
-      }),
+      questions: publicStudentQuizQuestions(activeQuiz),
       submission: submission ? {
         attempts: submission.attempts.length,
         latest: publicCompletedQuizAttempt(latest),
         bestScore: submission.bestScore,
         bestAwarded: submission.bestAwarded,
         showAnswers,
+        reviewQuestions: showAnswers && latestQuiz ? publicStudentQuizQuestions(latestQuiz, { showAnswers: true, shuffle: false }) : [],
         activeAttempt: publicActiveQuizAttempt(submission.activeAttempt)
       } : null,
       canSubmit: quiz.status === "published" && isQuizDeadlineOpen(quiz) && canRetakeQuiz(quiz, user.studentId, submission)

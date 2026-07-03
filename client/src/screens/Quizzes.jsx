@@ -343,14 +343,80 @@ function StudentQuizPanel({ quiz, attempt, studentId, run, onFinished }) {
       {attempt?.dueAt && <strong className={remaining <= 60 ? "quiz-timer warning" : "quiz-timer"}>{formatTimer(remaining)}</strong>}
     </div>
     {quiz.submission?.latest && <div className="notice">Latest score: {quiz.submission.latest.correct}/{quiz.submission.latest.total}. Best reward: {quiz.submission.bestAwarded} JCoins.</div>}
+    {showAnswers && quiz.submission?.latest && <QuizAnswerReview questions={quiz.submission.reviewQuestions || []} attempt={quiz.submission.latest} />}
     <form className="quiz-answer-form" onSubmit={(event) => { event.preventDefault(); submitQuiz(); }}>
       {quiz.questions.map((question, index) => <section key={question.id} className="quiz-question-card">
         <strong>{index + 1}. {question.prompt}</strong>
-        <StudentQuestionInput question={question} value={answers[question.id]} disabled={!quiz.canSubmit} showAnswers={showAnswers} onChange={(value) => setAnswers({ ...answers, [question.id]: value })} />
+        <StudentQuestionInput question={question} value={answers[question.id]} disabled={!quiz.canSubmit} showAnswers={false} onChange={(value) => setAnswers({ ...answers, [question.id]: value })} />
       </section>)}
       {quiz.canSubmit ? <button>Submit Quiz</button> : <p className="muted-line">This quiz is not open for a new submission.</p>}
     </form>
   </Panel>;
+}
+
+function QuizAnswerReview({ questions, attempt }) {
+  if (!questions.length) return null;
+  return <section className="quiz-review" aria-label="Quiz answer review">
+    <h3>Answer Review</h3>
+    <p className="muted-line">Compare your latest submitted answers with the correct answers.</p>
+    {questions.map((question, index) => {
+      const submitted = attempt.answers?.[question.id];
+      const correct = reviewAnswerIsCorrect(question, submitted);
+      return <article key={question.id} className={`quiz-review-card ${correct ? "is-correct" : "is-incorrect"}`}>
+        <div className="quiz-review-heading">
+          <strong>{index + 1}. {question.prompt}</strong>
+          <span>{correct ? "Correct" : "Incorrect"}</span>
+        </div>
+        {question.type === "matching" ? <div className="quiz-review-matches">
+          {(question.matchingItems || []).map((item) => <div key={item.id}>
+            <strong>{item.text}</strong>
+            <span>Your answer: {displayReviewAnswer(submitted?.[item.id])}</span>
+            <span>Correct answer: {displayReviewAnswer(question.matchingAnswers?.[item.id])}</span>
+          </div>)}
+        </div> : <div className="quiz-review-answers">
+          <div><small>Your answer</small><strong>{displayReviewAnswer(submitted)}</strong></div>
+          <div><small>Correct answer</small><strong>{displayCorrectReviewAnswer(question)}</strong></div>
+        </div>}
+      </article>;
+    })}
+  </section>;
+}
+
+function displayReviewAnswer(value) {
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "No answer";
+  const text = String(value ?? "").trim();
+  return text || "No answer";
+}
+
+function displayCorrectReviewAnswer(question) {
+  if (question.type === "multiple_select") return displayReviewAnswer(question.answers);
+  if (question.type === "fill_blank") return displayReviewAnswer(question.acceptedAnswers);
+  const tolerance = Number(question.tolerance || 0);
+  return `${displayReviewAnswer(question.answer)}${tolerance > 0 ? ` (+/- ${tolerance})` : ""}`;
+}
+
+function reviewAnswerIsCorrect(question, submitted) {
+  if (question.type === "fill_blank") {
+    const value = normalizeReviewAnswer(submitted);
+    return !!value && (question.acceptedAnswers || [question.answer]).some((answer) => normalizeReviewAnswer(answer) === value);
+  }
+  if (question.type === "multiple_select") {
+    const expected = [...new Set(question.answers || [])].map(String).sort();
+    const received = [...new Set(Array.isArray(submitted) ? submitted : [])].map(String).sort();
+    return expected.length === received.length && expected.every((answer, index) => answer === received[index]);
+  }
+  if (question.type === "matching") {
+    return (question.matchingItems || []).every((item) => String(submitted?.[item.id] || "") === String(question.matchingAnswers?.[item.id] || ""));
+  }
+  if (["numerical", "computation"].includes(question.type)) {
+    const received = Number(String(submitted ?? "").replaceAll(",", ""));
+    return Number.isFinite(received) && Math.abs(received - Number(question.answer)) <= Number(question.tolerance || 0);
+  }
+  return String(submitted ?? "") === String(question.answer ?? "");
+}
+
+function normalizeReviewAnswer(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function quizAnswerStorageKey(studentId, quizId, attemptId) {
