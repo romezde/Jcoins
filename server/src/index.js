@@ -47,6 +47,7 @@ const USER_ROW_PREFIX = "user:";
 const ATTENDANCE_RECORD_ROW_PREFIX = "attendance-record:";
 const RECITATION_ROW_PREFIX = "recitation:";
 const ACTIVITY_ROW_PREFIX = "activity:";
+const GROUP_ACTIVITY_ROW_PREFIX = "group-activity:";
 const QUIZ_ROW_PREFIX = "quiz:";
 const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
@@ -73,6 +74,7 @@ const STORAGE_ROW_TYPES = [
   { key: "attendanceRecords", label: "Attendance records", prefix: ATTENDANCE_RECORD_ROW_PREFIX },
   { key: "recitations", label: "Recitations", prefix: RECITATION_ROW_PREFIX },
   { key: "activities", label: "Activities", prefix: ACTIVITY_ROW_PREFIX },
+  { key: "groupActivities", label: "Guild group activities", prefix: GROUP_ACTIVITY_ROW_PREFIX },
   { key: "quizzes", label: "Quizzes", prefix: QUIZ_ROW_PREFIX },
   { key: "requests", label: "Requests", prefix: REQUEST_ROW_PREFIX },
   { key: "feedback", label: "Feedback", prefix: FEEDBACK_ROW_PREFIX },
@@ -202,6 +204,7 @@ const persistedUserHashes = new Map();
 const persistedAttendanceRecordHashes = new Map();
 const persistedRecitationHashes = new Map();
 const persistedActivityHashes = new Map();
+const persistedGroupActivityHashes = new Map();
 const persistedQuizHashes = new Map();
 const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
@@ -546,6 +549,214 @@ function guildSystemView(db, user) {
   };
 }
 
+function normalizeGroupActivity(activity, db) {
+  activity.title = String(activity.title || "Group Activity").trim().slice(0, 160);
+  activity.subjectId = String(activity.subjectId || "");
+  activity.section = String(activity.section || "").trim();
+  activity.difficulty = quizDifficulties.includes(activity.difficulty) ? activity.difficulty : "Easy";
+  activity.rewardValue = quizRewardValue(db, activity.difficulty);
+  activity.deadline = normalizeActivityDeadline(activity.deadline);
+  activity.instructions = String(activity.instructions || "").trim().slice(0, 3000);
+  activity.votes = Array.isArray(activity.votes) ? activity.votes : [];
+  activity.guildResults = Array.isArray(activity.guildResults) ? activity.guildResults : [];
+  activity.guildResults.forEach((result) => {
+    result.guildId = String(result.guildId || "");
+    result.leaderId = String(result.leaderId || "");
+    result.teacherScore = result.teacherScore == null || result.teacherScore === "" ? null : Math.max(0, Math.min(100, Number(result.teacherScore)));
+    result.memberGrades = result.memberGrades && typeof result.memberGrades === "object" && !Array.isArray(result.memberGrades) ? result.memberGrades : {};
+  });
+  return activity;
+}
+
+function groupActivityMembers(db, activity, guildId) {
+  const responseByStudentId = new Map((db.guildSystem?.responses || []).map((response) => [response.studentId, response]));
+  return (db.students || [])
+    .filter((student) => student.section === activity.section && (student.subjectIds || []).includes(activity.subjectId))
+    .filter((student) => {
+      const response = responseByStudentId.get(student.id);
+      return response?.revealed && response.assignedGuildId === guildId;
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+function groupActivityResult(activity, guildId, create = false) {
+  let result = (activity.guildResults || []).find((item) => item.guildId === guildId);
+  if (!result && create) {
+    result = { guildId, leaderId: "", leaderFinalizedAt: "", teacherScore: null, teacherGradedAt: "", teacherGradedBy: "", memberGrades: {}, distributedAt: "" };
+    activity.guildResults.push(result);
+  }
+  return result || null;
+}
+
+function groupVoteSummary(db, activity, guildId, members = groupActivityMembers(db, activity, guildId)) {
+  const memberIds = new Set(members.map((member) => member.id));
+  const counts = Object.fromEntries(members.map((member) => [member.id, 0]));
+  (activity.votes || []).forEach((vote) => {
+    if (vote.guildId === guildId && memberIds.has(vote.studentId) && memberIds.has(vote.candidateId)) counts[vote.candidateId] += 1;
+  });
+  const ranking = members
+    .map((member) => ({ studentId: member.id, studentName: member.name, votes: counts[member.id] || 0 }))
+    .sort((a, b) => b.votes - a.votes || a.studentName.localeCompare(b.studentName));
+  return { ranking, winner: ranking[0]?.votes > 0 ? ranking[0] : null };
+}
+
+function groupActivityDeadlineOpen(activity) {
+  const deadline = parseActivityDateTime(activity.deadline, true);
+  return !!deadline && Date.now() <= deadline.getTime();
+}
+
+function syncGroupActivityRewards(db, activity, result, createdBy) {
+  const members = groupActivityMembers(db, activity, result.guildId);
+  const memberIds = new Set(members.map((member) => member.id));
+  db.transactions = db.transactions.filter((transaction) => !(
+    transaction.meta?.groupActivityId === activity.id
+    && transaction.meta?.guildId === result.guildId
+    && ["group-activity", "group-activity-leader"].includes(transaction.meta?.kind)
+  ));
+  if (result.teacherScore == null || !result.leaderId || !memberIds.has(result.leaderId)) return;
+  const grades = { ...(result.memberGrades || {}), [result.leaderId]: Number(result.teacherScore) };
+  result.memberGrades = grades;
+  members.forEach((member) => {
+    const grade = grades[member.id];
+    if (grade == null || grade === "") return;
+    const reward = Math.round(Number(activity.rewardValue || 0) * Math.max(0, Math.min(100, Number(grade))) / 100);
+    if (reward) db.transactions.push(tx(member.id, "group_activity", reward, `${activity.title} - group activity`, now(), createdBy, {
+      kind: "group-activity",
+      groupActivityId: activity.id,
+      guildId: result.guildId,
+      subjectId: activity.subjectId,
+      section: activity.section,
+      difficulty: activity.difficulty,
+      grade: Number(grade)
+    }));
+  });
+  db.transactions.push(tx(result.leaderId, "group_activity_leader", 20, `${activity.title} - group leader bonus`, now(), createdBy, {
+    kind: "group-activity-leader",
+    groupActivityId: activity.id,
+    guildId: result.guildId,
+    subjectId: activity.subjectId,
+    section: activity.section
+  }));
+}
+
+function reconcileGroupActivities(db, createdBy = "system") {
+  (db.groupActivities || []).forEach((activity) => {
+    normalizeGroupActivity(activity, db);
+    activity.votes = (activity.votes || []).filter((vote) => {
+      const members = groupActivityMembers(db, activity, vote.guildId);
+      const memberIds = new Set(members.map((member) => member.id));
+      return memberIds.has(vote.studentId) && memberIds.has(vote.candidateId);
+    });
+    (activity.guildResults || []).forEach((result) => {
+      const memberIds = new Set(groupActivityMembers(db, activity, result.guildId).map((member) => member.id));
+      if (result.leaderId && !memberIds.has(result.leaderId)) {
+        result.leaderId = "";
+        result.leaderFinalizedAt = "";
+        result.teacherScore = null;
+        result.teacherGradedAt = "";
+        result.teacherGradedBy = "";
+        result.memberGrades = {};
+        result.distributedAt = "";
+      } else {
+        result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {}).filter(([studentId]) => memberIds.has(studentId)));
+      }
+      syncGroupActivityRewards(db, activity, result, createdBy);
+    });
+  });
+}
+
+function publicGroupActivity(db, activity, user) {
+  normalizeGroupActivity(activity, db);
+  const base = {
+    id: activity.id,
+    title: activity.title,
+    subjectId: activity.subjectId,
+    subjectName: subjectName(db, activity.subjectId),
+    section: activity.section,
+    difficulty: activity.difficulty,
+    rewardValue: activity.rewardValue,
+    deadline: activity.deadline,
+    instructions: activity.instructions,
+    createdAt: activity.createdAt,
+    updatedAt: activity.updatedAt || activity.createdAt,
+    hasProgress: !!((activity.votes || []).length || (activity.guildResults || []).some((result) => result.teacherScore != null))
+  };
+  if (user.role === "student") {
+    const response = guildResponse(db, user.studentId);
+    if (!response?.revealed) return null;
+    const guildId = response.assignedGuildId;
+    const members = groupActivityMembers(db, activity, guildId);
+    if (!members.some((member) => member.id === user.studentId)) return null;
+    const result = groupActivityResult(activity, guildId);
+    const myVote = (activity.votes || []).find((vote) => vote.studentId === user.studentId)?.candidateId || "";
+    const isLeader = result?.leaderId === user.studentId;
+    const visibleGrades = isLeader ? result?.memberGrades || {} : result?.teacherScore != null ? { [user.studentId]: result.memberGrades?.[user.studentId] } : {};
+    return {
+      ...base,
+      guildId,
+      guildName: publicGuild(guildId)?.name || "Guild",
+      members: members.map((member) => ({ studentId: member.id, studentName: member.name })),
+      myVote,
+      canVote: !result?.leaderId && groupActivityDeadlineOpen(activity),
+      leaderId: result?.leaderId || "",
+      leaderName: result?.leaderId ? studentName(db, result.leaderId) : "",
+      teacherScore: result?.teacherScore,
+      memberGrades: visibleGrades,
+      myGrade: result?.memberGrades?.[user.studentId] ?? null,
+      canDistribute: isLeader && result?.teacherScore != null
+    };
+  }
+  const guildRows = guilds.map((guild) => {
+    const members = groupActivityMembers(db, activity, guild.id);
+    if (!members.length) return null;
+    const result = groupActivityResult(activity, guild.id);
+    const summary = groupVoteSummary(db, activity, guild.id, members);
+    return {
+      guildId: guild.id,
+      guildName: guild.name,
+      members: members.map((member) => ({ studentId: member.id, studentName: member.name })),
+      voteRanking: summary.ranking,
+      proposedLeaderId: summary.winner?.studentId || "",
+      proposedLeaderName: summary.winner?.studentName || "",
+      leaderId: result?.leaderId || "",
+      leaderName: result?.leaderId ? studentName(db, result.leaderId) : "",
+      teacherScore: result?.teacherScore,
+      memberGrades: result?.memberGrades || {},
+      distributedAt: result?.distributedAt || ""
+    };
+  }).filter(Boolean);
+  return { ...base, guildRows };
+}
+
+function hydrateGroupActivities(db, user) {
+  return (db.groupActivities || [])
+    .filter((activity) => {
+      if (user.role === "student") {
+        const student = db.students.find((item) => item.id === user.studentId);
+        return !!student && student.section === activity.section && (student.subjectIds || []).includes(activity.subjectId);
+      }
+      return canUseSubject(user, activity.subjectId) && canUseSection(user, activity.section);
+    })
+    .map((activity) => publicGroupActivity(db, activity, user))
+    .filter(Boolean)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function groupActivityInput(db, body, user, existing = {}) {
+  const title = String(body.title ?? existing.title ?? "").trim().slice(0, 160);
+  const subjectId = String(body.subjectId ?? existing.subjectId ?? "");
+  const section = String(body.section ?? existing.section ?? "").trim();
+  const difficulty = quizDifficulties.includes(body.difficulty ?? existing.difficulty) ? body.difficulty ?? existing.difficulty : "Easy";
+  const deadline = normalizeActivityDeadline(body.deadline ?? existing.deadline);
+  const instructions = String(body.instructions ?? existing.instructions ?? "").trim().slice(0, 3000);
+  if (!title) throw new Error("Activity title is required.");
+  if (!db.subjects.some((subject) => subject.id === subjectId)) throw new Error("Choose an existing subject.");
+  if (!db.sections.includes(section)) throw new Error("Choose an existing section.");
+  if (!canUseSubject(user, subjectId) || !canUseSection(user, section)) throw new Error("This class is outside your assigned scope.");
+  if (!parseActivityDateTime(deadline, true)) throw new Error("Choose a valid deadline.");
+  return { title, subjectId, section, difficulty, rewardValue: quizRewardValue(db, difficulty), deadline, instructions };
+}
+
 async function ensureDb() {
   if (!ensureDbPromise) {
     ensureDbPromise = (async () => {
@@ -641,6 +852,7 @@ async function createInitialDb() {
     recitations: [],
     studentAssistants: [],
     activities: [],
+    groupActivities: [],
     quizzes: [],
     shopItems: defaultShopItems,
     sales: [],
@@ -925,6 +1137,7 @@ async function readDb() {
     if (normalizeStudentAssistantAssignment(assignment)) changed = true;
   });
   db.activities ||= [];
+  db.groupActivities ||= [];
   db.quizzes ||= [];
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
   db.shopItems ||= [];
@@ -1021,6 +1234,7 @@ async function persistDb(db) {
     const attendanceRecords = extractEntityRows(dbToStore, "attendanceRecords", ATTENDANCE_RECORD_ROW_PREFIX);
     const recitations = extractEntityRows(dbToStore, "recitations", RECITATION_ROW_PREFIX);
     const activities = extractEntityRows(dbToStore, "activities", ACTIVITY_ROW_PREFIX);
+    const groupActivities = extractEntityRows(dbToStore, "groupActivities", GROUP_ACTIVITY_ROW_PREFIX);
     const quizzes = extractEntityRows(dbToStore, "quizzes", QUIZ_ROW_PREFIX);
     const requests = extractEntityRows(dbToStore, "requests", REQUEST_ROW_PREFIX);
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
@@ -1046,6 +1260,7 @@ async function persistDb(db) {
       syncEntityRows(attendanceRecords.items, attendanceRecords.rowIds, ATTENDANCE_RECORD_ROW_PREFIX, persistedAttendanceRecordHashes),
       syncEntityRows(recitations.items, recitations.rowIds, RECITATION_ROW_PREFIX, persistedRecitationHashes),
       syncEntityRows(activities.items, activities.rowIds, ACTIVITY_ROW_PREFIX, persistedActivityHashes),
+      syncEntityRows(groupActivities.items, groupActivities.rowIds, GROUP_ACTIVITY_ROW_PREFIX, persistedGroupActivityHashes),
       syncEntityRows(quizzes.items, quizzes.rowIds, QUIZ_ROW_PREFIX, persistedQuizHashes),
       syncEntityRows(requests.items, requests.rowIds, REQUEST_ROW_PREFIX, persistedRequestHashes),
       syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes),
@@ -1095,6 +1310,7 @@ async function readSupabaseDb() {
     db.attendanceRecords,
     db.recitations,
     db.activities,
+    db.groupActivities,
     db.quizzes,
     db.requests,
     db.feedback,
@@ -1119,6 +1335,7 @@ async function readSupabaseDb() {
     readEntityRows(ATTENDANCE_RECORD_ROW_PREFIX, db.attendanceRecords || [], persistedAttendanceRecordHashes),
     readEntityRows(RECITATION_ROW_PREFIX, db.recitations || [], persistedRecitationHashes),
     readEntityRows(ACTIVITY_ROW_PREFIX, db.activities || [], persistedActivityHashes),
+    readEntityRows(GROUP_ACTIVITY_ROW_PREFIX, db.groupActivities || [], persistedGroupActivityHashes),
     readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes),
     readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes),
     readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes),
@@ -1255,6 +1472,7 @@ function reconstructedDataCounts(db) {
     attendanceRecords: (db.attendanceRecords || []).length,
     recitations: (db.recitations || []).length,
     activities: (db.activities || []).length,
+    groupActivities: (db.groupActivities || []).length,
     activityFiles: activityFileReferences,
     quizzes: (db.quizzes || []).length,
     requests: (db.requests || []).length,
@@ -1728,10 +1946,23 @@ function purgeStudentData(db, studentId) {
   (db.activities || []).forEach((activity) => {
     activity.submissions = (activity.submissions || []).filter((submission) => submission.studentId !== studentId);
   });
+  (db.groupActivities || []).forEach((activity) => {
+    activity.votes = (activity.votes || []).filter((vote) => vote.studentId !== studentId && vote.candidateId !== studentId);
+    (activity.guildResults || []).forEach((result) => {
+      if (result.leaderId === studentId) {
+        result.leaderId = "";
+        result.teacherScore = null;
+        result.memberGrades = {};
+      } else if (result.memberGrades) {
+        delete result.memberGrades[studentId];
+      }
+    });
+  });
   (db.quizzes || []).forEach((quiz) => {
     quiz.submissions = (quiz.submissions || []).filter((submission) => submission.studentId !== studentId);
     quiz.retakeStudentIds = (quiz.retakeStudentIds || []).filter((id) => id !== studentId);
   });
+  reconcileGroupActivities(db);
 }
 
 function purgeOrphanStudentUsers(db) {
@@ -3249,6 +3480,7 @@ function filteredOverview(db, user, modules = null) {
         : [],
     schedules: includeSchedules ? scheduleRows(db, visibleScheduleRows) : [],
     guildSystem: includeGuild ? guildSystemView(db, user) : {},
+    groupActivities: includeGuild ? hydrateGroupActivities(db, user) : [],
     auditLogs: includeAudit ? auditLogRows(db, scopedAuditLogs(db, user, studentIds, subjectIds, sectionIds)).slice(0, 500) : []
   };
 }
@@ -3556,6 +3788,7 @@ app.post("/api/admin/guild/start-ceremony", auth, requireRole("admin", "teacher"
 app.post("/api/admin/guild/reset", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   db.guildSystem = defaultGuildSystem();
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.json({ guildSystem: guildSystemView(db, req.user) });
 });
@@ -3595,6 +3828,7 @@ app.post("/api/admin/guild/random-distribute", auth, requireRole("admin", "teach
     db.guildSystem.responses.push(response);
     return { studentId: student.id, studentName: student.name, section: student.section || "", guild: publicGuild(assignedGuildId) };
   });
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.json({ section, assignedCount: assignments.length, assignments });
 });
@@ -3671,6 +3905,7 @@ app.post("/api/admin/guild/students/:id/assign", auth, requireRole("admin"), asy
   response.assignedBy = req.user.id;
   response.assignedAt = now();
   response.source = response.source || "assessment";
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.json({ studentId: student.id, studentName: student.name, guild: publicGuild(guild.id) });
 });
@@ -3682,6 +3917,7 @@ app.post("/api/admin/guild/students/:id/remove", auth, requireRole("admin"), asy
   if (!student) return res.status(404).json({ error: "Student not found." });
   const before = db.guildSystem.responses.length;
   db.guildSystem.responses = db.guildSystem.responses.filter((response) => response.studentId !== student.id);
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.json({ studentId: student.id, studentName: student.name, removed: before !== db.guildSystem.responses.length });
 });
@@ -3719,6 +3955,130 @@ app.post("/api/student/guild/submit", auth, requireRole("student"), async (req, 
   res.status(201).json({ submittedAt });
 });
 
+app.post("/api/admin/guild/group-activities", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = groupActivityInput(db, req.body, req.user);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const activity = { id: randomUUID(), ...input, votes: [], guildResults: [], createdAt: now(), createdBy: req.user.id, updatedAt: now() };
+  db.groupActivities.push(activity);
+  await writeDb(db);
+  res.status(201).json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
+app.put("/api/admin/guild/group-activities/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId) || !canUseSection(req.user, activity.section)) return res.status(403).json({ error: "This activity is outside your assigned scope." });
+  let input;
+  try {
+    input = groupActivityInput(db, req.body, req.user, activity);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const hasProgress = !!((activity.votes || []).length || (activity.guildResults || []).some((result) => result.teacherScore != null));
+  if (hasProgress && (input.subjectId !== activity.subjectId || input.section !== activity.section)) return res.status(409).json({ error: "Subject and section are locked after voting or grading starts." });
+  Object.assign(activity, input, { updatedAt: now() });
+  (activity.guildResults || []).forEach((result) => {
+    if (result.teacherScore != null) syncGroupActivityRewards(db, activity, result, req.user.id);
+  });
+  await writeDb(db);
+  res.json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
+app.delete("/api/admin/guild/group-activities/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId) || !canUseSection(req.user, activity.section)) return res.status(403).json({ error: "This activity is outside your assigned scope." });
+  db.groupActivities = db.groupActivities.filter((item) => item.id !== activity.id);
+  db.transactions = db.transactions.filter((transaction) => transaction.meta?.groupActivityId !== activity.id);
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
+app.post("/api/student/guild/group-activities/:id/vote", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  const response = guildResponse(db, req.user.studentId);
+  if (!response?.revealed) return res.status(403).json({ error: "Your guild must be revealed before voting." });
+  const guildId = response.assignedGuildId;
+  const members = groupActivityMembers(db, activity, guildId);
+  const memberIds = new Set(members.map((member) => member.id));
+  if (!memberIds.has(req.user.studentId)) return res.status(403).json({ error: "This group activity is not assigned to you." });
+  const result = groupActivityResult(activity, guildId);
+  if (result?.leaderId) return res.status(409).json({ error: "The group leader is already finalized." });
+  if (!groupActivityDeadlineOpen(activity)) return res.status(400).json({ error: "Leader voting has closed." });
+  const candidateId = String(req.body.candidateId || "");
+  if (!memberIds.has(candidateId)) return res.status(400).json({ error: "Choose a member of your guild." });
+  activity.votes = (activity.votes || []).filter((vote) => vote.studentId !== req.user.studentId);
+  activity.votes.push({ studentId: req.user.studentId, candidateId, guildId, createdAt: now() });
+  activity.updatedAt = now();
+  await writeDb(db);
+  res.json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
+app.put("/api/admin/guild/group-activities/:id/grade", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId) || !canUseSection(req.user, activity.section)) return res.status(403).json({ error: "This activity is outside your assigned scope." });
+  const guildId = String(req.body.guildId || "");
+  const members = groupActivityMembers(db, activity, guildId);
+  if (!members.length) return res.status(400).json({ error: "This guild has no eligible members in the class." });
+  const score = Number(req.body.score);
+  if (!Number.isFinite(score) || score < 0 || score > 100) return res.status(400).json({ error: "Teacher grade must be from 0 to 100." });
+  const result = groupActivityResult(activity, guildId, true);
+  if (!result.leaderId) {
+    const winner = groupVoteSummary(db, activity, guildId, members).winner;
+    if (!winner) return res.status(400).json({ error: "At least one student must vote before the leader can be finalized." });
+    result.leaderId = winner.studentId;
+    result.leaderFinalizedAt = now();
+  }
+  result.teacherScore = Math.round(score);
+  result.teacherGradedAt = now();
+  result.teacherGradedBy = req.user.id;
+  result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {})
+    .filter(([studentId]) => members.some((member) => member.id === studentId))
+    .map(([studentId, grade]) => [studentId, Math.min(result.teacherScore, Math.max(0, Number(grade || 0)))]));
+  result.memberGrades[result.leaderId] = result.teacherScore;
+  syncGroupActivityRewards(db, activity, result, req.user.id);
+  activity.updatedAt = now();
+  await writeDb(db);
+  res.json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
+app.put("/api/student/guild/group-activities/:id/distribute", auth, requireRole("student"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  const response = guildResponse(db, req.user.studentId);
+  const guildId = response?.assignedGuildId || "";
+  const result = groupActivityResult(activity, guildId);
+  if (!result || result.leaderId !== req.user.studentId || result.teacherScore == null) return res.status(403).json({ error: "Only the finalized leader can distribute member grades." });
+  const members = groupActivityMembers(db, activity, guildId);
+  const incoming = req.body.grades && typeof req.body.grades === "object" && !Array.isArray(req.body.grades) ? req.body.grades : {};
+  const memberGrades = { [result.leaderId]: Number(result.teacherScore) };
+  for (const member of members) {
+    if (member.id === result.leaderId) continue;
+    if (!Object.prototype.hasOwnProperty.call(incoming, member.id)) return res.status(400).json({ error: `Give a grade to ${member.name}.` });
+    const grade = Number(incoming[member.id]);
+    if (!Number.isFinite(grade) || grade < 0 || grade > Number(result.teacherScore)) return res.status(400).json({ error: `Grades must be from 0 to ${result.teacherScore}.` });
+    memberGrades[member.id] = Math.round(grade);
+  }
+  result.memberGrades = memberGrades;
+  result.distributedAt = now();
+  syncGroupActivityRewards(db, activity, result, req.user.id);
+  activity.updatedAt = now();
+  await writeDb(db);
+  res.json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
 app.post("/api/admin/subjects", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   const name = String(req.body.name || "").trim();
@@ -3751,6 +4111,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   const removedRecordIds = new Set(db.attendanceRecords.filter((record) => removedWeekIds.has(record.weekId)).map((record) => record.id));
   const removedRecitationIds = new Set(db.recitations.filter((recitation) => recitation.subjectId === subjectId).map((recitation) => recitation.id));
   const removedActivityIds = new Set(db.activities.filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
+  const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
   const removedQuizIds = new Set((db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId).map((quiz) => quiz.id));
   db.subjects = db.subjects.filter((s) => s.id !== subjectId);
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
@@ -3759,6 +4120,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   db.schedules = (db.schedules || []).filter((schedule) => schedule.subjectId !== subjectId);
   db.recitations = db.recitations.filter((recitation) => recitation.subjectId !== subjectId);
   db.activities = db.activities.filter((activity) => activity.subjectId !== subjectId);
+  db.groupActivities = (db.groupActivities || []).filter((activity) => activity.subjectId !== subjectId);
   db.quizzes = (db.quizzes || []).filter((quiz) => quiz.subjectId !== subjectId);
   db.transactions = db.transactions.filter((transaction) => {
     const meta = transaction.meta || {};
@@ -3767,6 +4129,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
       && !removedRecordIds.has(meta.recordId)
       && !removedRecitationIds.has(meta.recitationId)
       && !removedActivityIds.has(meta.activityId)
+      && !removedGroupActivityIds.has(meta.groupActivityId)
       && !removedQuizIds.has(meta.quizId);
   });
   await writeDb(db);
@@ -3791,6 +4154,9 @@ app.delete("/api/admin/sections/:name", auth, requireRole("admin", "teacher"), a
   if (!canUseSection(req.user, name)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
   db.sections = db.sections.filter((section) => section !== name);
   db.schedules = (db.schedules || []).filter((schedule) => schedule.section !== name);
+  const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.section === name).map((activity) => activity.id));
+  db.groupActivities = (db.groupActivities || []).filter((activity) => activity.section !== name);
+  db.transactions = db.transactions.filter((transaction) => !removedGroupActivityIds.has(transaction.meta?.groupActivityId));
   db.students.forEach((student) => {
     if (student.section === name) student.section = "";
   });
@@ -3978,6 +4344,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
     created.push({ id: student.id, name: student.name, username: item.username });
   }
   db.sections.sort();
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.status(created.length ? 201 : 200).json({ createdCount: created.length, created, updatedCount: updated.length, updated, skippedCount: skipped.length, skipped });
 });
@@ -4015,6 +4382,7 @@ app.put("/api/admin/students/:id", auth, requireRole("admin", "teacher"), async 
   student.name = String(req.body.name || student.name);
   student.section = nextSection;
   student.subjectIds = nextSubjects;
+  reconcileGroupActivities(db, req.user.id);
   await writeDb(db);
   res.json({ student });
 });

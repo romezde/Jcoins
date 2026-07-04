@@ -782,6 +782,7 @@ function buildSearchResults(tabs, data) {
   (data?.feedback || []).forEach((entry) => add(list, "Feedback", entry.title, "Feedback", `${entry.studentName} ${entry.category} ${entry.status} ${entry.feature}`));
   (data?.schedules || []).forEach((schedule) => add(list, "Schedule", `${schedule.subjectName} ${schedule.day}`, "Schedule", `${schedule.section} ${schedule.startTime} ${schedule.endTime} ${schedule.room} ${schedule.type}`));
   (data?.guildSystem?.students || []).forEach((student) => add(list, "Guild", student.studentName, "Guild Affinity", `${student.section} ${student.status}`));
+  (data?.groupActivities || []).forEach((activity) => add(list, "Group Activity", activity.title, "Guild Affinity", `${activity.subjectName} ${activity.section} ${activity.difficulty}`));
   return list;
 }
 
@@ -905,5 +906,5 @@ function insertTab(tabs, after, tab) {
 
 function shouldShowGuildTab(data) {
   const guild = data?.guildSystem;
-  return guild?.status === "open" || !!guild?.response;
+  return guild?.status === "open" || !!guild?.response || !!data?.groupActivities?.length;
 }

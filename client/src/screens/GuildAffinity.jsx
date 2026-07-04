@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { CheckCircle2, Lock, Sparkles, Users, Wand2 } from "lucide-react";
 import { post, request } from "../api.js";
 import { Field, Panel, Select, Table } from "../components/ui.jsx";
+import GuildGroupActivities from "../components/GuildGroupActivities.jsx";
 
 const likert = [
   { value: 1, label: "Strongly Disagree" },
@@ -22,8 +23,14 @@ const confettiColors = ["#facc15", "#22d3ee", "#fb7185", "#86efac", "#a78bfa", "
 
 export default function GuildAffinity({ data, run, role }) {
   const guild = data.guildSystem || {};
-  if (role === "student") return <StudentGuildAssessment guild={guild} run={run} />;
-  return <StaffGuildCeremony guild={guild} run={run} role={role} revealSeconds={data.settings?.guild?.revealSeconds} />;
+  if (role === "student") return <>
+    <StudentGuildAssessment guild={guild} run={run} />
+    <GuildGroupActivities data={data} run={run} role={role} />
+  </>;
+  return <>
+    <GuildGroupActivities data={data} run={run} role={role} />
+    <StaffGuildCeremony guild={guild} run={run} role={role} revealSeconds={data.settings?.guild?.revealSeconds} />
+  </>;
 }
 
 function StudentGuildAssessment({ guild, run }) {

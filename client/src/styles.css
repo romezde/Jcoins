@@ -1035,7 +1035,7 @@ input::placeholder {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: 100;
   display: grid;
   place-items: center;
   padding: 18px;
@@ -1043,7 +1043,7 @@ input::placeholder {
   backdrop-filter: blur(8px);
 }
 .loading-backdrop {
-  z-index: 95;
+  z-index: 110;
   background: rgba(2, 6, 23, .78);
 }
 .modal-card {
@@ -1391,6 +1391,105 @@ input::placeholder {
 .guild-members-panel {
   display: grid;
   gap: 12px;
+}
+.guild-group-activities {
+  margin-bottom: 18px;
+}
+.guild-group-heading {
+  display: grid;
+  gap: 6px;
+}
+.guild-group-heading .section-title,
+.guild-grade-distribution .section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.guild-group-instructions {
+  margin: 0;
+  padding: 12px;
+  border-left: 3px solid #22d3ee;
+  background: rgba(15, 23, 42, .55);
+  white-space: pre-wrap;
+}
+.guild-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.guild-group-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .5);
+}
+.guild-group-card .section-head > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.guild-group-card .section-head small {
+  color: var(--muted);
+}
+.guild-leader-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fde68a;
+  font-weight: 900;
+}
+.guild-vote-summary,
+.guild-vote-options,
+.guild-student-vote,
+.guild-grade-distribution {
+  display: grid;
+  gap: 9px;
+}
+.guild-vote-summary > strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.guild-vote-summary > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+.guild-teacher-grade {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.guild-grade-result {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.guild-grade-result span {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, .55);
+  color: var(--muted);
+}
+.guild-grade-result strong {
+  color: var(--text);
+  font-size: 20px;
+}
+.guild-grade-distribution {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.guild-member-grade-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 .guild-member-list {
   display: grid;
@@ -4017,6 +4116,15 @@ td button {
   .guild-admin-hero,
   .guild-intro {
     grid-template-columns: 1fr;
+  }
+  .guild-group-grid,
+  .guild-grade-result,
+  .guild-member-grade-grid,
+  .guild-teacher-grade {
+    grid-template-columns: 1fr;
+  }
+  .guild-group-card {
+    padding: 11px;
   }
   .guild-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
