@@ -299,11 +299,20 @@ function Users({ data, run, onReset }) {
   return <Panel title="Teachers and Accounts" wide defaultOpen>
     <Table columns={["Username", "Role", "Subjects", "Sections", "Must Change", "Actions"]} rows={accounts.map((u) => [
       u.username,
-      <select value={u.role} onChange={(e) => run(() => put(`/admin/users/${u.id}`, { role: e.target.value, subjectIds: u.subjectIds, sectionIds: u.sectionIds || [] }))}>{["admin", "teacher", "student", "display"].map((r) => <option key={r}>{r}</option>)}</select>,
+      <select className="account-role" value={u.role} onChange={(event) => {
+        const nextRole = event.target.value;
+        if (nextRole === u.role) return;
+        if (!confirm(`Change ${u.username}'s role from ${u.role} to ${nextRole}?`)) return;
+        run(() => put(`/admin/users/${u.id}`, { role: nextRole, subjectIds: u.subjectIds || [], sectionIds: u.sectionIds || [] }), "Account role updated");
+      }}>{["admin", "teacher", "display"].map((accountRole) => <option key={accountRole} value={accountRole}>{accountRole}</option>)}</select>,
       <DropdownChecklist label="Subjects" compact items={data.subjects} selected={u.subjectIds || []} onChange={(ids) => run(() => put(`/admin/users/${u.id}`, { subjectIds: ids, sectionIds: u.sectionIds || [], role: u.role }))} />,
       <DropdownChecklist label="Sections" compact items={(data.sections || []).map((section) => ({ id: section, name: section }))} selected={u.sectionIds || []} onChange={(ids) => run(() => put(`/admin/users/${u.id}`, { subjectIds: u.subjectIds || [], sectionIds: ids, role: u.role }))} />,
       u.mustChangePassword ? "Yes" : "No",
-      <div className="inline"><button onClick={() => run(() => onReset(u.id, u.username), "Password reset")}>Reset Pass</button><button className="danger" onClick={() => confirm(`Remove ${u.username}?`) && run(() => del(`/admin/users/${u.id}`), "Account removed")}>Remove</button></div>
+      <div className="inline">
+        {u.role === "teacher" && <button onClick={() => confirm(`Make ${u.username} an admin? They will receive full access to JCoins.`) && run(() => put(`/admin/users/${u.id}`, { role: "admin", subjectIds: u.subjectIds || [], sectionIds: u.sectionIds || [] }), "Teacher promoted to admin")}>Make Admin</button>}
+        <button className="soft" onClick={() => run(() => onReset(u.id, u.username), "Password reset")}>Reset Pass</button>
+        <button className="danger" onClick={() => confirm(`Remove ${u.username}?`) && run(() => del(`/admin/users/${u.id}`), "Account removed")}>Remove</button>
+      </div>
     ])} />
   </Panel>;
 }
