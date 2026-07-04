@@ -21,9 +21,14 @@ export default function Attendance({ data, run, role }) {
   const currentGroup = monthGroups.find((group) => group.key === currentMonth);
   const visibleWeeks = currentGroup?.weeks || [];
   const canManageWeeks = role !== "student";
+  function openWeekForClass() {
+    if (!activeClass) return;
+    setWeek((current) => ({ ...current, subjectId: activeClass.subjectId, section: activeClass.section }));
+    window.setTimeout(() => window.dispatchEvent(new Event("jcoins:open-attendance-week-modal")), 0);
+  }
 
   return <div className="dashboard-grid">
-    {canManageWeeks && <ActionModal title="Add Attendance Week">
+    {canManageWeeks && <ActionModal title="Add Attendance Week" openEvent="jcoins:open-attendance-week-modal">
       <form onSubmit={(e) => { e.preventDefault(); run(() => post("/admin/attendance/weeks", week), "Week added"); }}>
         <Select label="Subject" value={week.subjectId} onChange={(v) => setWeek({ ...week, subjectId: v })} options={data.subjects} />
         <Select label="Section" value={week.section} onChange={(v) => setWeek({ ...week, section: v })} options={(data.sections || []).map((section) => ({ value: section, label: section }))} />
@@ -36,7 +41,10 @@ export default function Attendance({ data, run, role }) {
     {activeClass && <section className="panel wide attendance-month-panel">
       <div className="section-head">
         <div className="section-title">{activeClass.subjectName} · {activeClass.sectionLabel}</div>
-        <span className="filter-count">{visibleWeeks.length} week{visibleWeeks.length === 1 ? "" : "s"}</span>
+        <div className="inline">
+          <span className="filter-count">{visibleWeeks.length} week{visibleWeeks.length === 1 ? "" : "s"}</span>
+          {canManageWeeks && <button type="button" onClick={openWeekForClass}>Add Week to This Class</button>}
+        </div>
       </div>
       {monthGroups.length > 0 && <div className="tabs attendance-month-tabs">
         {monthGroups.map((group) => <button type="button" key={group.key} className={currentMonth === group.key ? "active" : ""} onClick={() => setActiveMonth(group.key)}>{group.label}</button>)}
