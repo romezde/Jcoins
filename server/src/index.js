@@ -2423,6 +2423,10 @@ function canUseSection(user, section = "") {
   return !sectionIds.size || sectionIds.has(section || "");
 }
 
+function canUseActivity(user, activity) {
+  return canUseSubject(user, activity.subjectId) && (!activity.section || canUseSection(user, activity.section));
+}
+
 function appearanceItem(db, itemId) {
   return db.appearanceItems.find((item) => item.id === itemId);
 }
@@ -3244,11 +3248,12 @@ function publicActivityFile(file, index) {
 
 function hydrateActivities(db) {
   return db.activities.map((a) => {
+    a.section = String(a.section || "").trim();
     a.deadline = normalizeActivityDeadline(a.deadline);
     a.maxScore = 100;
     const base = activityBase(db, a.type);
     const submissions = a.submissions || [];
-    const rows = db.students.filter((s) => (s.subjectIds || []).includes(a.subjectId)).map((s) => {
+    const rows = db.students.filter((s) => (s.subjectIds || []).includes(a.subjectId) && (!a.section || s.section === a.section)).map((s) => {
       const sub = submissions.find((x) => x.studentId === s.id) || {};
       const submittedAt = sub.submittedAt || sub.dateSubmitted || "";
       const effectiveDeadline = activityDeadlineForSubmission(a, sub);
@@ -3307,26 +3312,28 @@ function syncActivityRewards(db, activity, createdBy) {
     if (transaction) {
       transaction.amount = earned;
       transaction.note = activity.title;
-      transaction.meta = { ...(transaction.meta || {}), subjectId: activity.subjectId };
+      transaction.meta = { ...(transaction.meta || {}), subjectId: activity.subjectId, section: activity.section || "" };
     } else if (earned) {
-      db.transactions.push(tx(submission.studentId, "activity", earned, activity.title, submittedAt || now(), createdBy, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+      db.transactions.push(tx(submission.studentId, "activity", earned, activity.title, submittedAt || now(), createdBy, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId, section: activity.section || "" }));
     }
   }
 }
 
-function hydrateActivitySummaries(db, visibleStudents = null, subjectIds = null) {
+function hydrateActivitySummaries(db, visibleStudents = null, subjectIds = null, sectionIds = null) {
   const studentPool = visibleStudents || db.students;
   return db.activities
-    .filter((activity) => !subjectIds || subjectIds.has(activity.subjectId))
+    .filter((activity) => (!subjectIds || subjectIds.has(activity.subjectId)) && (!sectionIds?.size || !activity.section || sectionIds.has(activity.section)))
     .map((activity) => {
       activity.deadline = normalizeActivityDeadline(activity.deadline);
-      const students = studentPool.filter((student) => (student.subjectIds || []).includes(activity.subjectId));
+      activity.section = String(activity.section || "").trim();
+      const students = studentPool.filter((student) => (student.subjectIds || []).includes(activity.subjectId) && (!activity.section || student.section === activity.section));
       const submittedCount = students.filter((student) => (activity.submissions || []).some((submission) => submission.studentId === student.id && submission.submitted)).length;
       return {
         id: activity.id,
         title: activity.title,
         subjectId: activity.subjectId,
         subjectName: subjectName(db, activity.subjectId),
+        section: activity.section,
         dateCreated: activity.dateCreated,
         deadline: activity.deadline,
         type: activity.type,
@@ -3518,6 +3525,7 @@ function wantsModule(modules, name) {
 function filteredOverview(db, user, modules = null) {
   const students = scopeStudents(db, user);
   const studentIds = new Set(students.map((s) => s.id));
+  const currentStudent = user.role === "student" ? db.students.find((student) => student.id === user.studentId) : null;
   const subjectIds = user.role === "teacher" ? new Set(user.subjectIds || []) : null;
   const sectionIds = user.role === "teacher" ? new Set(user.sectionIds || []) : null;
   const visibleScheduleRows = db.schedules.filter((schedule) => {
@@ -3545,8 +3553,16 @@ function filteredOverview(db, user, modules = null) {
   const includeGuild = wantsModule(modules, "guild") || wantsModule(modules, "settings");
   const includePeople = wantsModule(modules, "people");
   const includeAudit = ["admin", "teacher"].includes(user.role) && wantsModule(modules, "audit");
-  const fullActivities = includeActivities ? hydrateActivities(db).filter((a) => !subjectIds || subjectIds.has(a.subjectId)).map((activity) => sectionIds?.size ? { ...activity, rows: activity.rows.filter((row) => studentIds.has(row.studentId)), tracker: `${activity.rows.filter((row) => studentIds.has(row.studentId) && row.submitted).length}/${activity.rows.filter((row) => studentIds.has(row.studentId)).length}` } : activity) : [];
-  const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds) : fullActivities;
+  const fullActivities = includeActivities ? hydrateActivities(db)
+    .filter((activity) => (!subjectIds || subjectIds.has(activity.subjectId))
+      && (!sectionIds?.size || !activity.section || sectionIds.has(activity.section))
+      && (user.role !== "student" || !activity.section || activity.section === currentStudent?.section))
+    .map((activity) => {
+      if (!sectionIds?.size && user.role !== "student") return activity;
+      const rows = activity.rows.filter((row) => studentIds.has(row.studentId));
+      return { ...activity, rows, tracker: `${rows.filter((row) => row.submitted).length}/${rows.length}` };
+    }) : [];
+  const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds, sectionIds) : fullActivities;
   const transactions = includeTransactions ? db.transactions.filter((t) => studentIds.has(t.studentId)).map((t) => ({ ...t, studentName: studentName(db, t.studentId) })).sort(byDateDesc) : [];
   const dashboard = includeDashboard ? dashboardSummary(db, user, students, studentIds, includeActivities ? fullActivities : activitySummaries) : null;
   return {
@@ -4712,8 +4728,10 @@ app.post("/api/admin/recitations", auth, requireStaffOrAssistant, async (req, re
 
 app.post("/api/admin/activities", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
-  if (!canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
-  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, dateCreated: req.body.dateCreated || today(), deadline: normalizeActivityDeadline(req.body.deadline), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", maxScore: 100, remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
+  const section = String(req.body.section || "").trim();
+  if (!db.subjects.some((subject) => subject.id === req.body.subjectId) || !canUseSubject(req.user, req.body.subjectId)) return res.status(403).json({ error: "This subject is outside your assigned class scope." });
+  if (section && (!db.sections.includes(section) || !canUseSection(req.user, section))) return res.status(400).json({ error: "Choose an available section." });
+  const activity = { id: randomUUID(), title: req.body.title || "Activity", subjectId: req.body.subjectId, section, dateCreated: req.body.dateCreated || today(), deadline: normalizeActivityDeadline(req.body.deadline), type: req.body.type || db.settings.activities.types[0]?.name || "Custom", maxScore: 100, remarks: req.body.remarks || "", submissions: [], createdAt: now(), createdBy: req.user.id };
   db.activities.push(activity);
   await writeDb(db);
   res.status(201).json({ activity });
@@ -4723,16 +4741,19 @@ app.put("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), asyn
   const db = await readDb();
   const activity = db.activities.find((item) => item.id === req.params.id);
   if (!activity) return res.status(404).json({ error: "Activity not found." });
-  if (!canUseSubject(req.user, activity.subjectId)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  if (!canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
   const subjectId = String(req.body.subjectId || activity.subjectId);
+  const section = String(req.body.section ?? activity.section ?? "").trim();
   if (!db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
-  if (subjectId !== activity.subjectId && (activity.submissions || []).length) {
-    return res.status(400).json({ error: "The subject cannot be changed after submission records exist." });
+  if (section && (!db.sections.includes(section) || !canUseSection(req.user, section))) return res.status(400).json({ error: "Choose an available section." });
+  if ((subjectId !== activity.subjectId || section !== String(activity.section || "")) && (activity.submissions || []).length) {
+    return res.status(400).json({ error: "The subject and section cannot be changed after submission records exist." });
   }
   const type = String(req.body.type || activity.type);
   if (!db.settings.activities.types.some((item) => item.name === type)) return res.status(400).json({ error: "Choose an existing activity type." });
   activity.title = String(req.body.title ?? activity.title).trim().slice(0, 120) || "Activity";
   activity.subjectId = subjectId;
+  activity.section = section;
   activity.dateCreated = String(req.body.dateCreated ?? activity.dateCreated).slice(0, 10) || today();
   activity.deadline = normalizeActivityDeadline(req.body.deadline ?? activity.deadline);
   (activity.submissions || []).forEach((submission) => {
@@ -4755,7 +4776,7 @@ app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), a
   const db = await readDb();
   const activity = db.activities.find((a) => a.id === req.params.id);
   if (!activity) return res.status(404).json({ error: "Activity not found." });
-  if (!canUseSubject(req.user, activity.subjectId)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  if (!canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
   db.activities = db.activities.filter((a) => a.id !== activity.id);
   db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id));
   await writeDb(db);
@@ -4768,8 +4789,8 @@ app.put("/api/admin/activities/:id/extensions", auth, requireRole("admin", "teac
   if (!activity) return res.status(404).json({ error: "Activity not found." });
   const studentId = String(req.body.studentId || "");
   const student = db.students.find((item) => item.id === studentId);
-  if (!canUseSubject(req.user, activity.subjectId) || !scopedStudentIds(db, req.user).has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
-  if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(400).json({ error: "This student is not enrolled in the activity subject." });
+  if (!canUseActivity(req.user, activity) || !scopedStudentIds(db, req.user).has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  if (!student || !(student.subjectIds || []).includes(activity.subjectId) || (activity.section && student.section !== activity.section)) return res.status(400).json({ error: "This student is not enrolled in the activity class." });
   let extendedDeadline;
   try {
     extendedDeadline = activityExtensionDeadline(activity, req.body.extendedDeadline);
@@ -4809,7 +4830,9 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   const activity = db.activities.find((a) => a.id === req.params.id);
   if (!activity) return res.status(404).json({ error: "Activity not found." });
   const allowedStudentIds = scopedStudentIds(db, req.user);
-  if (!allowedStudentIds.has(req.body.studentId) || !canUseSubject(req.user, activity.subjectId)) return res.status(403).json({ error: "This activity submission is outside your assigned class scope." });
+  if (!allowedStudentIds.has(req.body.studentId) || !canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity submission is outside your assigned class scope." });
+  const targetStudent = db.students.find((student) => student.id === req.body.studentId);
+  if (!targetStudent || !(targetStudent.subjectIds || []).includes(activity.subjectId) || (activity.section && targetStudent.section !== activity.section)) return res.status(400).json({ error: "This student is not enrolled in the activity class." });
   let sub = activity.submissions.find((s) => s.studentId === req.body.studentId);
   if (!sub) {
     sub = { studentId: req.body.studentId };
@@ -4836,7 +4859,7 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   };
   const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === sub.studentId);
   if (existing) existing.amount = row.earned;
-  else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+  else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId, section: activity.section || "" }));
   await writeDb(db);
   res.json({ submission: sub });
 });
@@ -4848,11 +4871,12 @@ app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, asy
   const student = db.students.find((s) => s.id === req.params.studentId);
   if (!student) return res.status(404).json({ error: "Student not found." });
   const staffAllowed = (req.user.role === "admin" || req.user.role === "teacher")
-    && canUseSubject(req.user, activity.subjectId)
+    && canUseActivity(req.user, activity)
     && scopedStudentIds(db, req.user).has(student.id);
   const studentAllowed = req.user.role === "student"
     && req.user.studentId === student.id
-    && (student.subjectIds || []).includes(activity.subjectId);
+    && (student.subjectIds || []).includes(activity.subjectId)
+    && (!activity.section || student.section === activity.section);
   if (!staffAllowed && !studentAllowed) return res.status(403).json({ error: "This activity file is outside your class scope." });
   const sub = (activity.submissions || []).find((submission) => submission.studentId === student.id);
   const files = activitySubmissionFiles(sub);
@@ -4875,7 +4899,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), act
     const activity = db.activities.find((a) => a.id === req.params.id);
     if (!activity) return res.status(404).json({ error: "Activity not found." });
     const student = db.students.find((s) => s.id === req.user.studentId);
-    if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(403).json({ error: "This activity is not assigned to you." });
+    if (!student || !(student.subjectIds || []).includes(activity.subjectId) || (activity.section && student.section !== activity.section)) return res.status(403).json({ error: "This activity is not assigned to your class." });
     let files;
     try {
       files = temporaryFiles.length ? cleanMultipartActivityFiles(temporaryFiles) : cleanActivityFiles(req.body);
@@ -4911,7 +4935,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), act
     };
     const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === req.user.studentId);
     if (existing) existing.amount = row.earned;
-    else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+    else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId, section: activity.section || "" }));
     await writeDb(db);
     queuePushToUsers(db, staffUserIdsForStudent(db, req.user.studentId), {
       title: "Activity submitted",

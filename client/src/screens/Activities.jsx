@@ -9,10 +9,10 @@ import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 export default function Activities({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [filter, setFilter] = useState({ search: "" });
-  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId) => data.activities.filter((activity) => activity.subjectId === subjectId).length), [data.subjects, data.students, data.activities]);
+  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => data.activities.filter((activity) => activity.subjectId === subjectId && (!activity.section || activity.section === section)).length), [data.subjects, data.students, data.activities]);
   const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
   const filteredActivities = data.activities.filter((activity) => {
-    const subjectMatch = activeClass && activity.subjectId === activeClass.subjectId;
+    const subjectMatch = activeClass && activity.subjectId === activeClass.subjectId && (!activity.section || activity.section === activeClass.section);
     const q = filter.search.trim().toLowerCase();
     const searchMatch = !q || [activity.title, activity.subjectName, activity.dateCreated, activity.deadline, activity.type, activity.remarks].some((value) => String(value || "").toLowerCase().includes(q));
     return subjectMatch && searchMatch;
@@ -21,7 +21,7 @@ export default function Activities({ data, run }) {
   return <div className="dashboard-grid">
     <ActivityFormModal data={data} run={run} />
     <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Activity Classes" itemLabel="activities" />
-    {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen>
+    {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen actions={<ActivityFormModal key={activeClass.key} data={data} run={run} presetClass={activeClass} buttonLabel="Create Activity for This Class" />}>
       <div className="filter-bar">
         <Field label="Search Activities" value={filter.search} onChange={(search) => setFilter({ ...filter, search })} />
         <div className="filter-count">{filteredActivities.length} activit{filteredActivities.length === 1 ? "y" : "ies"}</div>
@@ -36,29 +36,25 @@ export default function Activities({ data, run }) {
   </div>;
 }
 
-function ActivityFormModal({ data, run, activity = null }) {
-  const [form, setForm] = useState(() => activity ? activityFormValues(activity) : {
-    title: "Activity 1",
-    subjectId: data.subjects[0]?.id || "",
-    dateCreated: today(),
-    deadline: `${today()}T23:59`,
-    type: data.settings.activities.types[0]?.name || "Simple",
-    maxScore: 100,
-    remarks: ""
-  });
+function ActivityFormModal({ data, run, activity = null, presetClass = null, buttonLabel = null }) {
+  const [form, setForm] = useState(() => activity ? activityFormValues(activity) : newActivityForm(data, presetClass));
   const hasSubmissions = !!activity?.rows?.some((row) => row.submitted || row.extendedDeadline || row.remarks || row.score !== "");
   useEffect(() => {
     if (activity) setForm(activityFormValues(activity));
-  }, [activity?.title, activity?.subjectId, activity?.dateCreated, activity?.deadline, activity?.type, activity?.remarks]);
+    else setForm(newActivityForm(data, presetClass));
+  }, [activity?.title, activity?.subjectId, activity?.section, activity?.dateCreated, activity?.deadline, activity?.type, activity?.remarks, presetClass?.key]);
   function submit(event) {
     event.preventDefault();
     run(() => activity ? put(`/admin/activities/${activity.id}`, form) : post("/admin/activities", form), activity ? "Activity updated" : "Activity created");
   }
-  return <ActionModal title={activity ? `Edit ${activity.title}` : "Create Activity"} buttonLabel={activity ? "Edit" : "Create Activity"} icon={activity ? Pencil : undefined}>
+  return <ActionModal title={activity ? `Edit ${activity.title}` : "Create Activity"} buttonLabel={buttonLabel || (activity ? "Edit" : "Create Activity")} icon={activity ? Pencil : undefined}>
     <form onSubmit={submit}>
       <Field label="Activity Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
       <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId })} options={hasSubmissions ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
-      {hasSubmissions && <p className="muted-line">The subject is locked after submissions. Deadline or type changes will safely recalculate late limits and JCoins.</p>}
+      <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section })} options={hasSubmissions
+        ? [{ value: form.section, label: form.section || "All sections" }]
+        : [{ value: "", label: "All sections" }, ...(data.sections || []).map((section) => ({ value: section, label: section }))]} />
+      {hasSubmissions && <p className="muted-line">The subject and section are locked after submissions. Deadline or type changes will safely recalculate late limits and JCoins.</p>}
       <Field label="Date Created" type="date" value={form.dateCreated} onChange={(dateCreated) => setForm({ ...form, dateCreated })} />
       <Field label="Deadline" type="datetime-local" value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
       <Select label="Type" value={form.type} onChange={(type) => setForm({ ...form, type })} options={data.settings.activities.types.map((item) => item.name)} />
@@ -147,6 +143,7 @@ function activityFormValues(activity) {
   return {
     title: activity.title,
     subjectId: activity.subjectId,
+    section: activity.section || "",
     dateCreated: activity.dateCreated,
     deadline: toDatetimeLocal(activity.deadline),
     type: activity.type,
@@ -155,7 +152,21 @@ function activityFormValues(activity) {
   };
 }
 
+function newActivityForm(data, presetClass = null) {
+  return {
+    title: "Activity 1",
+    subjectId: presetClass?.subjectId || data.subjects[0]?.id || "",
+    section: presetClass?.section || "",
+    dateCreated: today(),
+    deadline: `${today()}T23:59`,
+    type: data.settings.activities.types[0]?.name || "Simple",
+    maxScore: 100,
+    remarks: ""
+  };
+}
+
 function activityRowsForSection(activity, data, section) {
+  if (activity.section && activity.section !== section) return [];
   const studentIds = new Set((data.students || []).filter((student) => String(student.section || "") === section && (student.subjectIds || []).includes(activity.subjectId)).map((student) => student.id));
   return (activity.rows || []).filter((row) => studentIds.has(row.studentId));
 }
