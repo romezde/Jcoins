@@ -21,9 +21,10 @@ export function request(path, options = {}) {
   if (!navigator.onLine) return Promise.reject(new Error("You are offline. Reconnect before saving or refreshing."));
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 90000);
+  const { timeoutMs = 90000, ...fetchOptions } = options;
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   return fetch(`${API}${path}`, {
-    ...options,
+    ...fetchOptions,
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
@@ -43,6 +44,7 @@ export function request(path, options = {}) {
 }
 
 export const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
+export const postLarge = (path, body) => request(path, { method: "POST", body: JSON.stringify(body), timeoutMs: 180000 });
 export const put = (path, body) => request(path, { method: "PUT", body: JSON.stringify(body) });
 export const del = (path) => request(path, { method: "DELETE" });
 export const today = () => new Date().toISOString().slice(0, 10);

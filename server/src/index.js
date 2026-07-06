@@ -128,6 +128,9 @@ app.set("trust proxy", 1);
   }));
 });
 const ASSISTANT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
+const ACTIVITY_FILE_LIMIT_BYTES = 15 * 1024 * 1024;
+const ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES = 20 * 1024 * 1024;
+const activityDataUrlLimit = (bytes) => Math.ceil(bytes * 4 / 3) + 2048;
 const uploadAssistantReference = multer({ storage: multer.memoryStorage(), limits: { fileSize: ASSISTANT_FILE_LIMIT_BYTES } }).single("file");
 function assistantReferenceUpload(req, res, next) {
   uploadAssistantReference(req, res, (err) => {
@@ -157,7 +160,7 @@ app.use(cors({
   allowedHeaders: ["Authorization", "Content-Type"],
   maxAge: 86400
 }));
-app.use(express.json({ limit: "25mb" }));
+app.use(express.json({ limit: "32mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
   req.receivedAt = started;
@@ -2734,7 +2737,7 @@ function cleanActivityFile(file = {}) {
   const allowedExtensions = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
   if (!fileName || !fileData) throw new Error("Upload a school-related file.");
   if (!allowedExtensions.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
-  if (fileSize > 5 * 1024 * 1024 || fileData.length > 7000000) throw new Error("File is too large. Maximum upload is 5 MB.");
+  if (fileSize > ACTIVITY_FILE_LIMIT_BYTES || fileData.length > activityDataUrlLimit(ACTIVITY_FILE_LIMIT_BYTES)) throw new Error("File is too large. Maximum upload is 15 MB.");
   if (!/^data:[^;]+;base64,/i.test(fileData)) throw new Error("File upload was not readable. Please try again.");
   return { fileName, fileType, fileSize, fileData };
 }
@@ -2752,7 +2755,7 @@ function cleanActivityFiles(body = {}) {
   if (files.length > 1 && files.some((file) => !activityFileIsImage(file))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
   const totalSize = files.reduce((sum, file) => sum + Number(file.fileSize || 0), 0);
   const totalData = files.reduce((sum, file) => sum + String(file.fileData || "").length, 0);
-  if (totalSize > 15 * 1024 * 1024 || totalData > 21000000) throw new Error("Photos are too large together. Maximum total upload is 15 MB.");
+  if (totalSize > ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES || totalData > activityDataUrlLimit(ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES)) throw new Error("Photos are too large together. Maximum total upload is 20 MB.");
   return files;
 }
 
@@ -5850,7 +5853,9 @@ app.use((err, req, res, _next) => {
   if (res.headersSent) return _next(err);
   const status = Number(err.status || err.statusCode || 500);
   if (status >= 400 && status < 500) {
-    const error = status === 413 ? "Request is too large." : "Invalid request.";
+    const error = status === 413 && req.path.includes("/activities/")
+      ? "Activity upload is too large. Maximum is 15 MB for one file or 20 MB total for photos."
+      : status === 413 ? "Request is too large." : "Invalid request.";
     return res.status(status).json({ error, requestId: req.requestId });
   }
   return res.status(500).json({ error: "Server error. Please try again.", requestId: req.requestId });

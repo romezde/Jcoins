@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
-import { post } from "../api.js";
+import { post, postLarge } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
 import CosmeticFx from "../components/CosmeticFx.jsx";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
@@ -64,7 +64,7 @@ export function StudentActivities({ data, run }) {
     if (!files.length) return;
     await run(async () => {
       const upload = await filesToActivityUpload(files);
-      return post(`/student/activities/${activityId}/submit`, { files: upload, studentNote: notes[activityId] || "" });
+      return postLarge(`/student/activities/${activityId}/submit`, { files: upload, studentNote: notes[activityId] || "" });
     }, "Activity submitted");
   }
   return <Panel title="My Activities" wide defaultOpen>
@@ -99,8 +99,8 @@ async function filesToActivityUpload(files) {
   const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase() || "");
   if (extensions.some((extension) => !allowed.includes(extension))) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
   if (files.length > 1 && extensions.some((extension) => !imageExtensions.includes(extension))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
-  if (files.some((file) => file.size > 5 * 1024 * 1024)) throw new Error("Each file must be 5 MB or less.");
-  if (files.reduce((sum, file) => sum + file.size, 0) > 15 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 15 MB.");
+  if (files.some((file) => file.size > 15 * 1024 * 1024)) throw new Error("Each file must be 15 MB or less.");
+  if (files.reduce((sum, file) => sum + file.size, 0) > 20 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 20 MB.");
   return Promise.all(files.map(fileToActivityUpload));
 }
 
