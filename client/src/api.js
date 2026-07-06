@@ -52,11 +52,11 @@ export function eventUrl(token) {
   return `${API}/events?token=${encodeURIComponent(token)}`;
 }
 
-export function postForm(path, formData) {
+export function postForm(path, formData, timeoutMs = 90000) {
   if (!navigator.onLine) return Promise.reject(new Error("You are offline. Reconnect before uploading."));
   const token = localStorage.getItem("jcoins_token");
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 90000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   return fetch(`${API}${path}`, {
     method: "POST",
     signal: controller.signal,

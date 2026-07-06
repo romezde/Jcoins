@@ -4746,6 +4746,29 @@ td button {
   gap: 12px;
 }
 
+.selected-reference-files {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .44);
+}
+
+.selected-reference-files .inline {
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.selected-reference-files span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.selected-reference-files button {
+  flex: 0 0 auto;
+}
+
 .quiz-question-card {
   display: grid;
   gap: 12px;

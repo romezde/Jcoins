@@ -22,6 +22,7 @@ const dbPath = path.join(dataDir, "db.json");
 const previousDbPath = path.join(dataDir, "db.previous.json");
 const localActivityFileDir = path.join(dataDir, "activity-files");
 const activityUploadTempDir = path.join(dataDir, "upload-temp");
+const assistantUploadTempDir = path.join(dataDir, "assistant-upload-temp");
 const PORT = Number(process.env.PORT || 4000);
 const JCOINS_STORAGE_MODE = String(process.env.JCOINS_STORAGE_MODE || "").trim().toLowerCase();
 const SUPABASE_URL = JCOINS_STORAGE_MODE === "local" ? "" : process.env.SUPABASE_URL;
@@ -129,10 +130,22 @@ app.set("trust proxy", 1);
   }));
 });
 const ASSISTANT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
+const ASSISTANT_FILE_TOTAL_LIMIT_BYTES = 100 * 1024 * 1024;
+const ASSISTANT_FILE_COUNT_LIMIT = 10;
 const ACTIVITY_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
 const ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES = 100 * 1024 * 1024;
 const activityDataUrlLimit = (bytes) => Math.ceil(bytes * 4 / 3) + 2048;
-const uploadAssistantReference = multer({ storage: multer.memoryStorage(), limits: { fileSize: ASSISTANT_FILE_LIMIT_BYTES } }).single("file");
+const uploadAssistantReference = multer({
+  storage: multer.diskStorage({
+    destination(_req, _file, callback) {
+      mkdir(assistantUploadTempDir, { recursive: true }).then(() => callback(null, assistantUploadTempDir)).catch(callback);
+    },
+    filename(_req, _file, callback) {
+      callback(null, `${Date.now()}-${randomUUID()}.reference`);
+    }
+  }),
+  limits: { fileSize: ASSISTANT_FILE_LIMIT_BYTES, files: ASSISTANT_FILE_COUNT_LIMIT }
+}).fields([{ name: "files", maxCount: ASSISTANT_FILE_COUNT_LIMIT }, { name: "file", maxCount: 1 }]);
 const uploadActivitySubmission = multer({
   storage: multer.diskStorage({
     destination(_req, _file, callback) {
@@ -146,10 +159,21 @@ const uploadActivitySubmission = multer({
 }).array("files", 10);
 function assistantReferenceUpload(req, res, next) {
   uploadAssistantReference(req, res, (err) => {
-    if (err?.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Reference file is too large. Maximum size is 25 MB." });
-    if (err) return res.status(400).json({ error: err.message || "The reference file could not be uploaded." });
+    req.referenceFiles = [...(req.files?.files || []), ...(req.files?.file || [])];
+    if (err) return cleanupAssistantReferenceFiles(req.referenceFiles).finally(() => {
+      if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Reference file is too large. Maximum size is 25 MB." });
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") return res.status(400).json({ error: "Upload up to 10 reference files." });
+      return res.status(400).json({ error: err.message || "The reference file could not be uploaded." });
+    });
+    const totalBytes = req.referenceFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
+    if (totalBytes > ASSISTANT_FILE_TOTAL_LIMIT_BYTES) return cleanupAssistantReferenceFiles(req.referenceFiles)
+      .finally(() => res.status(413).json({ error: "Reference files are too large. Maximum combined size is 100 MB." }));
     return next();
   });
+}
+
+function cleanupAssistantReferenceFiles(files = []) {
+  return Promise.all(files.map((file) => file.path ? rm(file.path, { force: true }).catch(() => {}) : null));
 }
 function activitySubmissionUpload(req, res, next) {
   if (!req.is("multipart/form-data")) return next();
@@ -5487,13 +5511,14 @@ function extractZipText(buffer, matcher) {
 
 async function extractReferenceText(file) {
   if (!file) return "";
+  const buffer = file.buffer || await readFile(file.path);
   const name = String(file.originalname || "").toLowerCase();
   const mime = String(file.mimetype || "").toLowerCase();
-  if (name.endsWith(".docx") || mime.includes("wordprocessingml")) return extractZipText(file.buffer, (entry) => entry.startsWith("word/") && entry.endsWith(".xml"));
-  if (name.endsWith(".pptx") || mime.includes("presentationml")) return extractZipText(file.buffer, (entry) => entry.startsWith("ppt/slides/") && entry.endsWith(".xml"));
-  if (name.endsWith(".xlsx") || mime.includes("spreadsheet")) return extractZipText(file.buffer, (entry) => entry.startsWith("xl/") && entry.endsWith(".xml"));
+  if (name.endsWith(".docx") || mime.includes("wordprocessingml")) return extractZipText(buffer, (entry) => entry.startsWith("word/") && entry.endsWith(".xml"));
+  if (name.endsWith(".pptx") || mime.includes("presentationml")) return extractZipText(buffer, (entry) => entry.startsWith("ppt/slides/") && entry.endsWith(".xml"));
+  if (name.endsWith(".xlsx") || mime.includes("spreadsheet")) return extractZipText(buffer, (entry) => entry.startsWith("xl/") && entry.endsWith(".xml"));
   if (name.endsWith(".pdf") || mime.includes("pdf")) {
-    const parser = new PDFParse({ data: file.buffer });
+    const parser = new PDFParse({ data: buffer });
     try {
       const parsed = await parser.getText();
       return String(parsed.text || "").slice(0, 30000);
@@ -5501,8 +5526,27 @@ async function extractReferenceText(file) {
       await parser.destroy();
     }
   }
-  if (mime.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".csv")) return file.buffer.toString("utf8").slice(0, 30000);
+  if (mime.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".csv")) return buffer.toString("utf8").slice(0, 30000);
   throw new Error("Upload a PPTX, DOCX, PDF, XLSX, TXT, or CSV file.");
+}
+
+async function extractReferenceFiles(files = []) {
+  if (!files.length) return { text: "", names: [] };
+  const perFileCharacterLimit = Math.max(8000, Math.floor(80000 / files.length));
+  const sections = [];
+  for (const file of files) {
+    let text;
+    try {
+      text = await extractReferenceText(file);
+    } catch (error) {
+      throw new Error(`${file.originalname}: ${error.message}`);
+    }
+    sections.push(`REFERENCE FILE: ${file.originalname}\n${text.slice(0, perFileCharacterLimit)}`);
+  }
+  return {
+    text: sections.join("\n\n--- NEXT REFERENCE FILE ---\n\n").slice(0, 80000),
+    names: files.map((file) => file.originalname)
+  };
 }
 
 function parseAiJson(text = "") {
@@ -5535,12 +5579,13 @@ async function askGemini({ message, referenceText, context }) {
     "Reply conversationally and briefly.",
     "If the user asks to create a quiz, return a JSON object with reply and quizDraft.",
     "Quiz drafts must only use these auto-gradable types: multiple_choice, true_false, fill_blank, matching, multiple_select, numerical, computation.",
+    "When multiple reference files are provided, use every file and distribute the questions across all lessons instead of focusing only on the first file.",
     "For multiple_choice use options plus one answer. For multiple_select use options plus an answers array. For fill_blank use acceptedAnswers. For matching use matchingPairs with id, left, and right. For numerical or computation use a numerical answer and non-negative tolerance.",
     "Do not claim anything is saved or published.",
     "Return only JSON in this shape:",
     "{\"reply\":\"short message\",\"quizDraft\":{\"title\":\"\",\"difficulty\":\"Easy|Moderate|Hard|Advanced\",\"quizType\":\"mixed\",\"passingScore\":0,\"questions\":[{\"type\":\"multiple_choice\",\"prompt\":\"\",\"options\":[\"\",\"\",\"\",\"\"],\"answer\":\"\"}]}}",
     `App context: ${JSON.stringify(context).slice(0, 4000)}`,
-    referenceText ? `Reference text:\n${referenceText.slice(0, 18000)}` : "No uploaded reference text.",
+    referenceText ? `Reference texts from the uploaded lesson files:\n${referenceText.slice(0, 80000)}` : "No uploaded reference text.",
     `User message: ${message}`
   ].join("\n\n");
   let lastError = "";
@@ -5566,11 +5611,11 @@ app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistant
     const db = await readDb();
     const message = String(req.body.message || "").trim();
     if (!message) return res.status(400).json({ error: "Type a message first." });
-    const referenceText = await extractReferenceText(req.file);
+    const references = await extractReferenceFiles(req.referenceFiles);
     const overview = filteredOverview(db, req.user);
     const result = await askGemini({
       message,
-      referenceText,
+      referenceText: references.text,
       context: {
         role: req.user.role,
         subjects: overview.subjects.map((subject) => subject.name),
@@ -5584,9 +5629,11 @@ app.post("/api/assistant/chat", auth, requireRole("admin", "teacher"), assistant
       result.quizDraft.quizType = quizTypes.includes(result.quizDraft.quizType) ? result.quizDraft.quizType : "mixed";
       result.quizDraft.passingScore = Math.max(1, Math.min(Number(result.quizDraft.passingScore || result.quizDraft.questions.length), Math.max(1, result.quizDraft.questions.length)));
     }
-    res.json({ ...result, referenceUsed: !!referenceText });
+    res.json({ ...result, referenceUsed: !!references.text, referenceFiles: references.names });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  } finally {
+    await cleanupAssistantReferenceFiles(req.referenceFiles);
   }
 });
 

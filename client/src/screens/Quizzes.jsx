@@ -30,6 +30,7 @@ const answerVisibility = [
   { value: "scheduled", label: "On specific date/time" },
   { value: "never", label: "Never" }
 ];
+const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
 
 export default function Quizzes({ data, run, role }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
@@ -97,24 +98,28 @@ function QuizFormModal({ data, run, quiz = null, onCreated }) {
     shuffleOptions: false
   }));
   const [aiPrompt, setAiPrompt] = useState("");
-  const [aiFile, setAiFile] = useState(null);
+  const [aiFiles, setAiFiles] = useState([]);
   const [aiMessage, setAiMessage] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
   const groupStudents = studentsForQuiz(data, form);
   const hasAttempts = !!quiz && ((quiz.submittedCount || 0) > 0 || (quiz.submissions || []).some((submission) => submission.activeAttempt));
 
   async function generateDraft() {
-    if (aiFile && aiFile.size > 25 * 1024 * 1024) {
-      setAiMessage("Reference file is too large. Maximum size is 25 MB.");
+    if (aiGenerating) return;
+    const fileError = validateAiReferenceFiles(aiFiles);
+    if (fileError) {
+      setAiMessage(fileError);
       return;
     }
     setAiMessage("Generating quiz draft...");
+    setAiGenerating(true);
     const payload = new FormData();
     const allowedTypes = selectedQuizTypes(form);
     const typeNames = allowedTypes.map((type) => questionTypeOptions.find((option) => option.value === type)?.label || type).join(", ");
     payload.append("message", `${aiPrompt || `Create an auto-gradable ${form.difficulty} quiz.`}\nUse only these question types: ${typeNames}.`);
-    if (aiFile) payload.append("file", aiFile);
+    aiFiles.forEach((file) => payload.append("files", file));
     try {
-      const result = await postForm("/assistant/chat", payload);
+      const result = await postForm("/assistant/chat", payload, 5 * 60 * 1000);
       if (result.quizDraft?.questions?.length) {
         const questions = result.quizDraft.questions.map((question, index) => {
           const type = allowedTypes.includes(question.type) ? question.type : allowedTypes[index % allowedTypes.length];
@@ -133,6 +138,8 @@ function QuizFormModal({ data, run, quiz = null, onCreated }) {
       setAiMessage(result.reply || "Draft ready.");
     } catch (err) {
       setAiMessage(err.message);
+    } finally {
+      setAiGenerating(false);
     }
   }
 
@@ -172,8 +179,25 @@ function QuizFormModal({ data, run, quiz = null, onCreated }) {
       </div>
       <Panel title="AI Draft Helper" defaultOpen={false}>
         <Field label="Ask AI" value={aiPrompt} onChange={setAiPrompt} />
-        <label>Reference File<input type="file" accept=".pptx,.docx,.pdf,.xlsx,.csv,.txt" onChange={(e) => { const file = e.target.files?.[0] || null; setAiFile(file); setAiMessage(file && file.size > 25 * 1024 * 1024 ? "Reference file is too large. Maximum size is 25 MB." : ""); }} /></label>
-        <button type="button" className="soft" onClick={generateDraft}>Generate Editable Draft</button>
+        <label>Reference Files<input type="file" multiple accept=".pptx,.docx,.pdf,.xlsx,.csv,.txt" onChange={(event) => {
+          const nextFiles = mergeAiReferenceFiles(aiFiles, [...(event.target.files || [])]);
+          setAiFiles(nextFiles);
+          setAiMessage(validateAiReferenceFiles(nextFiles));
+          event.target.value = "";
+        }} /></label>
+        {aiFiles.length > 0 && <div className="selected-reference-files">
+          {aiFiles.map((file, index) => <div className="inline" key={`${file.name}-${file.size}-${file.lastModified}`}>
+            <span>{file.name} ({formatFileSize(file.size)})</span>
+            <button type="button" className="danger" onClick={() => {
+              const nextFiles = aiFiles.filter((_, itemIndex) => itemIndex !== index);
+              setAiFiles(nextFiles);
+              setAiMessage(validateAiReferenceFiles(nextFiles));
+            }}>Remove</button>
+          </div>)}
+          <button type="button" className="soft" onClick={() => { setAiFiles([]); setAiMessage(""); }}>Clear Files</button>
+        </div>}
+        <p className="muted-line">Up to 10 files, 25 MB each and 100 MB combined.</p>
+        <button type="button" className="soft" disabled={aiGenerating} onClick={generateDraft}>{aiGenerating ? "Generating Draft..." : "Generate Editable Draft"}</button>
         {aiMessage && <p className="muted-line">{aiMessage}</p>}
       </Panel>
       <QuestionEditor quizTypes={selectedQuizTypes(form)} questions={form.questions} setQuestions={(questions) => setForm({ ...form, questions, passingScore: Math.min(Number(form.passingScore || questions.length), Math.max(1, questions.length)) })} />
@@ -184,6 +208,27 @@ function QuizFormModal({ data, run, quiz = null, onCreated }) {
       <button>{quiz ? "Save Changes" : "Create Draft"}</button>
     </form>
   </ActionModal>;
+}
+
+function mergeAiReferenceFiles(current, added) {
+  const files = [...current];
+  added.forEach((file) => {
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    if (!files.some((item) => `${item.name}:${item.size}:${item.lastModified}` === key)) files.push(file);
+  });
+  return files;
+}
+
+function validateAiReferenceFiles(files) {
+  if (files.length > aiReferenceLimits.count) return "Upload up to 10 reference files.";
+  const oversized = files.find((file) => file.size > aiReferenceLimits.perFileBytes);
+  if (oversized) return `${oversized.name} is too large. Maximum size is 25 MB per file.`;
+  if (files.reduce((sum, file) => sum + file.size, 0) > aiReferenceLimits.totalBytes) return "Reference files are too large. Maximum combined size is 100 MB.";
+  return "";
+}
+
+function formatFileSize(bytes) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }
 
 function QuestionEditor({ quizTypes, questions, setQuestions }) {
