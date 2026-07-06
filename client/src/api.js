@@ -44,7 +44,6 @@ export function request(path, options = {}) {
 }
 
 export const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
-export const postLarge = (path, body) => request(path, { method: "POST", body: JSON.stringify(body), timeoutMs: 180000 });
 export const put = (path, body) => request(path, { method: "PUT", body: JSON.stringify(body) });
 export const del = (path) => request(path, { method: "DELETE" });
 export const today = () => new Date().toISOString().slice(0, 10);
@@ -72,5 +71,33 @@ export function postForm(path, formData) {
     throw err;
   }).finally(() => {
     window.clearTimeout(timeout);
+  });
+}
+
+export function postFormWithProgress(path, formData, onProgress, timeoutMs = 10 * 60 * 1000) {
+  if (!navigator.onLine) return Promise.reject(new Error("You are offline. Reconnect before uploading."));
+  const token = localStorage.getItem("jcoins_token");
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API}${path}`);
+    xhr.timeout = timeoutMs;
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round(event.loaded / event.total * 100)));
+    };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch { /* Keep the fallback message below. */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve(data);
+      } else {
+        reject(new Error(data.error || "Upload failed"));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+    xhr.ontimeout = () => reject(new Error("Upload took too long. Check your connection and try again."));
+    xhr.onabort = () => reject(new Error("Upload was cancelled."));
+    xhr.send(formData);
   });
 }

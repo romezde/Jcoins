@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
-import { post, postLarge } from "../api.js";
+import { post, postFormWithProgress } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
 import CosmeticFx from "../components/CosmeticFx.jsx";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
@@ -43,6 +43,7 @@ export function StudentProfile({ data, run }) {
 export function StudentActivities({ data, run }) {
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState({});
+  const [uploadProgress, setUploadProgress] = useState({});
   const q = search.trim().toLowerCase();
   const rows = data.activities.flatMap((activity) => activity.rows.filter((row) => row.studentId === data.student.id).map((row) => ({
     id: activity.id,
@@ -62,10 +63,21 @@ export function StudentActivities({ data, run }) {
   async function uploadSubmission(activityId, fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    await run(async () => {
-      const upload = await filesToActivityUpload(files);
-      return postLarge(`/student/activities/${activityId}/submit`, { files: upload, studentNote: notes[activityId] || "" });
+    await run(() => {
+      validateActivityFiles(files);
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file, file.name));
+      formData.append("studentNote", notes[activityId] || "");
+      setUploadProgress((current) => ({ ...current, [activityId]: 0 }));
+      return postFormWithProgress(`/student/activities/${activityId}/submit`, formData, (progress) => {
+        setUploadProgress((current) => ({ ...current, [activityId]: progress }));
+      });
     }, "Activity submitted");
+    setUploadProgress((current) => {
+      const next = { ...current };
+      delete next[activityId];
+      return next;
+    });
   }
   return <Panel title="My Activities" wide defaultOpen>
     <div className="filter-bar">
@@ -84,7 +96,11 @@ export function StudentActivities({ data, run }) {
       <ActivityFileViewer activityId={row.id} studentId={data.student.id} files={row.files?.length ? row.files : row.fileName ? [{ fileIndex: 0, fileName: row.fileName }] : []} />,
       <div className="activity-upload-box">
         <input value={notes[row.id] ?? row.studentNote ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Optional note" />
-        <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple onChange={(e) => uploadSubmission(row.id, e.target.files)} /></label>
+        <label className="soft file-button">{row.fileName ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple disabled={uploadProgress[row.id] != null} onChange={(e) => { uploadSubmission(row.id, e.target.files); e.target.value = ""; }} /></label>
+        {uploadProgress[row.id] != null && <div className="activity-upload-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress[row.id]}>
+          <span style={{ width: `${uploadProgress[row.id]}%` }} />
+          <strong>{uploadProgress[row.id]}%</strong>
+        </div>}
       </div>
     ])} />
   </Panel>;
@@ -92,25 +108,15 @@ export function StudentActivities({ data, run }) {
 
 const activityFileAccept = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv";
 
-async function filesToActivityUpload(files) {
+function validateActivityFiles(files) {
   const allowed = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
   if (files.length > 10) throw new Error("Upload up to 10 photos at a time.");
   const imageExtensions = ["jpg", "jpeg", "png", "webp"];
   const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase() || "");
   if (extensions.some((extension) => !allowed.includes(extension))) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
   if (files.length > 1 && extensions.some((extension) => !imageExtensions.includes(extension))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
-  if (files.some((file) => file.size > 15 * 1024 * 1024)) throw new Error("Each file must be 15 MB or less.");
-  if (files.reduce((sum, file) => sum + file.size, 0) > 20 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 20 MB.");
-  return Promise.all(files.map(fileToActivityUpload));
-}
-
-function fileToActivityUpload(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ fileName: file.name, fileType: file.type || "application/octet-stream", fileSize: file.size, fileData: reader.result });
-    reader.onerror = () => reject(new Error("Could not read that file."));
-    reader.readAsDataURL(file);
-  });
+  if (files.some((file) => file.size > 50 * 1024 * 1024)) throw new Error("Each file must be 50 MB or less.");
+  if (files.reduce((sum, file) => sum + file.size, 0) > 100 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 100 MB.");
 }
 
 function formatActivityDateTime(value) {

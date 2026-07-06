@@ -21,6 +21,7 @@ const dataDir = configuredDataDir ? path.resolve(configuredDataDir) : path.resol
 const dbPath = path.join(dataDir, "db.json");
 const previousDbPath = path.join(dataDir, "db.previous.json");
 const localActivityFileDir = path.join(dataDir, "activity-files");
+const activityUploadTempDir = path.join(dataDir, "upload-temp");
 const PORT = Number(process.env.PORT || 4000);
 const JCOINS_STORAGE_MODE = String(process.env.JCOINS_STORAGE_MODE || "").trim().toLowerCase();
 const SUPABASE_URL = JCOINS_STORAGE_MODE === "local" ? "" : process.env.SUPABASE_URL;
@@ -128,14 +129,36 @@ app.set("trust proxy", 1);
   }));
 });
 const ASSISTANT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
-const ACTIVITY_FILE_LIMIT_BYTES = 15 * 1024 * 1024;
-const ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES = 20 * 1024 * 1024;
+const ACTIVITY_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
+const ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES = 100 * 1024 * 1024;
 const activityDataUrlLimit = (bytes) => Math.ceil(bytes * 4 / 3) + 2048;
 const uploadAssistantReference = multer({ storage: multer.memoryStorage(), limits: { fileSize: ASSISTANT_FILE_LIMIT_BYTES } }).single("file");
+const uploadActivitySubmission = multer({
+  storage: multer.diskStorage({
+    destination(_req, _file, callback) {
+      mkdir(activityUploadTempDir, { recursive: true }).then(() => callback(null, activityUploadTempDir)).catch(callback);
+    },
+    filename(_req, _file, callback) {
+      callback(null, `${Date.now()}-${randomUUID()}.upload`);
+    }
+  }),
+  limits: { fileSize: ACTIVITY_FILE_LIMIT_BYTES, files: 10, fields: 4 }
+}).array("files", 10);
 function assistantReferenceUpload(req, res, next) {
   uploadAssistantReference(req, res, (err) => {
     if (err?.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Reference file is too large. Maximum size is 25 MB." });
     if (err) return res.status(400).json({ error: err.message || "The reference file could not be uploaded." });
+    return next();
+  });
+}
+function activitySubmissionUpload(req, res, next) {
+  if (!req.is("multipart/form-data")) return next();
+  uploadActivitySubmission(req, res, (err) => {
+    if (err) return cleanupTemporaryActivityFiles(req.files || []).finally(() => {
+      if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "File is too large. Maximum upload is 50 MB per file." });
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") return res.status(400).json({ error: "Upload one document or up to 10 photos." });
+      return res.status(400).json({ error: err.message || "The activity files could not be uploaded." });
+    });
     return next();
   });
 }
@@ -160,7 +183,7 @@ app.use(cors({
   allowedHeaders: ["Authorization", "Content-Type"],
   maxAge: 86400
 }));
-app.use(express.json({ limit: "32mb" }));
+app.use(express.json({ limit: "70mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
   req.receivedAt = started;
@@ -996,7 +1019,14 @@ async function readSupplementalStorageRows() {
     try {
       const files = (await readdir(localActivityFileDir)).filter((file) => file.endsWith(".json"));
       const rows = [];
-      for (const file of files) rows.push(JSON.parse(await readFile(path.join(localActivityFileDir, file), "utf8")));
+      for (const file of files) {
+        const row = JSON.parse(await readFile(path.join(localActivityFileDir, file), "utf8"));
+        if (row?.state?.fileStorage === "binary") {
+          const bytes = await readFile(localActivityBinaryPath(row.id));
+          row.state.fileData = `data:${row.state.fileType || "application/octet-stream"};base64,${bytes.toString("base64")}`;
+        }
+        rows.push(row);
+      }
       return rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
     } catch (error) {
       if (error?.code === "ENOENT") return [];
@@ -1417,6 +1447,10 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
   if (!supabase) {
     try {
       const row = JSON.parse(await readFile(localActivityFilePath(activityFileRowId(activityId, studentId, fileIndex)), "utf8"));
+      if (row?.state?.fileStorage === "binary") {
+        const bytes = await readFile(localActivityBinaryPath(row.id));
+        return { ...row.state, fileData: `data:${row.state.fileType || "application/octet-stream"};base64,${bytes.toString("base64")}` };
+      }
       return row?.state || null;
     } catch (error) {
       if (error?.code === "ENOENT") return null;
@@ -1434,6 +1468,50 @@ async function readActivityFileRow(activityId, studentId, fileIndex) {
 
 function localActivityFilePath(rowId) {
   return path.join(localActivityFileDir, `${encodeURIComponent(rowId)}.json`);
+}
+
+function localActivityBinaryPath(rowId) {
+  return path.join(localActivityFileDir, `${encodeURIComponent(rowId)}.bin`);
+}
+
+async function persistMultipartActivityFiles(activityId, studentId, files, uploadedAt) {
+  const metadata = files.map((file, fileIndex) => ({
+    fileIndex,
+    fileName: file.fileName,
+    fileType: file.fileType,
+    fileSize: file.fileSize,
+    uploadedAt,
+    fileStorage: supabase ? "row" : "binary"
+  }));
+  if (!supabase) {
+    await mkdir(localActivityFileDir, { recursive: true });
+    for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+      const file = files[fileIndex];
+      const id = activityFileRowId(activityId, studentId, fileIndex);
+      await rm(localActivityBinaryPath(id), { force: true });
+      await rename(file.sourcePath, localActivityBinaryPath(id));
+      await writeJsonAtomic(localActivityFilePath(id), { id, state: { kind: "activity-file", activityId, studentId, ...metadata[fileIndex] }, updated_at: now() });
+    }
+    return metadata;
+  }
+  return Promise.all(files.map(async (file, fileIndex) => {
+    const bytes = await readFile(file.sourcePath);
+    return { ...metadata[fileIndex], fileData: `data:${file.fileType};base64,${bytes.toString("base64")}` };
+  }));
+}
+
+async function removeObsoleteActivityFileRows(activityId, studentId, fromIndex, previousCount) {
+  if (previousCount <= fromIndex) return;
+  const ids = Array.from({ length: previousCount - fromIndex }, (_, offset) => activityFileRowId(activityId, studentId, fromIndex + offset));
+  if (!supabase) {
+    await Promise.all(ids.flatMap((id) => [
+      rm(localActivityFilePath(id), { force: true }),
+      rm(localActivityBinaryPath(id), { force: true })
+    ]));
+    return;
+  }
+  const { error } = await supabase.from(SUPABASE_STATE_TABLE).delete().in("id", ids);
+  if (error) throw supabaseSetupError(error);
 }
 
 async function readStorageRowsByPrefix(prefix, fields = "id,state") {
@@ -2737,7 +2815,7 @@ function cleanActivityFile(file = {}) {
   const allowedExtensions = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
   if (!fileName || !fileData) throw new Error("Upload a school-related file.");
   if (!allowedExtensions.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
-  if (fileSize > ACTIVITY_FILE_LIMIT_BYTES || fileData.length > activityDataUrlLimit(ACTIVITY_FILE_LIMIT_BYTES)) throw new Error("File is too large. Maximum upload is 15 MB.");
+  if (fileSize > ACTIVITY_FILE_LIMIT_BYTES || fileData.length > activityDataUrlLimit(ACTIVITY_FILE_LIMIT_BYTES)) throw new Error("File is too large. Maximum upload is 50 MB.");
   if (!/^data:[^;]+;base64,/i.test(fileData)) throw new Error("File upload was not readable. Please try again.");
   return { fileName, fileType, fileSize, fileData };
 }
@@ -2755,8 +2833,29 @@ function cleanActivityFiles(body = {}) {
   if (files.length > 1 && files.some((file) => !activityFileIsImage(file))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
   const totalSize = files.reduce((sum, file) => sum + Number(file.fileSize || 0), 0);
   const totalData = files.reduce((sum, file) => sum + String(file.fileData || "").length, 0);
-  if (totalSize > ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES || totalData > activityDataUrlLimit(ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES)) throw new Error("Photos are too large together. Maximum total upload is 20 MB.");
+  if (totalSize > ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES || totalData > activityDataUrlLimit(ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES)) throw new Error("Photos are too large together. Maximum total upload is 100 MB.");
   return files;
+}
+
+function cleanMultipartActivityFiles(files = []) {
+  if (!files.length) throw new Error("Upload a school-related file.");
+  if (files.length > 10) throw new Error("Upload up to 10 photos at a time.");
+  const allowedExtensions = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
+  const imageExtensions = ["jpg", "jpeg", "png", "webp"];
+  const cleaned = files.map((file) => {
+    const fileName = String(file.originalname || "").trim().slice(0, 180);
+    const extension = fileName.split(".").pop()?.toLowerCase() || "";
+    if (!allowedExtensions.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+    if (Number(file.size || 0) > ACTIVITY_FILE_LIMIT_BYTES) throw new Error("File is too large. Maximum upload is 50 MB.");
+    return { sourcePath: file.path, fileName, fileType: String(file.mimetype || "application/octet-stream").slice(0, 120), fileSize: Number(file.size || 0), extension };
+  });
+  if (cleaned.length > 1 && cleaned.some((file) => !imageExtensions.includes(file.extension))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
+  if (cleaned.reduce((sum, file) => sum + file.fileSize, 0) > ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES) throw new Error("Photos are too large together. Maximum total upload is 100 MB.");
+  return cleaned;
+}
+
+async function cleanupTemporaryActivityFiles(files = []) {
+  await Promise.all(files.map((file) => rm(file.path || file.sourcePath || "", { force: true }).catch(() => {})));
 }
 
 async function activityFilePreviewText(file = {}) {
@@ -4769,51 +4868,63 @@ app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, asy
   res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData, previewText } });
 });
 
-app.post("/api/student/activities/:id/submit", auth, requireRole("student"), async (req, res) => {
-  const db = await readDb();
-  const activity = db.activities.find((a) => a.id === req.params.id);
-  if (!activity) return res.status(404).json({ error: "Activity not found." });
-  const student = db.students.find((s) => s.id === req.user.studentId);
-  if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(403).json({ error: "This activity is not assigned to you." });
-  let files;
+app.post("/api/student/activities/:id/submit", auth, requireRole("student"), activitySubmissionUpload, async (req, res, next) => {
+  const temporaryFiles = Array.isArray(req.files) ? req.files : [];
   try {
-    files = cleanActivityFiles(req.body);
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
+    const db = await readDb();
+    const activity = db.activities.find((a) => a.id === req.params.id);
+    if (!activity) return res.status(404).json({ error: "Activity not found." });
+    const student = db.students.find((s) => s.id === req.user.studentId);
+    if (!student || !(student.subjectIds || []).includes(activity.subjectId)) return res.status(403).json({ error: "This activity is not assigned to you." });
+    let files;
+    try {
+      files = temporaryFiles.length ? cleanMultipartActivityFiles(temporaryFiles) : cleanActivityFiles(req.body);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    let sub = activity.submissions.find((item) => item.studentId === req.user.studentId);
+    if (!sub) {
+      sub = { studentId: req.user.studentId };
+      activity.submissions.push(sub);
+    }
+    const previousFileCount = activitySubmissionFiles(sub).length;
+    const submittedAt = now();
+    const storedFiles = temporaryFiles.length
+      ? await persistMultipartActivityFiles(activity.id, req.user.studentId, files, submittedAt)
+      : files.map((file) => ({ ...file, uploadedAt: submittedAt }));
+    await removeObsoleteActivityFileRows(activity.id, req.user.studentId, storedFiles.length, previousFileCount);
+    sub.submitted = true;
+    sub.submittedAt = submittedAt;
+    sub.dateSubmitted = submittedAt;
+    sub.submissionMethod = "upload";
+    sub.studentNote = String(req.body?.studentNote || "").slice(0, 500);
+    sub.files = storedFiles;
+    sub.file = sub.files[0] || null;
+    const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
+    const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);
+    sub.snapshot = {
+      type: activity.type,
+      basePoints: hydrated.basePoints,
+      latePenaltyPerDay: Number(db.settings.activities.latePenaltyPerDay || 0),
+      daysLate: row.daysLate,
+      earned: row.earned
+    };
+    const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === req.user.studentId);
+    if (existing) existing.amount = row.earned;
+    else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
+    await writeDb(db);
+    queuePushToUsers(db, staffUserIdsForStudent(db, req.user.studentId), {
+      title: "Activity submitted",
+      body: `${studentName(db, req.user.studentId)} submitted ${activity.title}.`,
+      url: "/activities",
+      tag: `activity-${activity.id}-${req.user.studentId}`
+    });
+    res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileNames: storedFiles.map((file) => file.fileName) } });
+  } catch (error) {
+    next(error);
+  } finally {
+    await cleanupTemporaryActivityFiles(temporaryFiles);
   }
-  let sub = activity.submissions.find((item) => item.studentId === req.user.studentId);
-  if (!sub) {
-    sub = { studentId: req.user.studentId };
-    activity.submissions.push(sub);
-  }
-  const submittedAt = now();
-  sub.submitted = true;
-  sub.submittedAt = submittedAt;
-  sub.dateSubmitted = submittedAt;
-  sub.submissionMethod = "upload";
-  sub.studentNote = String(req.body.studentNote || "").slice(0, 500);
-  sub.files = files.map((file) => ({ ...file, uploadedAt: submittedAt }));
-  sub.file = sub.files[0] || null;
-  const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
-  const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);
-  sub.snapshot = {
-    type: activity.type,
-    basePoints: hydrated.basePoints,
-    latePenaltyPerDay: Number(db.settings.activities.latePenaltyPerDay || 0),
-    daysLate: row.daysLate,
-    earned: row.earned
-  };
-  const existing = db.transactions.find((t) => t.meta?.kind === "activity" && t.meta.activityId === activity.id && t.studentId === req.user.studentId);
-  if (existing) existing.amount = row.earned;
-  else if (row.earned) db.transactions.push(tx(req.user.studentId, "activity", row.earned, activity.title, submittedAt, req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId }));
-  await writeDb(db);
-  queuePushToUsers(db, staffUserIdsForStudent(db, req.user.studentId), {
-    title: "Activity submitted",
-    body: `${studentName(db, req.user.studentId)} submitted ${activity.title}.`,
-    url: "/activities",
-    tag: `activity-${activity.id}-${req.user.studentId}`
-  });
-  res.status(201).json({ submission: { submittedAt, daysLate: row.daysLate, earned: row.earned, fileNames: files.map((file) => file.fileName) } });
 });
 
 function quizFromBody(db, body, user, existing = {}) {
@@ -5854,7 +5965,7 @@ app.use((err, req, res, _next) => {
   const status = Number(err.status || err.statusCode || 500);
   if (status >= 400 && status < 500) {
     const error = status === 413 && req.path.includes("/activities/")
-      ? "Activity upload is too large. Maximum is 15 MB for one file or 20 MB total for photos."
+      ? "Activity upload is too large. Maximum is 50 MB for one file or 100 MB total for photos."
       : status === 413 ? "Request is too large." : "Invalid request.";
     return res.status(status).json({ error, requestId: req.requestId });
   }

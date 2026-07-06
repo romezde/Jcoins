@@ -28,7 +28,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
     const fileIndex = Number.isInteger(file?.fileIndex) ? file.fileIndex : index;
     setLoading(true);
     setError("");
-    request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`)
+    request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`, { timeoutMs: 5 * 60 * 1000 })
       .then((data) => {
         if (active) setLoaded((current) => ({ ...current, [index]: data.file }));
       })
@@ -46,7 +46,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
       for (let position = 0; position < list.length; position += 1) {
         const file = list[position];
         const fileIndex = Number.isInteger(file.fileIndex) ? file.fileIndex : position;
-        const downloadedFile = loaded[position] || (await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`)).file;
+        const downloadedFile = loaded[position] || (await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`, { timeoutMs: 5 * 60 * 1000 })).file;
         if (!downloadedFile?.fileData) throw new Error(`Could not download ${file.fileName}.`);
         triggerDownload(downloadedFile);
       }
