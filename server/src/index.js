@@ -107,6 +107,8 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 
 const app = express();
 let mutationRequestQueue = Promise.resolve();
+let quizMutationBatch = [];
+let quizMutationBatchTimer = null;
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 ["get", "post", "put", "delete", "patch"].forEach((method) => {
@@ -224,7 +226,8 @@ app.use((req, res, next) => {
   const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
   const bypassQueue = req.path === "/api/auth/login"
     || req.path === "/api/events/token"
-    || req.path === "/api/assistant/chat";
+    || req.path === "/api/assistant/chat"
+    || /^\/api\/student\/quizzes\/[^/]+\/(start|submit)$/.test(req.path);
   if (!isMutation || !req.path.startsWith("/api") || bypassQueue) return next();
 
   let releaseTurn;
@@ -286,6 +289,54 @@ let currentMutationRequest = null;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
+
+async function withMutationTurn(work) {
+  let releaseTurn;
+  const turn = new Promise((resolve) => { releaseTurn = resolve; });
+  const previous = mutationRequestQueue.catch(() => {});
+  mutationRequestQueue = previous.then(() => turn);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    releaseTurn();
+  }
+}
+
+function enqueueQuizMutation(execute) {
+  return new Promise((resolve, reject) => {
+    quizMutationBatch.push({ execute, resolve, reject });
+    if (!quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 75);
+  });
+}
+
+async function flushQuizMutationBatch() {
+  quizMutationBatchTimer = null;
+  const batch = quizMutationBatch.splice(0);
+  if (!batch.length) return;
+  try {
+    await withMutationTurn(async () => {
+      const db = await readDb();
+      const results = batch.map((item) => {
+        try {
+          return { item, result: item.execute(db) };
+        } catch (error) {
+          return { item, error };
+        }
+      });
+      const mutations = results.filter(({ result }) => result?.mutated);
+      mutations.forEach(({ result }) => {
+        if (result.request) recordAutomaticAuditLog(db, result.request);
+      });
+      if (mutations.length) await writeDb(db, { skipAudit: true });
+      results.forEach(({ item, result, error }) => error ? item.reject(error) : item.resolve(result));
+    });
+  } catch (error) {
+    batch.forEach((item) => item.reject(error));
+  } finally {
+    if (quizMutationBatch.length && !quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 75);
+  }
+}
 
 async function writeJsonAtomic(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -5110,88 +5161,74 @@ app.delete("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), asyn
   res.json({ ok: true });
 });
 
-app.post("/api/student/quizzes/:id/start", auth, requireRole("student"), async (req, res) => {
-  const db = await readDb();
+function quizMutationResponse(status, body, mutated = false, request = null) {
+  return { status, body, mutated, request };
+}
+
+function startStudentQuiz(db, req) {
   const quiz = db.quizzes.find((item) => item.id === req.params.id);
-  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!quiz) return quizMutationResponse(404, { error: "Quiz not found." });
   normalizeQuiz(quiz, db);
-  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
-  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
-  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return res.status(400).json({ error: "The deadline has passed." });
+  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return quizMutationResponse(403, { error: "This quiz is not assigned to you." });
+  if (quiz.status !== "published") return quizMutationResponse(400, { error: "This quiz is not open." });
+  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return quizMutationResponse(400, { error: "The deadline has passed." });
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
   if (!submission) {
     submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
     quiz.submissions.push(submission);
   }
   if (submission.activeAttempt && quizAttemptExpired(submission.activeAttempt)) finishTimedOutQuizAttempt(quiz, submission);
-  if (submission.activeAttempt) return res.json({ attempt: publicActiveQuizAttempt(submission.activeAttempt) });
-  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) {
-    await writeDb(db);
-    return res.status(400).json({ error: "No retake is available for this quiz." });
-  }
-  const startedAt = now();
+  if (submission.activeAttempt) return quizMutationResponse(200, { attempt: publicActiveQuizAttempt(submission.activeAttempt) });
+  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return quizMutationResponse(400, { error: "No retake is available for this quiz." });
+  const startedAt = new Date(req.receivedAt).toISOString();
   const quizVersion = ensureQuizVersion(quiz);
   submission.activeAttempt = {
     id: randomUUID(),
     attemptNumber: submission.attempts.length + 1,
     startedAt,
-    dueAt: new Date(Date.now() + quiz.timeLimitMinutes * 60 * 1000).toISOString(),
+    dueAt: new Date(req.receivedAt + quiz.timeLimitMinutes * 60 * 1000).toISOString(),
     quizVersionId: quizVersion.id
   };
-  await writeDb(db);
-  res.status(201).json({ attempt: publicActiveQuizAttempt(submission.activeAttempt) });
-});
+  return quizMutationResponse(201, { attempt: publicActiveQuizAttempt(submission.activeAttempt) }, true, req);
+}
 
-app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async (req, res) => {
-  const db = await readDb();
+function submitStudentQuiz(db, req) {
   const quiz = db.quizzes.find((item) => item.id === req.params.id);
-  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  if (!quiz) return quizMutationResponse(404, { error: "Quiz not found." });
   normalizeQuiz(quiz, db);
-  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return res.status(403).json({ error: "This quiz is not assigned to you." });
+  if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return quizMutationResponse(403, { error: "This quiz is not assigned to you." });
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
   const requestedAttemptId = String(req.body.attemptId || "").trim();
   const completedAttempt = requestedAttemptId && submission?.attempts?.find((attempt) => attempt.id === requestedAttemptId);
-  if (completedAttempt) {
-    return res.json({
-      attempt: publicCompletedQuizAttempt(completedAttempt),
-      submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded },
-      alreadySubmitted: true
-    });
-  }
-  if (quiz.status !== "published") return res.status(400).json({ error: "This quiz is not open." });
-  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return res.status(400).json({ error: "The deadline has passed." });
-  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return res.status(400).json({ error: "No retake is available for this quiz." });
+  if (completedAttempt) return quizMutationResponse(200, {
+    attempt: publicCompletedQuizAttempt(completedAttempt),
+    submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded },
+    alreadySubmitted: true
+  });
+  if (quiz.status !== "published") return quizMutationResponse(400, { error: "This quiz is not open." });
+  if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return quizMutationResponse(400, { error: "The deadline has passed." });
+  if (!canRetakeQuiz(quiz, req.user.studentId, submission)) return quizMutationResponse(400, { error: "No retake is available for this quiz." });
   if (!submission) {
     submission = { studentId: req.user.studentId, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
     quiz.submissions.push(submission);
   }
   const activeAttempt = submission.activeAttempt;
-  if (quiz.timeLimitMinutes > 0 && !activeAttempt) return res.status(400).json({ error: "Start the quiz before submitting." });
-  if (requestedAttemptId && activeAttempt?.id && requestedAttemptId !== activeAttempt.id) return res.status(409).json({ error: "This quiz attempt is no longer active. Reload the quiz before submitting." });
+  if (quiz.timeLimitMinutes > 0 && !activeAttempt) return quizMutationResponse(400, { error: "Start the quiz before submitting." });
+  if (requestedAttemptId && activeAttempt?.id && requestedAttemptId !== activeAttempt.id) return quizMutationResponse(409, { error: "This quiz attempt is no longer active. Reload the quiz before submitting." });
   if (activeAttempt?.dueAt && req.receivedAt > new Date(activeAttempt.dueAt).getTime() + 90 * 1000) {
     finishTimedOutQuizAttempt(quiz, submission);
-    await writeDb(db);
-    return res.status(400).json({ error: "Time is up. This attempt was recorded as timed out." });
+    return quizMutationResponse(400, { error: "Time is up. This attempt was recorded as timed out." }, true, req);
   }
   const attemptQuiz = quizForAttempt(quiz, activeAttempt);
   const answers = cleanQuizSubmissionAnswers(attemptQuiz, req.body.answers);
   const result = scoreQuiz(attemptQuiz, answers);
   const submittedAt = new Date(req.receivedAt).toISOString();
   const attempt = {
-    id: activeAttempt?.id || randomUUID(),
-    attemptNumber: activeAttempt?.attemptNumber || submission.attempts.length + 1,
-    answers,
-    correct: result.correct,
-    total: result.total,
-    passingScore: result.passingScore,
-    difficulty: attemptQuiz.difficulty,
-    rewardValue: result.rewardValue,
-    quizVersionId: activeAttempt?.quizVersionId || quiz.currentVersionId || "",
-    awarded: result.awarded,
-    startedAt: activeAttempt?.startedAt || now(),
-    dueAt: activeAttempt?.dueAt || "",
-    timedOut: false,
-    submittedAt
+    id: activeAttempt?.id || randomUUID(), attemptNumber: activeAttempt?.attemptNumber || submission.attempts.length + 1,
+    answers, correct: result.correct, total: result.total, passingScore: result.passingScore,
+    difficulty: attemptQuiz.difficulty, rewardValue: result.rewardValue,
+    quizVersionId: activeAttempt?.quizVersionId || quiz.currentVersionId || "", awarded: result.awarded,
+    startedAt: activeAttempt?.startedAt || submittedAt, dueAt: activeAttempt?.dueAt || "", timedOut: false, submittedAt
   };
   submission.attempts.push(attempt);
   submission.activeAttempt = null;
@@ -5207,9 +5244,16 @@ app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), async 
   } else if (submission.bestAwarded) {
     db.transactions.push(tx(req.user.studentId, "quiz", submission.bestAwarded, note, attempt.submittedAt, req.user.id, meta));
   }
-  await writeDb(db);
-  res.status(201).json({ attempt: publicCompletedQuizAttempt(attempt), submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded } });
-});
+  return quizMutationResponse(201, { attempt: publicCompletedQuizAttempt(attempt), submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded } }, true, req);
+}
+
+async function handleBatchedQuizMutation(req, res, execute) {
+  const result = await enqueueQuizMutation((db) => execute(db, req));
+  res.status(result.status).json(result.body);
+}
+
+app.post("/api/student/quizzes/:id/start", auth, requireRole("student"), (req, res) => handleBatchedQuizMutation(req, res, startStudentQuiz));
+app.post("/api/student/quizzes/:id/submit", auth, requireRole("student"), (req, res) => handleBatchedQuizMutation(req, res, submitStudentQuiz));
 
 app.post("/api/admin/transactions", auth, requireStaffOrAssistant, async (req, res) => {
   const db = await readDb();
