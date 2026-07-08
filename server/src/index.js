@@ -283,6 +283,8 @@ const stalePushSubscriptionIds = new Set();
 let cachedDb = null;
 let cachedDbAt = 0;
 let cachedAuthUsers = new Map();
+let cachedAuthUsernames = new Map();
+const hydratedStudentsCache = new WeakMap();
 let dbLoadPromise = null;
 let ensureDbPromise = null;
 let dbWriteQueue = Promise.resolve();
@@ -1180,6 +1182,7 @@ function cloneDb(db) {
 
 function cacheDb(db) {
   cachedAuthUsers = new Map((db.users || []).filter((user) => user?.id).map((user) => [user.id, structuredClone(user)]));
+  cachedAuthUsernames = new Map([...cachedAuthUsers.values()].map((user) => [String(user.username || "").toLowerCase(), user]));
   if (!DB_CACHE_TTL_MS) return;
   cachedDb = cloneDb(db);
   cachedDbAt = Date.now();
@@ -1203,6 +1206,12 @@ async function readRawDb() {
     });
   }
   return cloneDb(await dbLoadPromise);
+}
+
+async function readSharedDb() {
+  await dbWriteQueue.catch(() => {});
+  if (!cachedDbIsFresh()) await readDb();
+  return cachedDb || readDb();
 }
 
 async function readDb() {
@@ -2821,11 +2830,21 @@ function rankFor(coins, ranks) {
 }
 
 function hydrateStudents(db) {
-  return db.students.map((student) => {
-    const currentJCoins = studentCoins(db, student.id);
-    const account = db.users.find((user) => user.role === "student" && user.studentId === student.id);
-    return { ...student, userId: account?.id || "", username: account?.username || "", currentJCoins, subjectNames: (student.subjectIds || []).map((id) => subjectName(db, id)), appearance: equippedAppearance(db, student.id), ...rankFor(currentJCoins, db.settings.ranks) };
+  const cached = hydratedStudentsCache.get(db);
+  if (cached) return cached;
+  const coinsByStudent = new Map();
+  (db.transactions || []).forEach((transaction) => {
+    coinsByStudent.set(transaction.studentId, Number(coinsByStudent.get(transaction.studentId) || 0) + Number(transaction.amount || 0));
+  });
+  const accountsByStudent = new Map((db.users || []).filter((user) => user.role === "student" && user.studentId).map((user) => [user.studentId, user]));
+  const subjectNamesById = new Map((db.subjects || []).map((subject) => [subject.id, subject.name]));
+  const hydrated = db.students.map((student) => {
+    const currentJCoins = Number(coinsByStudent.get(student.id) || 0);
+    const account = accountsByStudent.get(student.id);
+    return { ...student, userId: account?.id || "", username: account?.username || "", currentJCoins, subjectNames: (student.subjectIds || []).map((id) => subjectNamesById.get(id) || "Unknown Subject"), appearance: equippedAppearance(db, student.id), ...rankFor(currentJCoins, db.settings.ranks) };
   }).sort((a, b) => b.currentJCoins - a.currentJCoins);
+  hydratedStudentsCache.set(db, hydrated);
+  return hydrated;
 }
 
 function hideProfilePhotos(students) {
@@ -3720,9 +3739,10 @@ app.get("/api/admin/storage-health", auth, requireRole("admin"), async (req, res
 });
 
 app.post("/api/auth/login", loginIpLimit, async (req, res) => {
-  const db = await readDb();
+  await dbWriteQueue.catch(() => {});
+  if (!cachedDbIsFresh() || !cachedAuthUsernames.size) await readDb();
   const username = String(req.body.username || "").trim().toLowerCase();
-  const user = db.users.find((u) => u.username.toLowerCase() === username);
+  const user = cachedAuthUsernames.get(username);
   if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.passwordHash))) {
     const delayMs = recordLoginFailure(req, username);
     if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -3751,7 +3771,7 @@ app.post("/api/auth/change-password", auth, async (req, res) => {
 });
 
 app.get("/api/registration/options", async (req, res) => {
-  const db = await readDb();
+  const db = await readSharedDb();
   res.json({
     enabled: !!db.settings.registration?.enabled,
     sections: db.sections || [],
@@ -3860,7 +3880,7 @@ app.post("/api/auth/register-student", registrationLimit, registrationAccountLim
 });
 
 app.get("/api/leaderboard", async (req, res) => {
-  const db = await readDb();
+  const db = await readSharedDb();
   const students = hideProfilePhotos(hydrateStudents(db)).map((student) => {
     const { username, userId, subjectIds, createdAt, profilePhoto, ...publicStudent } = student;
     return publicStudent;
@@ -3869,7 +3889,7 @@ app.get("/api/leaderboard", async (req, res) => {
 });
 
 app.get("/api/me", auth, async (req, res) => {
-  const db = await readDb();
+  const db = await readSharedDb();
   res.json(filteredOverview(db, req.user, overviewModules(req)));
 });
 
@@ -3917,7 +3937,7 @@ app.post("/api/push/unsubscribe", auth, async (req, res) => {
 });
 
 app.get("/api/student/me", auth, requireRole("student"), async (req, res) => {
-  const db = await readDb();
+  const db = await readSharedDb();
   const modules = overviewModules(req, ["leaderboard"]);
   const overview = filteredOverview(db, req.user, modules);
   const student = overview.students[0];
@@ -3952,7 +3972,7 @@ app.post("/api/student/profile-photo", auth, requireRole("student"), async (req,
 });
 
 app.get("/api/admin/overview", auth, requireRole("admin", "teacher"), async (req, res) => {
-  const db = await readDb();
+  const db = await readSharedDb();
   const modules = overviewModules(req, ["dashboard"]);
   const overview = filteredOverview(db, req.user, modules);
   res.json({ ...overview, students: hideProfilePhotos(overview.students), studentAssistants: wantsModule(modules, "people") ? assistantAssignmentRows(db, req.user) : [] });
