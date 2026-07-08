@@ -57,11 +57,8 @@ if ((Test-JCoinsApi) -and $task.State -eq "Running") {
 
 $listener = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($task.State -eq "Running" -and $listener) {
-  $failureCount = Add-HealthFailure
-  if ($failureCount -lt 3) {
-    Write-WatchdogLog "Health check timed out while Node is still listening (attempt $failureCount of 3). Leaving the busy server running."
-    exit 0
-  }
+  Write-WatchdogLog "Health check timed out while Node is still listening. Leaving the busy server running; its launcher will recover a real process exit."
+  exit 0
 }
 
 Write-WatchdogLog "The server is unhealthy or unmanaged. Recovering it."

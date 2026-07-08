@@ -109,6 +109,8 @@ const app = express();
 let mutationRequestQueue = Promise.resolve();
 let quizMutationBatch = [];
 let quizMutationBatchTimer = null;
+let quizMutationFlushActive = false;
+let broadcastChangeTimer = null;
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 ["get", "post", "put", "delete", "patch"].forEach((method) => {
@@ -306,16 +308,18 @@ async function withMutationTurn(work) {
 function enqueueQuizMutation(execute) {
   return new Promise((resolve, reject) => {
     quizMutationBatch.push({ execute, resolve, reject });
-    if (!quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 75);
+    if (!quizMutationFlushActive && !quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 200);
   });
 }
 
 async function flushQuizMutationBatch() {
   quizMutationBatchTimer = null;
-  const batch = quizMutationBatch.splice(0);
-  if (!batch.length) return;
+  if (quizMutationFlushActive || !quizMutationBatch.length) return;
+  quizMutationFlushActive = true;
+  let batch = [];
   try {
     await withMutationTurn(async () => {
+      batch = quizMutationBatch.splice(0);
       const db = await readDb();
       const results = batch.map((item) => {
         try {
@@ -334,7 +338,8 @@ async function flushQuizMutationBatch() {
   } catch (error) {
     batch.forEach((item) => item.reject(error));
   } finally {
-    if (quizMutationBatch.length && !quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 75);
+    quizMutationFlushActive = false;
+    if (quizMutationBatch.length && !quizMutationBatchTimer) quizMutationBatchTimer = setTimeout(flushQuizMutationBatch, 200);
   }
 }
 
@@ -985,11 +990,14 @@ function sendEvent(res, event, data) {
 }
 
 function broadcastChange(reason = "data_changed") {
-  if (!eventClients.size) return;
-  const payload = { reason, changedAt: now() };
-  for (const [id, res] of eventClients.entries()) {
-    if (!sendEvent(res, "change", payload)) eventClients.delete(id);
-  }
+  if (!eventClients.size || broadcastChangeTimer) return;
+  broadcastChangeTimer = setTimeout(() => {
+    broadcastChangeTimer = null;
+    const payload = { reason, changedAt: now() };
+    for (const [id, res] of eventClients.entries()) {
+      if (!sendEvent(res, "change", payload)) eventClients.delete(id);
+    }
+  }, 1000);
 }
 
 function msUntilNextLocalMidnight() {
