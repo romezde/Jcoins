@@ -3138,6 +3138,29 @@ td button {
   border: 0;
   background: #fff;
 }
+.activity-viewer-doc-shell {
+  align-self: stretch;
+  justify-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px;
+  background: #d7dce5;
+}
+.activity-viewer-doc {
+  display: grid;
+  gap: 18px;
+  justify-content: center;
+  min-width: max-content;
+}
+.activity-viewer-doc .docx-wrapper {
+  padding: 0 !important;
+  background: transparent !important;
+}
+.activity-viewer-doc section.docx {
+  margin: 0 auto 18px !important;
+  box-shadow: 0 8px 24px rgba(15,23,42,.25);
+}
 .activity-viewer-text {
   align-self: stretch;
   justify-self: stretch;

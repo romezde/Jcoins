@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { renderAsync } from "docx-preview";
 import { ChevronLeft, ChevronRight, Download, Eye, X } from "lucide-react";
 import { request } from "../api.js";
 
@@ -114,6 +115,63 @@ function FilePreview({ file }) {
   if (mime.includes("pdf") || extension === "pdf") {
     return <iframe className="activity-viewer-frame" src={file.fileData} title={file.fileName || "PDF submission"} />;
   }
+  if (extension === "docx" || mime.includes("wordprocessingml")) {
+    return <DocxPreview file={file} />;
+  }
   if (file.previewText) return <pre className="activity-viewer-text">{file.previewText}</pre>;
   return <div className="activity-viewer-state">This older file format cannot be rendered by the browser. Ask the student to upload DOCX, PPTX, XLSX, PDF, TXT, CSV, or an image for an in-app preview.</div>;
+}
+
+function DocxPreview({ file }) {
+  const containerRef = useRef(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const container = containerRef.current;
+    if (!container) return undefined;
+    container.innerHTML = "";
+    setError("");
+
+    const blob = dataUrlToBlob(file.fileData);
+    if (!blob) {
+      setError("This document could not be opened.");
+      return undefined;
+    }
+
+    renderAsync(blob, container, null, {
+      className: "docx-preview-rendered",
+      inWrapper: false,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      ignoreFonts: true,
+      breakPages: true,
+      useBase64URL: true
+    }).catch(() => {
+      if (active) setError("This DOCX could not be rendered. Download the file to open it.");
+    });
+
+    return () => {
+      active = false;
+      container.innerHTML = "";
+    };
+  }, [file.fileData]);
+
+  return <div className="activity-viewer-doc-shell">
+    {error && <div className="activity-viewer-state error">{error}</div>}
+    <div ref={containerRef} className="activity-viewer-doc" aria-label={file.fileName || "DOCX submission"} />
+  </div>;
+}
+
+function dataUrlToBlob(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/i);
+  if (!match) return null;
+  try {
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: match[1] });
+  } catch {
+    return null;
+  }
 }
