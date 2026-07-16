@@ -4,7 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -1042,19 +1042,43 @@ async function pruneBackupDirectory(backupDir) {
       .filter((file) => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(file))
       .sort()
       .reverse();
-    await Promise.all(files.slice(BACKUP_RETENTION_DAYS).map((file) => rm(path.join(backupDir, file), { force: true })));
+    await Promise.all(files.slice(BACKUP_RETENTION_DAYS).flatMap((file) => {
+      const base = file.replace(/\.json$/, "");
+      return [
+        rm(path.join(backupDir, file), { force: true }),
+        rm(path.join(backupDir, `${base}.activity-files`), { recursive: true, force: true })
+      ];
+    }));
   } catch {
     // Local backup pruning should never block the running classroom app.
   }
 }
 
-async function mirrorLocalBackup(backupPath) {
+async function copyActivityFileBackup(destinationDir) {
+  try {
+    await rm(destinationDir, { recursive: true, force: true });
+    await cp(localActivityFileDir, destinationDir, { recursive: true, force: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+async function mirrorLocalBackup(backupPath, activityBackupDir = "") {
   if (!BACKUP_MIRROR_DIR) return;
   await mkdir(BACKUP_MIRROR_DIR, { recursive: true });
   const destination = path.join(BACKUP_MIRROR_DIR, path.basename(backupPath));
   const temporaryPath = `${destination}.${process.pid}.${randomUUID()}.tmp`;
   await copyFile(backupPath, temporaryPath);
   await rename(temporaryPath, destination);
+  if (activityBackupDir) {
+    const activityDestination = path.join(BACKUP_MIRROR_DIR, path.basename(activityBackupDir));
+    try {
+      await rm(activityDestination, { recursive: true, force: true });
+      await cp(activityBackupDir, activityDestination, { recursive: true, force: true });
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
   await pruneBackupDirectory(BACKUP_MIRROR_DIR);
 }
 
@@ -1077,12 +1101,15 @@ async function pruneSupabaseBackups() {
 async function createDailyBackup(reason = "scheduled") {
   const date = localDate();
   const localBackupPath = path.join(dataDir, "backups", `${backupRowId(date)}.json`);
+  const localActivityBackupDir = path.join(dataDir, "backups", `${backupRowId(date)}.activity-files`);
   if (await backupExists(date)) {
-    if (!supabase) await mirrorLocalBackup(localBackupPath);
+    if (!supabase) await mirrorLocalBackup(localBackupPath, localActivityBackupDir);
     return false;
   }
-  const db = supabase ? await readSupabaseDb() : JSON.parse(await readFile(dbPath, "utf8"));
-  const backup = { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: await readSupplementalStorageRows() };
+  const db = supabase ? await readSupabaseDb() : null;
+  const backup = supabase
+    ? { date, createdAt: now(), timeZone: BACKUP_TIME_ZONE, reason, state: db, storageRows: await readSupplementalStorageRows() }
+    : null;
   if (supabase) {
     const { error } = await supabase
       .from(SUPABASE_STATE_TABLE)
@@ -1093,8 +1120,9 @@ async function createDailyBackup(reason = "scheduled") {
   }
   const backupDir = path.join(dataDir, "backups");
   await mkdir(backupDir, { recursive: true });
-  await writeJsonAtomic(localBackupPath, backup);
-  await mirrorLocalBackup(localBackupPath);
+  await copyFile(dbPath, localBackupPath);
+  await copyActivityFileBackup(localActivityBackupDir);
+  await mirrorLocalBackup(localBackupPath, localActivityBackupDir);
   await pruneBackupDirectory(backupDir);
   return true;
 }
