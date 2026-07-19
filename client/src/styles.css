@@ -2998,6 +2998,24 @@ td button {
   gap: 8px;
   min-width: 180px;
 }
+.activity-materials-box {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, auto) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .48);
+}
+.activity-materials-box > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.activity-materials-box .muted-line {
+  margin: 0;
+}
 .activity-upload-box input {
   min-width: 0;
 }
@@ -3927,6 +3945,10 @@ td button {
   }
   .activity-viewer-nav button {
     min-width: 112px;
+  }
+  .activity-materials-box {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
   .modal-card p,
   .modal-card label {

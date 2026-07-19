@@ -3,7 +3,7 @@ import { renderAsync } from "docx-preview";
 import { ChevronLeft, ChevronRight, Download, Eye, X } from "lucide-react";
 import { request } from "../api.js";
 
-export default function ActivityFileViewer({ activityId, studentId, files }) {
+export default function ActivityFileViewer({ activityId, studentId, files, filePath }) {
   const list = (files || []).filter((file) => file.fileName);
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
@@ -12,6 +12,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const fileSignature = list.map((file) => `${file.fileIndex ?? ""}:${file.fileName}`).join("|");
+  const buildFilePath = (fileIndex) => filePath ? filePath(fileIndex) : `/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`;
 
   useEffect(() => {
     setOpen(false);
@@ -29,7 +30,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
     const fileIndex = Number.isInteger(file?.fileIndex) ? file.fileIndex : index;
     setLoading(true);
     setError("");
-    request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`, { timeoutMs: 5 * 60 * 1000 })
+    request(buildFilePath(fileIndex), { timeoutMs: 5 * 60 * 1000 })
       .then((data) => {
         if (active) setLoaded((current) => ({ ...current, [index]: data.file }));
       })
@@ -38,7 +39,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [open, index, activityId, studentId]);
+  }, [open, index, activityId, studentId, filePath]);
 
   async function downloadFiles() {
     setDownloading(true);
@@ -47,7 +48,7 @@ export default function ActivityFileViewer({ activityId, studentId, files }) {
       for (let position = 0; position < list.length; position += 1) {
         const file = list[position];
         const fileIndex = Number.isInteger(file.fileIndex) ? file.fileIndex : position;
-        const downloadedFile = loaded[position] || (await request(`/activities/${activityId}/submissions/${studentId}/files/${fileIndex}`, { timeoutMs: 5 * 60 * 1000 })).file;
+        const downloadedFile = loaded[position] || (await request(buildFilePath(fileIndex), { timeoutMs: 5 * 60 * 1000 })).file;
         if (!downloadedFile?.fileData) throw new Error(`Could not download ${file.fileName}.`);
         triggerDownload(downloadedFile);
       }

@@ -68,6 +68,7 @@ const GUILD_RESPONSE_ROW_PREFIX = "guild-response:";
 const AUDIT_LOG_ROW_PREFIX = "audit-log:";
 const PUSH_SUBSCRIPTION_ROW_PREFIX = "push-subscription:";
 const PUSH_CONFIG_ROW_ID = "system:push-config";
+const ACTIVITY_MATERIAL_OWNER = "__activity_materials";
 const STORAGE_ROW_TYPES = [
   { key: "activityFiles", label: "Activity file blobs", prefix: ACTIVITY_FILE_ROW_PREFIX },
   { key: "transactions", label: "Transactions and points", prefix: TRANSACTION_ROW_PREFIX },
@@ -1540,10 +1541,34 @@ function activityFileRowId(activityId, studentId, fileIndex) {
   return `${ACTIVITY_FILE_ROW_PREFIX}${activityId}:${studentId}:${fileIndex}`;
 }
 
+function activityMaterialFileRowId(activityId, fileIndex) {
+  return activityFileRowId(activityId, ACTIVITY_MATERIAL_OWNER, fileIndex);
+}
+
 function extractActivityFileRows(db) {
   const dbToStore = structuredClone(db);
   const files = [];
   (dbToStore.activities || []).forEach((activity) => {
+    const materialFiles = activityMaterialFiles(activity);
+    materialFiles.forEach((file, fileIndex) => {
+      if (!file?.fileData) return;
+      files.push({
+        id: activityMaterialFileRowId(activity.id, fileIndex),
+        state: {
+          kind: "activity-material",
+          activityId: activity.id,
+          studentId: ACTIVITY_MATERIAL_OWNER,
+          fileIndex,
+          fileName: file.fileName || "",
+          fileType: file.fileType || "",
+          fileSize: file.fileSize || 0,
+          uploadedAt: file.uploadedAt || "",
+          uploadedBy: file.uploadedBy || "",
+          fileData: file.fileData
+        }
+      });
+      delete file.fileData;
+    });
     (activity.submissions || []).forEach((submission) => {
       const submissionFiles = activitySubmissionFiles(submission);
       submissionFiles.forEach((file, fileIndex) => {
@@ -3025,6 +3050,19 @@ function cleanMultipartActivityFiles(files = []) {
   return cleaned;
 }
 
+function cleanMultipartActivityMaterialFiles(files = []) {
+  if (!files.length) throw new Error("Upload at least one activity material.");
+  if (files.length > 10) throw new Error("Upload up to 10 activity materials at a time.");
+  const allowedExtensions = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
+  return files.map((file) => {
+    const fileName = String(file.originalname || "").trim().slice(0, 180);
+    const extension = fileName.split(".").pop()?.toLowerCase() || "";
+    if (!allowedExtensions.includes(extension)) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+    if (Number(file.size || 0) > ACTIVITY_FILE_LIMIT_BYTES) throw new Error("File is too large. Maximum upload is 50 MB.");
+    return { sourcePath: file.path, fileName, fileType: String(file.mimetype || "application/octet-stream").slice(0, 120), fileSize: Number(file.size || 0), extension };
+  });
+}
+
 async function cleanupTemporaryActivityFiles(files = []) {
   await Promise.all(files.map((file) => rm(file.path || file.sourcePath || "", { force: true }).catch(() => {})));
 }
@@ -3402,6 +3440,10 @@ function activitySubmissionFiles(sub = {}) {
   return Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
 }
 
+function activityMaterialFiles(activity = {}) {
+  return Array.isArray(activity.materials) ? activity.materials : [];
+}
+
 function publicActivityFile(file, index) {
   return {
     fileIndex: index,
@@ -3417,6 +3459,7 @@ function hydrateActivities(db) {
     a.section = String(a.section || "").trim();
     a.deadline = normalizeActivityDeadline(a.deadline);
     a.maxScore = 100;
+    a.materials = activityMaterialFiles(a).map(publicActivityFile);
     const base = activityBase(db, a.type);
     const submissions = a.submissions || [];
     const rows = studentsForClass(db, a.subjectId, a.section).map((s) => {
@@ -4971,6 +5014,53 @@ app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), a
   res.json({ ok: true });
 });
 
+app.post("/api/admin/activities/:id/materials", auth, requireRole("admin", "teacher"), activitySubmissionUpload, async (req, res, next) => {
+  const temporaryFiles = Array.isArray(req.files) ? req.files : [];
+  try {
+    const db = await readDb();
+    const activity = db.activities.find((a) => a.id === req.params.id);
+    if (!activity) return res.status(404).json({ error: "Activity not found." });
+    if (!canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+    let files;
+    try {
+      files = cleanMultipartActivityMaterialFiles(temporaryFiles);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    const previousFileCount = activityMaterialFiles(activity).length;
+    const uploadedAt = now();
+    const storedFiles = await persistMultipartActivityFiles(activity.id, ACTIVITY_MATERIAL_OWNER, files, uploadedAt);
+    await removeObsoleteActivityFileRows(activity.id, ACTIVITY_MATERIAL_OWNER, storedFiles.length, previousFileCount);
+    activity.materials = storedFiles.map((file) => ({ ...file, uploadedAt, uploadedBy: req.user.id }));
+    activity.updatedAt = now();
+    await writeDb(db);
+    queuePushToUsers(db, userIdsForStudents(db, studentsForClass(db, activity.subjectId, activity.section).map((student) => student.id)), {
+      title: "Activity materials uploaded",
+      body: `${activity.title} has new reference files.`,
+      url: "/activities",
+      tag: `activity-materials-${activity.id}`
+    });
+    res.status(201).json({ materials: activity.materials.map(publicActivityFile) });
+  } catch (error) {
+    next(error);
+  } finally {
+    await cleanupTemporaryActivityFiles(temporaryFiles);
+  }
+});
+
+app.delete("/api/admin/activities/:id/materials", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  if (!canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  const previousFileCount = activityMaterialFiles(activity).length;
+  activity.materials = [];
+  activity.updatedAt = now();
+  await removeObsoleteActivityFileRows(activity.id, ACTIVITY_MATERIAL_OWNER, 0, previousFileCount);
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
 app.put("/api/admin/activities/:id/extensions", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const activity = db.activities.find((item) => item.id === req.params.id);
@@ -5050,6 +5140,76 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   else if (row.earned) db.transactions.push(tx(sub.studentId, "activity", row.earned, activity.title, now(), req.user.id, { kind: "activity", activityId: activity.id, subjectId: activity.subjectId, section: activity.section || "" }));
   await writeDb(db);
   res.json({ submission: sub });
+});
+
+app.post("/api/admin/activities/:id/submissions/:studentId/files", auth, requireRole("admin", "teacher"), activitySubmissionUpload, async (req, res, next) => {
+  const temporaryFiles = Array.isArray(req.files) ? req.files : [];
+  try {
+    const db = await readDb();
+    const activity = db.activities.find((a) => a.id === req.params.id);
+    if (!activity) return res.status(404).json({ error: "Activity not found." });
+    if (!canUseActivity(req.user, activity) || !scopedStudentIds(db, req.user).has(req.params.studentId)) return res.status(403).json({ error: "This activity submission is outside your assigned class scope." });
+    const student = db.students.find((item) => item.id === req.params.studentId);
+    if (!studentIsInClass(db, student, activity.subjectId, activity.section)) return res.status(400).json({ error: "This student is not enrolled in the activity class." });
+    let files;
+    try {
+      files = cleanMultipartActivityFiles(temporaryFiles);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    activity.submissions ||= [];
+    let sub = activity.submissions.find((item) => item.studentId === student.id);
+    if (!sub) {
+      sub = { studentId: student.id };
+      activity.submissions.push(sub);
+    }
+    const previousFileCount = activitySubmissionFiles(sub).length;
+    const submittedAt = now();
+    const storedFiles = await persistMultipartActivityFiles(activity.id, student.id, files, submittedAt);
+    await removeObsoleteActivityFileRows(activity.id, student.id, storedFiles.length, previousFileCount);
+    sub.files = storedFiles;
+    delete sub.file;
+    sub.submitted = true;
+    sub.submittedAt = submittedAt;
+    sub.dateSubmitted = submittedAt;
+    sub.submissionMethod = "upload";
+    sub.remarks = String(req.body.remarks ?? sub.remarks ?? "");
+    syncActivityRewards(db, activity, req.user.id);
+    activity.updatedAt = now();
+    await writeDb(db);
+    queuePushToUsers(db, userIdsForStudents(db, [student.id]), {
+      title: "Activity file uploaded",
+      body: `${activity.title} has a file uploaded for you.`,
+      url: "/activities",
+      tag: `activity-submission-upload-${activity.id}-${student.id}`
+    });
+    res.status(201).json({ submission: sub });
+  } catch (error) {
+    next(error);
+  } finally {
+    await cleanupTemporaryActivityFiles(temporaryFiles);
+  }
+});
+
+app.get("/api/activities/:id/materials/:fileIndex", auth, async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  const staffAllowed = (req.user.role === "admin" || req.user.role === "teacher") && canUseActivity(req.user, activity);
+  const student = req.user.role === "student" ? db.students.find((item) => item.id === req.user.studentId) : null;
+  const studentAllowed = req.user.role === "student" && studentIsInClass(db, student, activity.subjectId, activity.section);
+  if (!staffAllowed && !studentAllowed) return res.status(403).json({ error: "This activity material is outside your class scope." });
+  const materials = activityMaterialFiles(activity);
+  const fileIndex = Number(req.params.fileIndex);
+  if (!Number.isInteger(fileIndex) || fileIndex < 0 || fileIndex >= materials.length) return res.status(404).json({ error: "File not found." });
+  let file = materials[fileIndex];
+  if (!file?.fileData) {
+    const storedFile = await readActivityFileRow(activity.id, ACTIVITY_MATERIAL_OWNER, fileIndex);
+    if (storedFile) file = { ...file, ...storedFile };
+  }
+  if (!file?.fileData) return res.status(404).json({ error: "File data not found." });
+  const previewText = await activityFilePreviewText(file);
+  res.json({ file: { ...publicActivityFile(file, fileIndex), fileData: file.fileData, previewText } });
 });
 
 app.get("/api/activities/:id/submissions/:studentId/files/:fileIndex", auth, async (req, res) => {

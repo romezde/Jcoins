@@ -49,6 +49,7 @@ export function StudentActivities({ data, run }) {
     id: activity.id,
     activity: activity.title,
     subject: activity.subjectName,
+    materials: activity.materials || [],
     deadline: row.effectiveDeadline || activity.deadline,
     status: row.status || (row.submitted ? "Submitted" : "Missing"),
     submittedAt: row.submittedAt,
@@ -84,9 +85,10 @@ export function StudentActivities({ data, run }) {
       <Field label="Search Activities" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} activit{rows.length === 1 ? "y" : "ies"}</div>
     </div>
-    <Table columns={["Activity", "Subject", "Deadline", "Status", "Submitted At", "Late", "Max Score", "Score", "File", "Upload"]} rows={rows.map((row) => [
+    <Table columns={["Activity", "Subject", "Materials", "Deadline", "Status", "Submitted At", "Late", "Max Score", "Score", "File", "Upload"]} rows={rows.map((row) => [
       row.activity,
       row.subject,
+      <ActivityFileViewer activityId={row.id} files={row.materials} filePath={(fileIndex) => `/activities/${row.id}/materials/${fileIndex}`} />,
       formatActivityDateTime(row.deadline),
       row.status,
       row.submittedAt ? formatActivityDateTime(row.submittedAt) : "-",

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
-import { del, post, put, today } from "../api.js";
+import { del, post, postFormWithProgress, put, today } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
 import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
@@ -73,6 +73,7 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
   const tracker = `${classRows.filter((row) => row.submitted).length}/${classRows.length}`;
   return <Panel title={`${activity.title} Details`} wide defaultOpen={false} actions={<div className="inline"><strong>{tracker} submitted</strong><ActivityFormModal data={data} run={run} activity={activity} /><button type="button" className="soft" onClick={() => exportActivity(activity, classRows)}>Export Activity</button><button className="danger" onClick={() => deleteActivity(activity, run)}>Delete Activity</button></div>}>
     <p className="muted-line">{activity.subjectName} | {sectionLabel} | {activity.type} | deadline {formatActivityDateTime(activity.deadline)} | base {activity.basePoints} JC | actual score 0-100</p>
+    <ActivityMaterialsControl activity={activity} run={run} />
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
@@ -85,11 +86,74 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       r.daysLate,
       r.maxScoreAllowed,
       <input className="score-input" type="number" min="0" max={r.maxScoreAllowed} defaultValue={r.score ?? ""} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: e.target.value, remarks: r.remarks }), "Score saved")} />,
-      <ActivityFileViewer activityId={activity.id} studentId={r.studentId} files={r.files?.length ? r.files : r.fileName ? [{ fileIndex: 0, fileName: r.fileName }] : []} />,
+      <ActivitySubmissionFileCell activity={activity} row={r} run={run} />,
       r.earned,
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
+}
+
+function ActivitySubmissionFileCell({ activity, row, run }) {
+  const [progress, setProgress] = useState(null);
+  const files = row.files?.length ? row.files : row.fileName ? [{ fileIndex: 0, fileName: row.fileName }] : [];
+  async function uploadForStudent(fileList) {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    try {
+      await run(() => {
+        validateActivitySubmissionFiles(incoming);
+        const formData = new FormData();
+        incoming.forEach((file) => formData.append("files", file, file.name));
+        formData.append("remarks", row.remarks || "");
+        setProgress(0);
+        return postFormWithProgress(`/admin/activities/${activity.id}/submissions/${row.studentId}/files`, formData, (value) => setProgress(value));
+      }, "Student activity file uploaded");
+    } finally {
+      setProgress(null);
+    }
+  }
+  return <div className="activity-upload-box">
+    <ActivityFileViewer activityId={activity.id} studentId={row.studentId} files={files} />
+    <label className="soft file-button table-file-button">{files.length ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple disabled={progress != null} onChange={(event) => { uploadForStudent(event.target.files); event.target.value = ""; }} /></label>
+    {progress != null && <div className="activity-upload-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
+      <span style={{ width: `${progress}%` }} />
+      <strong>{progress}%</strong>
+    </div>}
+  </div>;
+}
+
+function ActivityMaterialsControl({ activity, run }) {
+  const [progress, setProgress] = useState(null);
+  async function uploadMaterials(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    try {
+      await run(() => {
+        validateActivityMaterialFiles(files);
+        const formData = new FormData();
+        files.forEach((file) => formData.append("files", file, file.name));
+        setProgress(0);
+        return postFormWithProgress(`/admin/activities/${activity.id}/materials`, formData, (value) => setProgress(value));
+      }, "Activity materials uploaded");
+    } finally {
+      setProgress(null);
+    }
+  }
+  return <section className="activity-materials-box">
+    <div>
+      <strong>Student Materials</strong>
+      <span className="muted-line">{activity.materials?.length ? `${activity.materials.length} file${activity.materials.length === 1 ? "" : "s"} available` : "No files uploaded yet"}</span>
+    </div>
+    <ActivityFileViewer activityId={activity.id} files={activity.materials || []} filePath={(fileIndex) => `/activities/${activity.id}/materials/${fileIndex}`} />
+    <div className="inline">
+      <label className="soft file-button">Upload Materials<input type="file" accept={activityFileAccept} multiple disabled={progress != null} onChange={(event) => { uploadMaterials(event.target.files); event.target.value = ""; }} /></label>
+      {!!activity.materials?.length && <button type="button" className="danger" onClick={() => confirm(`Remove all uploaded files from ${activity.title}?`) && run(() => del(`/admin/activities/${activity.id}/materials`), "Activity materials removed")}>Clear Materials</button>}
+    </div>
+    {progress != null && <div className="activity-upload-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
+      <span style={{ width: `${progress}%` }} />
+      <strong>{progress}%</strong>
+    </div>}
+  </section>;
 }
 
 function ActivitySubmissionControl({ activity, row, run }) {
@@ -167,8 +231,27 @@ function newActivityForm(data, presetClass = null) {
 
 function activityRowsForSection(activity, data, section) {
   if (activity.section && activity.section !== section) return [];
+  if (activity.section) return activity.rows || [];
   const studentIds = new Set((data.students || []).filter((student) => String(student.section || "") === section && (student.subjectIds || []).includes(activity.subjectId)).map((student) => student.id));
   return (activity.rows || []).filter((row) => studentIds.has(row.studentId));
+}
+
+const activityFileAccept = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv";
+
+function validateActivityMaterialFiles(files) {
+  const allowed = ["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "txt", "csv"];
+  if (files.length > 10) throw new Error("Upload up to 10 files at a time.");
+  const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase() || "");
+  if (extensions.some((extension) => !allowed.includes(extension))) throw new Error("Upload PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, JPG/PNG/WEBP, TXT, or CSV only.");
+  if (files.some((file) => file.size > 50 * 1024 * 1024)) throw new Error("Each file must be 50 MB or less.");
+}
+
+function validateActivitySubmissionFiles(files) {
+  validateActivityMaterialFiles(files);
+  const imageExtensions = ["jpg", "jpeg", "png", "webp"];
+  const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase() || "");
+  if (files.length > 1 && extensions.some((extension) => !imageExtensions.includes(extension))) throw new Error("Multiple uploads are only for photos. Upload documents one at a time.");
+  if (files.reduce((sum, file) => sum + file.size, 0) > 100 * 1024 * 1024) throw new Error("Photos are too large together. Maximum total upload is 100 MB.");
 }
 
 function exportActivity(activity, rows = activity.rows) {
