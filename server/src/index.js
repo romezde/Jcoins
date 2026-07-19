@@ -4305,6 +4305,33 @@ app.post("/api/student/guild/group-activities/:id/vote", auth, requireRole("stud
   res.json({ activity: publicGroupActivity(db, activity, req.user) });
 });
 
+app.put("/api/admin/guild/group-activities/:id/leader", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Group activity not found." });
+  if (!canUseSubject(req.user, activity.subjectId) || !canUseSection(req.user, activity.section)) return res.status(403).json({ error: "This activity is outside your assigned scope." });
+  const guildId = String(req.body.guildId || "");
+  const leaderId = String(req.body.leaderId || "");
+  const members = groupActivityMembers(db, activity, guildId);
+  if (!members.length) return res.status(400).json({ error: "This guild has no eligible members in the class." });
+  if (!members.some((member) => member.id === leaderId)) return res.status(400).json({ error: "Choose a member of this guild as leader." });
+  const result = groupActivityResult(activity, guildId, true);
+  const leaderChanged = result.leaderId !== leaderId;
+  result.leaderId = leaderId;
+  result.leaderFinalizedAt = now();
+  if (leaderChanged) result.distributedAt = "";
+  if (result.teacherScore != null) {
+    result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {})
+      .filter(([studentId]) => members.some((member) => member.id === studentId))
+      .map(([studentId, grade]) => [studentId, Math.min(result.teacherScore, Math.max(0, Number(grade || 0)))]));
+    result.memberGrades[leaderId] = result.teacherScore;
+    syncGroupActivityRewards(db, activity, result, req.user.id);
+  }
+  activity.updatedAt = now();
+  await writeDb(db);
+  res.json({ activity: publicGroupActivity(db, activity, req.user) });
+});
+
 app.put("/api/admin/guild/group-activities/:id/grade", auth, requireRole("admin", "teacher"), async (req, res) => {
   const db = await readDb();
   const activity = (db.groupActivities || []).find((item) => item.id === req.params.id);

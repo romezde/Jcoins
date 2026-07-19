@@ -78,12 +78,15 @@ function StaffGroupActivity({ activity, data, run }) {
 
 function StaffGuildGrade({ activity, guild, run }) {
   const [score, setScore] = useState(guild.teacherScore ?? "");
+  const [leaderId, setLeaderId] = useState(guild.leaderId || guild.proposedLeaderId || guild.members[0]?.studentId || "");
   useEffect(() => setScore(guild.teacherScore ?? ""), [guild.teacherScore]);
+  useEffect(() => setLeaderId(guild.leaderId || guild.proposedLeaderId || guild.members[0]?.studentId || ""), [guild.leaderId, guild.proposedLeaderId, guild.members.length]);
   const gradeRows = guild.members.map((member) => [
     member.studentName,
     member.studentId === guild.leaderId ? "Leader" : "Member",
     guild.memberGrades?.[member.studentId] ?? "Waiting"
   ]);
+  const leaderOptions = guild.members.map((member) => ({ value: member.studentId, label: member.studentName }));
   return <section className="guild-group-card">
     <div className="section-head">
       <div>
@@ -97,6 +100,10 @@ function StaffGuildGrade({ activity, guild, run }) {
       {(guild.voteRanking || []).map((candidate) => <span key={candidate.studentId}>{candidate.studentName}: <b>{candidate.votes}</b></span>)}
     </div>
     {!guild.leaderId && <p className="muted-line">Current vote leader: {guild.proposedLeaderName || "No votes yet"}. Grading finalizes the leader; ties are resolved alphabetically.</p>}
+    <div className="guild-leader-assign">
+      <Select label="Assigned Leader" value={leaderId} onChange={setLeaderId} options={leaderOptions} />
+      <button type="button" disabled={!leaderId || leaderId === guild.leaderId} onClick={() => run(() => put(`/admin/guild/group-activities/${activity.id}/leader`, { guildId: guild.guildId, leaderId }), "Group leader assigned")}>{guild.leaderId ? "Change Leader" : "Assign Leader"}</button>
+    </div>
     <div className="guild-teacher-grade">
       <Field label="Teacher Grade (Leader Grade)" type="number" min="0" max="100" value={score} onChange={setScore} />
       <button type="button" disabled={score === "" || !guild.leaderId && !guild.proposedLeaderId} onClick={() => run(() => put(`/admin/guild/group-activities/${activity.id}/grade`, { guildId: guild.guildId, score }), guild.leaderId ? "Teacher grade updated" : "Leader finalized and graded")}>{guild.leaderId ? "Update Grade" : "Finalize Leader & Grade"}</button>
