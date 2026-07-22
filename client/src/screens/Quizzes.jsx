@@ -855,12 +855,13 @@ function paperSheetLayout(rows) {
       const column = index >= rowsPerColumn ? 1 : 0;
       const rowIndex = column ? index - rowsPerColumn : index;
       const baseX = column ? 590 : 145;
+      const choiceGap = row.choices.length <= 4 ? 56 : clamp(230 / Math.max(1, row.choices.length - 1), 28, 44);
       const y = answerStartY + rowIndex * answerGap;
       return {
         number: row.number,
         labelX: baseX - 25,
         y,
-        choices: row.choices.map((_, choiceIndex) => ({ x: baseX + choiceIndex * 42, y, value: String.fromCharCode(65 + choiceIndex) }))
+        choices: row.choices.map((_, choiceIndex) => ({ x: baseX + choiceIndex * choiceGap, y, value: String.fromCharCode(65 + choiceIndex) }))
       };
     })
   };
@@ -1003,19 +1004,19 @@ async function scanPaperAnswerSheetV3(quiz, file) {
   const firstLayout = paperSheetLayout(firstRows);
   const codePage = zonePages.code || page;
   const typePage = zonePages.type || page;
-  const codeDigits = firstLayout.code.map((column) => readBubbleGroupV2(imageData, canvas.width, canvas.height, codePage, column, {
+  const codeDigits = firstLayout.code.map((column) => readBubbleGroupV3(imageData, canvas.width, canvas.height, codePage, column, {
     minRatio: 0.24,
     minGap: 0.02,
     strongRatio: 0.52,
     strongGap: 0.018,
     radiusScale: 2.15,
-    searchScale: 3.1
+    searchScale: 4.6
   }).value || "").join("");
-  const typeRead = readBubbleGroupV2(imageData, canvas.width, canvas.height, typePage, firstLayout.type, {
-    minRatio: 0.34,
-    minGap: 0.055,
+  const typeRead = readBubbleGroupV3(imageData, canvas.width, canvas.height, typePage, firstLayout.type, {
+    minRatio: 0.36,
+    minGap: 0.08,
     radiusScale: 2.8,
-    searchScale: 2.2
+    searchScale: 4.2
   }).value || "A";
   const rows = paperQuizRows(quiz, typeRead);
   const layout = paperSheetLayout(rows);
@@ -1023,13 +1024,13 @@ async function scanPaperAnswerSheetV3(quiz, file) {
   const answers = {};
   layout.answers.forEach((row, index) => {
     const answerPage = index >= rowsPerColumn ? (zonePages.answersRight || page) : (zonePages.answersLeft || page);
-    const read = readBubbleGroupV2(imageData, canvas.width, canvas.height, answerPage, row.choices, {
-      minRatio: 0.44,
-      minGap: 0.095,
-      strongRatio: 0.74,
-      strongGap: 0.07,
+    const read = readBubbleGroupV3(imageData, canvas.width, canvas.height, answerPage, row.choices, {
+      minRatio: 0.46,
+      minGap: 0.12,
+      strongRatio: 0.78,
+      strongGap: 0.09,
       radiusScale: 2.45,
-      searchScale: 2.2
+      searchScale: 4.4
     });
     if (read.value) answers[row.number] = read.value;
   });
@@ -1043,7 +1044,7 @@ async function scanPaperAnswerSheetV3(quiz, file) {
     rows,
     usedMarkers: page.usedMarkers,
     previewUrl,
-    message: `V3 ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
+    message: `V3 combined scan ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
   };
 }
 
@@ -1352,6 +1353,37 @@ function readBubbleGroupV2(imageData, width, height, page, bubbles, options = {}
   const strongGap = options.strongGap ?? minGap;
   const confident = best.ratio >= minRatio && (gap >= minGap || (best.ratio >= strongRatio && gap >= strongGap));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
+}
+
+function readBubbleGroupV3(imageData, width, height, page, bubbles, options = {}) {
+  const reads = bubbles.map((bubble) => {
+    const ink = bubbleInkScoreV2(imageData, width, height, page, bubble, options);
+    const fill = bubbleDarkness(imageData, width, height, page, bubble, {
+      ...options,
+      radiusScale: (options.radiusScale ?? 2.6) * 0.9,
+      searchScale: (options.searchScale ?? 3.4) * 0.75
+    });
+    return {
+      ...bubble,
+      ink,
+      fill,
+      ratio: ink * 0.62 + fill * 0.38
+    };
+  }).sort((a, b) => b.ratio - a.ratio);
+  const [best, second] = reads;
+  if (!best) return { value: "", confidence: 0 };
+  const gap = best.ratio - (second?.ratio || 0);
+  const inkGap = best.ink - (second?.ink || 0);
+  const fillGap = best.fill - (second?.fill || 0);
+  const minRatio = options.minRatio ?? 0.36;
+  const minGap = options.minGap ?? 0.08;
+  const strongRatio = options.strongRatio ?? 0.68;
+  const strongGap = options.strongGap ?? minGap;
+  const agreementGap = Math.min(inkGap, fillGap);
+  const confident = best.ratio >= minRatio
+    && (gap >= minGap || (best.ratio >= strongRatio && gap >= strongGap))
+    && (agreementGap >= minGap * 0.35 || best.ratio >= strongRatio);
+  return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio, ink: best.ink, fill: best.fill };
 }
 
 function bubbleInkScoreV2(imageData, width, height, page, bubble, options = {}) {
