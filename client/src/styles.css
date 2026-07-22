@@ -5056,6 +5056,15 @@ td button {
   gap: 8px;
 }
 
+.paper-scan-loading {
+  animation: scanPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: .65; }
+  50% { opacity: 1; }
+}
+
 .quiz-correct-checks,
 .quiz-matching-editor,
 .quiz-student-matching,

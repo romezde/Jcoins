@@ -357,6 +357,7 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   async function scanCroppedSheet() {
     if (!source.file) return;
     setShowCropper(false);
+    setScan({ loading: true, message: "Preparing cropped image...", previewUrl: "", result: null });
     const croppedFile = await cropImageFile(source.file, crop);
     await scanSheet(croppedFile);
   }
@@ -429,6 +430,7 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
         </div>
       </div>}
       {scan.previewUrl && <img className="paper-scan-preview" src={scan.previewUrl} alt="Scanned answer sheet preview" />}
+      {scan.loading && <div className="notice paper-scan-loading">Scanning paper. Please wait...</div>}
       {scan.message && <p className="muted-line">{scan.message}</p>}
       <div className="form-grid two">
         <Field label="Student Code" value={form.studentCode} onChange={(studentCode) => setForm({ ...form, studentCode })} placeholder="JCS1234" />
