@@ -88,15 +88,21 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       <ActivityScoreInput activity={activity} row={r} run={run} />,
       <ActivitySubmissionFileCell activity={activity} row={r} run={run} />,
       r.earned,
-      <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
+      <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: activityActualScore(r), remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
 }
 
+function activityActualScore(row) {
+  if (row.score !== "" && row.score != null) return row.score;
+  return row.submitted ? row.maxScoreAllowed ?? 100 : "";
+}
+
 function ActivityScoreInput({ activity, row, run }) {
-  const [score, setScore] = useState(row.score ?? "");
-  useEffect(() => setScore(row.score ?? ""), [row.score, row.studentId, activity.id]);
-  const changed = String(score ?? "") !== String(row.score ?? "");
+  const rowScore = activityActualScore(row);
+  const [score, setScore] = useState(rowScore);
+  useEffect(() => setScore(rowScore), [rowScore, row.studentId, activity.id]);
+  const changed = String(score ?? "") !== String(rowScore ?? "");
   return <input
     className="score-input"
     type="number"
@@ -186,7 +192,7 @@ function ActivitySubmissionControl({ activity, row, run }) {
       submitted,
       submittedAt: submitted ? row.submittedAt : "",
       submissionMethod: submitted ? "physical" : "",
-      score: row.score,
+      score: activityActualScore(row),
       remarks: row.remarks
     }), submitted ? "Physical work marked submitted" : "Submission removed");
   };
@@ -308,7 +314,7 @@ function exportActivity(activity, rows = activity.rows) {
     row.submittedAt ? formatActivityDateTime(row.submittedAt) : "",
     row.daysLate,
     row.maxScoreAllowed,
-    row.score ?? "",
+    activityActualScore(row),
     row.fileNames || row.fileName || "",
     row.remarks || "",
     row.earned

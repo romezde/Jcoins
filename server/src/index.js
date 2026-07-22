@@ -3094,7 +3094,8 @@ function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
   const autoScore = Math.max(0, Math.min(100, Number(maxScoreAllowed || 0)));
   if (submission.scoreMode !== "manual") return autoScore;
   const manualScore = Number(submission.score);
-  return Number.isFinite(manualScore) ? Math.max(0, Math.min(autoScore, manualScore)) : autoScore;
+  const hasManualScore = String(submission.score ?? "").trim() !== "" && Number.isFinite(manualScore);
+  return hasManualScore ? Math.max(0, Math.min(autoScore, manualScore)) : autoScore;
 }
 
 function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
@@ -3105,7 +3106,9 @@ function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
     }
     return;
   }
-  if (submission.scoreMode !== "manual") {
+  const manualScore = Number(submission.score);
+  const hasManualScore = submission.scoreMode === "manual" && String(submission.score ?? "").trim() !== "" && Number.isFinite(manualScore);
+  if (!hasManualScore) {
     submission.score = activitySubmissionScore({ ...submission, scoreMode: "auto" }, maxScoreAllowed);
     submission.scoreMode = "auto";
   }
