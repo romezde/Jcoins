@@ -334,12 +334,12 @@ function PaperCheckModal({ quiz, run }) {
   }
   async function scanSheet(file) {
     if (!file) return;
-    setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: URL.createObjectURL(file), result: null });
+    setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: "", result: null });
     try {
       const result = await scanPaperAnswerSheet(quiz, file);
       const answersText = Object.entries(result.answers).map(([number, answer]) => `${number}${answer}`).join(" ");
       setForm({ studentCode: result.studentCode, variant: result.variant || "A", answersText });
-      setScan((current) => ({ ...current, loading: false, message: result.message, result }));
+      setScan({ loading: false, message: result.message, previewUrl: result.previewUrl || "", result });
     } catch (err) {
       setScan((current) => ({ ...current, loading: false, message: err.message, result: null }));
     }
@@ -779,7 +779,7 @@ function paperSheetLayout(rows) {
 
 async function scanPaperAnswerSheet(quiz, file) {
   const image = await loadImageFromFile(file);
-  const maxWidth = 1400;
+  const maxWidth = 1200;
   const scale = Math.min(1, maxWidth / image.naturalWidth);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -788,6 +788,7 @@ async function scanPaperAnswerSheet(quiz, file) {
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const page = detectPaperPage(imageData, canvas.width, canvas.height);
+  const previewUrl = canvas.toDataURL("image/jpeg", 0.72);
   const firstRows = paperQuizRows(quiz, "A");
   const firstLayout = paperSheetLayout(firstRows);
   const codeDigits = firstLayout.code.map((column) => readBubbleGroup(imageData, canvas.width, canvas.height, page, column).value || "").join("");
@@ -807,6 +808,7 @@ async function scanPaperAnswerSheet(quiz, file) {
     answers,
     rows,
     usedMarkers: page.usedMarkers,
+    previewUrl,
     message: `${page.usedMarkers ? "Scan markers found." : "Using image edges; crop the answer sheet if detection is off."} Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
   };
 }
@@ -814,9 +816,16 @@ async function scanPaperAnswerSheet(quiz, file) {
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not read this image."));
-    image.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read this image."));
+    };
+    image.src = url;
   });
 }
 
@@ -832,17 +841,24 @@ function detectPaperPage(imageData, width, height) {
     const markerTop = 56;
     const markerRight = 940;
     const markerBottom = 1358;
-    const scaleX = (((markers.tr.x + markers.br.x) / 2) - ((markers.tl.x + markers.bl.x) / 2)) / (markerRight - markerLeft);
-    const scaleY = (((markers.bl.y + markers.br.y) / 2) - ((markers.tl.y + markers.tr.y) / 2)) / (markerBottom - markerTop);
+    const topWidth = Math.hypot(markers.tr.x - markers.tl.x, markers.tr.y - markers.tl.y);
+    const bottomWidth = Math.hypot(markers.br.x - markers.bl.x, markers.br.y - markers.bl.y);
+    const leftHeight = Math.hypot(markers.bl.x - markers.tl.x, markers.bl.y - markers.tl.y);
+    const rightHeight = Math.hypot(markers.br.x - markers.tr.x, markers.br.y - markers.tr.y);
+    const scaleX = ((topWidth + bottomWidth) / 2) / (markerRight - markerLeft);
+    const scaleY = ((leftHeight + rightHeight) / 2) / (markerBottom - markerTop);
     return {
-      x: ((markers.tl.x + markers.bl.x) / 2) - markerLeft * scaleX,
-      y: ((markers.tl.y + markers.tr.y) / 2) - markerTop * scaleY,
+      x: Math.min(markers.tl.x, markers.bl.x) - markerLeft * scaleX,
+      y: Math.min(markers.tl.y, markers.tr.y) - markerTop * scaleY,
       scaleX,
       scaleY,
+      unitScale: Math.min(scaleX, scaleY),
+      corners: markers,
+      logicalBounds: { left: markerLeft, top: markerTop, right: markerRight, bottom: markerBottom },
       usedMarkers: true
     };
   }
-  return { x: 0, y: 0, scaleX: width / 1000, scaleY: height / 1414, usedMarkers: false };
+  return { x: 0, y: 0, scaleX: width / 1000, scaleY: height / 1414, unitScale: Math.min(width / 1000, height / 1414), usedMarkers: false };
 }
 
 function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner) {
@@ -856,7 +872,7 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
   const data = imageData.data;
   const isDarkAt = (x, y) => {
     const offset = (y * width + x) * 4;
-    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 70;
+    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 125;
   };
   const cornerPoint = {
     tl: [x0, y0],
@@ -898,7 +914,9 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
       const boxHeight = maxY - minY + 1;
       const fill = count / Math.max(1, boxWidth * boxHeight);
       const ratio = boxWidth / Math.max(1, boxHeight);
-      if (count < 50 || fill < 0.35 || ratio < 0.45 || ratio > 2.2) continue;
+      const minSide = Math.max(8, Math.min(width, height) * 0.01);
+      const maxSide = Math.max(minSide * 2, Math.min(regionWidth, regionHeight) * 0.45);
+      if (count < 50 || boxWidth < minSide || boxHeight < minSide || boxWidth > maxSide || boxHeight > maxSide || fill < 0.2 || ratio < 0.45 || ratio > 2.2) continue;
       const cx = (minX + maxX) / 2;
       const cy = (minY + maxY) / 2;
       const distance = Math.hypot(cx - cornerPoint[0], cy - cornerPoint[1]);
@@ -915,14 +933,15 @@ function readBubbleGroup(imageData, width, height, page, bubbles) {
   const [best, second] = reads;
   if (!best) return { value: "", confidence: 0 };
   const gap = best.ratio - (second?.ratio || 0);
-  const confident = best.ratio >= 0.26 && gap >= 0.045;
+  const confident = best.ratio >= 0.22 && (gap >= 0.035 || (best.ratio >= 0.42 && gap >= 0.02));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
 function bubbleDarkness(imageData, width, height, page, bubble) {
-  const cx = Math.round(page.x + bubble.x * page.scaleX);
-  const cy = Math.round(page.y + bubble.y * page.scaleY);
-  const radius = Math.max(5, Math.round(Math.min(page.scaleX, page.scaleY) * 10));
+  const point = mapPaperPoint(page, bubble.x, bubble.y);
+  const cx = Math.round(point.x);
+  const cy = Math.round(point.y);
+  const radius = Math.max(5, Math.round((page.unitScale || Math.min(page.scaleX, page.scaleY)) * 11));
   const data = imageData.data;
   let dark = 0;
   let total = 0;
@@ -936,6 +955,21 @@ function bubbleDarkness(imageData, width, height, page, bubble) {
     }
   }
   return total ? dark / total : 0;
+}
+
+function mapPaperPoint(page, x, y) {
+  if (!page.corners || !page.logicalBounds) return {
+    x: page.x + x * page.scaleX,
+    y: page.y + y * page.scaleY
+  };
+  const { left, top, right, bottom } = page.logicalBounds;
+  const u = (x - left) / (right - left);
+  const v = (y - top) / (bottom - top);
+  const { tl, tr, bl, br } = page.corners;
+  return {
+    x: tl.x * (1 - u) * (1 - v) + tr.x * u * (1 - v) + bl.x * (1 - u) * v + br.x * u * v,
+    y: tl.y * (1 - u) * (1 - v) + tr.y * u * (1 - v) + bl.y * (1 - u) * v + br.y * u * v
+  };
 }
 
 function printPaperQuizPack(quiz) {
