@@ -324,6 +324,7 @@ function PaperCheckModal({ quiz, run }) {
   const rows = paperQuizRows(quiz, "A");
   const cameraInputRef = useRef(null);
   const uploadInputRef = useRef(null);
+  const cropperRef = useRef(null);
   const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
   const [source, setSource] = useState({ file: null, previewUrl: "" });
   const [crop, setCrop] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
@@ -352,6 +353,35 @@ function PaperCheckModal({ quiz, run }) {
     const croppedFile = await cropImageFile(source.file, crop);
     await scanSheet(croppedFile);
   }
+  function startCropDrag(handle, event) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const update = (clientX, clientY) => {
+      const rect = cropperRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = clamp(((clientX - rect.left) / rect.width) * 100, 0, 100);
+      const y = clamp(((clientY - rect.top) / rect.height) * 100, 0, 100);
+      setCrop((current) => {
+        const next = { ...current };
+        const minimum = 12;
+        if (handle.includes("left")) next.left = clamp(x, 0, 100 - current.right - minimum);
+        if (handle.includes("right")) next.right = clamp(100 - x, 0, 100 - current.left - minimum);
+        if (handle.includes("top")) next.top = clamp(y, 0, 100 - current.bottom - minimum);
+        if (handle.includes("bottom")) next.bottom = clamp(100 - y, 0, 100 - current.top - minimum);
+        return next;
+      });
+    };
+    update(event.clientX, event.clientY);
+    const move = (moveEvent) => update(moveEvent.clientX, moveEvent.clientY);
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
   async function scanSheet(file) {
     if (!file) return;
     setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: "", result: null });
@@ -374,16 +404,15 @@ function PaperCheckModal({ quiz, run }) {
         <input ref={uploadInputRef} style={{ display: "none" }} type="file" accept="image/*" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
       {source.previewUrl && <div className="paper-crop-workspace">
-        <div className="paper-cropper">
+        <div className="paper-cropper" ref={cropperRef}>
           <img src={source.previewUrl} alt="Answer sheet crop preview" />
-          <div className="paper-crop-mask" style={{ inset: `${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%` }} />
+          <div className="paper-crop-mask" style={{ inset: `${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%` }}>
+            {["top-left", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left"].map((handle) => (
+              <button key={handle} type="button" className={`paper-crop-handle ${handle}`} aria-label={`Drag ${handle} crop edge`} onPointerDown={(event) => startCropDrag(handle, event)} />
+            ))}
+          </div>
         </div>
-        <div className="paper-crop-controls">
-          {["top", "right", "bottom", "left"].map((side) => <label key={side}>
-            <span>{side}</span>
-            <input type="range" min="0" max="45" value={crop[side]} onChange={(event) => setCrop({ ...crop, [side]: Number(event.target.value) })} />
-          </label>)}
-        </div>
+        <p className="muted-line">Drag the crop edges so the four black corner squares are inside the box.</p>
         <div className="inline">
           <button type="button" className="soft" onClick={() => setCrop({ top: 0, right: 0, bottom: 0, left: 0 })}>Reset Crop</button>
           <button type="button" onClick={scanCroppedSheet} disabled={scan.loading}>{scan.loading ? "Scanning..." : "Scan Cropped Image"}</button>
@@ -792,6 +821,10 @@ function parsePaperAnswers(text) {
   return answers;
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function paperSheetLayout(rows) {
   const codeX = [120, 230, 340, 450];
   const codeY = Array.from({ length: 10 }, (_, value) => 292 + value * 28);
@@ -832,7 +865,12 @@ async function scanPaperAnswerSheet(quiz, file) {
   const previewUrl = canvas.toDataURL("image/jpeg", 0.72);
   const firstRows = paperQuizRows(quiz, "A");
   const firstLayout = paperSheetLayout(firstRows);
-  const codeDigits = firstLayout.code.map((column) => readBubbleGroup(imageData, canvas.width, canvas.height, page, column).value || "").join("");
+  const codeDigits = firstLayout.code.map((column) => readBubbleGroup(imageData, canvas.width, canvas.height, page, column, {
+    minRatio: 0.42,
+    minGap: 0.1,
+    strongRatio: 0.68,
+    strongGap: 0.055
+  }).value || "").join("");
   const typeRead = readBubbleGroup(imageData, canvas.width, canvas.height, page, firstLayout.type).value || "A";
   const rows = paperQuizRows(quiz, typeRead);
   const layout = paperSheetLayout(rows);
@@ -1098,13 +1136,17 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
   return best;
 }
 
-function readBubbleGroup(imageData, width, height, page, bubbles) {
+function readBubbleGroup(imageData, width, height, page, bubbles, options = {}) {
   const reads = bubbles.map((bubble) => ({ ...bubble, ratio: bubbleDarkness(imageData, width, height, page, bubble) }))
     .sort((a, b) => b.ratio - a.ratio);
   const [best, second] = reads;
   if (!best) return { value: "", confidence: 0 };
   const gap = best.ratio - (second?.ratio || 0);
-  const confident = best.ratio >= 0.54 && (gap >= 0.18 || (best.ratio >= 0.78 && gap >= 0.1));
+  const minRatio = options.minRatio ?? 0.54;
+  const minGap = options.minGap ?? 0.18;
+  const strongRatio = options.strongRatio ?? 0.78;
+  const strongGap = options.strongGap ?? 0.1;
+  const confident = best.ratio >= minRatio && (gap >= minGap || (best.ratio >= strongRatio && gap >= strongGap));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
