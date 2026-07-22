@@ -922,10 +922,12 @@ async function scanPaperAnswerSheetV2(quiz, file) {
   const firstRows = paperQuizRows(quiz, "A");
   const firstLayout = paperSheetLayout(firstRows);
   const codeDigits = firstLayout.code.map((column) => readBubbleGroupV2(imageData, canvas.width, canvas.height, page, column, {
-    minRatio: 0.3,
-    minGap: 0.035,
-    radiusScale: 2.25,
-    searchScale: 3.4
+    minRatio: 0.24,
+    minGap: 0.02,
+    strongRatio: 0.52,
+    strongGap: 0.018,
+    radiusScale: 2.15,
+    searchScale: 4.2
   }).value || "").join("");
   const typeRead = readBubbleGroupV2(imageData, canvas.width, canvas.height, page, firstLayout.type, {
     minRatio: 0.34,
@@ -938,12 +940,12 @@ async function scanPaperAnswerSheetV2(quiz, file) {
   const answers = {};
   layout.answers.forEach((row) => {
     const read = readBubbleGroupV2(imageData, canvas.width, canvas.height, page, row.choices, {
-      minRatio: 0.48,
-      minGap: 0.12,
-      strongRatio: 0.78,
-      strongGap: 0.08,
-      radiusScale: 2.45,
-      searchScale: 1.7
+      minRatio: 0.58,
+      minGap: 0.2,
+      strongRatio: 0.86,
+      strongGap: 0.13,
+      radiusScale: 2.35,
+      searchScale: 1.25
     });
     if (read.value) answers[row.number] = read.value;
   });
