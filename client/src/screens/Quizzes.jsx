@@ -871,7 +871,10 @@ async function scanPaperAnswerSheet(quiz, file) {
     minRatio: 0.42,
     minGap: 0.1,
     strongRatio: 0.68,
-    strongGap: 0.055
+    strongGap: 0.055,
+    radiusScale: 2.4,
+    searchScale: 0.75,
+    stepScale: 0.75
   }).value || "").join("");
   const typeRead = readBubbleGroup(imageData, canvas.width, canvas.height, page, firstLayout.type).value || "A";
   const rows = paperQuizRows(quiz, typeRead);
@@ -1153,7 +1156,7 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
 }
 
 function readBubbleGroup(imageData, width, height, page, bubbles, options = {}) {
-  const reads = bubbles.map((bubble) => ({ ...bubble, ratio: bubbleDarkness(imageData, width, height, page, bubble) }))
+  const reads = bubbles.map((bubble) => ({ ...bubble, ratio: bubbleDarkness(imageData, width, height, page, bubble, options) }))
     .sort((a, b) => b.ratio - a.ratio);
   const [best, second] = reads;
   if (!best) return { value: "", confidence: 0 };
@@ -1166,12 +1169,12 @@ function readBubbleGroup(imageData, width, height, page, bubbles, options = {}) 
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
-function bubbleDarkness(imageData, width, height, page, bubble) {
+function bubbleDarkness(imageData, width, height, page, bubble, options = {}) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
   const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
-  const radius = Math.max(2, Math.round(unitScale * 3.25));
-  const search = Math.max(1, Math.round(unitScale * 2));
-  const step = Math.max(1, Math.round(unitScale));
+  const radius = Math.max(2, Math.round(unitScale * (options.radiusScale ?? 3.25)));
+  const search = Math.max(0, Math.round(unitScale * (options.searchScale ?? 2)));
+  const step = Math.max(1, Math.round(unitScale * (options.stepScale ?? 1)));
   let bestRatio = 0;
   for (let dy = -search; dy <= search; dy += step) {
     for (let dx = -search; dx <= search; dx += step) {
