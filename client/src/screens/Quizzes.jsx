@@ -308,6 +308,7 @@ function QuizActions({ quiz, data, run }) {
     <QuizFormModal data={data} run={run} quiz={quiz} />
     <button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button>
     <button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button>
+    <button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     <PaperCheckModal quiz={quiz} run={run} />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
@@ -368,7 +369,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -977,8 +978,56 @@ function printPaperQuizPack(quiz) {
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
       .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
       .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
+      .omr-bubble.filled { background: #111; }
       @media print { button { display: none; } }
     </style></head><body>${body}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 300);
+}
+
+function printDemoPaperSheet(quiz) {
+  const rows = paperQuizRows(quiz, "A");
+  if (!rows.length) {
+    alert("This quiz has no paper-checkable questions yet. Use Multiple Choice, True/False, or Matching.");
+    return;
+  }
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Allow pop-ups for JCoins to open the demo answer sheet.");
+    return;
+  }
+  printWindow.opener = null;
+  const studentCode = quiz.rows?.find((row) => row.studentCode)?.studentCode || "JCS1234";
+  const answers = Object.fromEntries(rows.map((row) => [row.number, row.correctLetter || "A"]));
+  const sheet = paperAnswerSheetHtml(quiz, "A", rows, { studentCode, variant: "A", answers });
+  printWindow.document.write(`<!doctype html>
+    <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Demo Answer Sheet</title>
+    <style>
+      @page { size: A4; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 10.5pt; line-height: 1.35; }
+      section.page { min-height: 265mm; break-after: page; page-break-after: always; }
+      h2 { margin: 0; font-size: 15pt; }
+      .meta { color: #333; font-size: 9pt; }
+      .omr-page { position: relative; height: 265mm; overflow: hidden; }
+      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
+      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
+      .scan-marker { position: absolute; width: 7mm; height: 7mm; background: #111; }
+      .scan-marker.tl { left: 2.5%; top: 1.5%; }
+      .scan-marker.tr { right: 2.5%; top: 1.5%; }
+      .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
+      .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .omr-label { position: absolute; font-weight: 700; }
+      .omr-text { position: absolute; }
+      .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
+      .omr-bubble.filled { background: #111; }
+      .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
+      .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
+      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+    </style></head><body>
+      ${sheet}
+    </body></html>`);
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => printWindow.print(), 300);
@@ -1000,14 +1049,16 @@ function paperQuizVersionHtml(quiz, variant) {
     </section>`;
 }
 
-function paperAnswerSheetHtml(quiz, variant, rows) {
+function paperAnswerSheetHtml(quiz, variant, rows, filled = {}) {
   const layout = paperSheetLayout(rows);
+  const codeDigits = String(filled.studentCode || "").replace(/\D/g, "").slice(-4);
+  const answerMap = filled.answers || {};
   const bubbles = [
-    ...layout.code.flatMap((column, columnIndex) => column.map((bubble) => `${omrBubbleHtml(bubble)}${bubble.value === 0 ? `<span class="omr-number" style="${omrStyle({ x: bubble.x, y: bubble.y - 26 })}">D${columnIndex + 1}</span>` : ""}`)),
-    ...layout.type.map((bubble) => omrBubbleHtml(bubble)),
+    ...layout.code.flatMap((column, columnIndex) => column.map((bubble) => `${omrBubbleHtml({ ...bubble, filled: codeDigits[columnIndex] === bubble.value })}${bubble.value === 0 ? `<span class="omr-number" style="${omrStyle({ x: bubble.x, y: bubble.y - 26 })}">D${columnIndex + 1}</span>` : ""}`)),
+    ...layout.type.map((bubble) => omrBubbleHtml({ ...bubble, filled: String(filled.variant || "") === bubble.value })),
     ...layout.answers.flatMap((row) => [
       `<span class="omr-number" style="${omrStyle({ x: row.labelX, y: row.y })}">${row.number}.</span>`,
-      ...row.choices.map((bubble) => omrBubbleHtml(bubble))
+      ...row.choices.map((bubble) => omrBubbleHtml({ ...bubble, filled: answerMap[row.number] === bubble.value }))
     ])
   ].join("");
   return `<section class="page omr-page">
@@ -1028,7 +1079,7 @@ function omrStyle(point) {
 }
 
 function omrBubbleHtml(point) {
-  return `<span class="omr-bubble" style="${omrStyle(point)}"></span><span class="omr-bubble-label" style="${omrStyle({ x: point.x, y: point.y })}">${point.value}</span>`;
+  return `<span class="omr-bubble${point.filled ? " filled" : ""}" style="${omrStyle(point)}"></span><span class="omr-bubble-label" style="${omrStyle({ x: point.x, y: point.y })}">${point.value}</span>`;
 }
 
 function printQuizPaper(quiz) {
