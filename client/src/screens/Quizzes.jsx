@@ -324,7 +324,6 @@ function QuizActions({ quiz, data, run }) {
 }
 
 function PaperCheckModal({ quiz, run, scanner = "v1" }) {
-  const rows = paperQuizRows(quiz, "A");
   const isV2 = scanner === "v2";
   const isV3 = scanner === "v3";
   const cameraInputRef = useRef(null);
@@ -335,6 +334,8 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   const [crop, setCrop] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   const [showCropper, setShowCropper] = useState(false);
   const [scan, setScan] = useState({ loading: false, message: "", previewUrl: "", result: null });
+  const scorePreview = useMemo(() => scorePaperQuizPreview(quiz, form.variant, parsePaperAnswers(form.answersText)), [quiz, form.variant, form.answersText]);
+  const rows = scorePreview.rows;
   useEffect(() => () => {
     if (source.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(source.previewUrl);
   }, [source.previewUrl]);
@@ -441,10 +442,17 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
         <Select label="Paper Type" value={form.variant} onChange={(variant) => setForm({ ...form, variant })} options={paperQuizVariants.map((variant) => ({ value: variant, label: `Type ${variant}` }))} />
       </div>
       <Field label={`Answers (${rows.length} items)`} value={form.answersText} onChange={(answersText) => setForm({ ...form, answersText })} placeholder="1A 2B 3C 4D" />
+      {form.answersText.trim() && <PaperScorePreview score={scorePreview} />}
       {scan.result && <PaperScanReview result={scan.result} />}
       <button>Save Paper Score</button>
     </form>
   </ActionModal>;
+}
+
+function PaperScorePreview({ score }) {
+  return <div className="notice">
+    Score preview: {score.correct}/{score.total} ({score.percent}%) | Answered {score.answered}/{score.total} | Passing {score.passingScore}/{score.total} | {score.passed ? "Passed" : "Not passed yet"} | Reward {score.awarded}/{score.rewardValue} JCoins
+  </div>;
 }
 
 function PaperScanReview({ result }) {
@@ -847,6 +855,29 @@ function parsePaperAnswers(text) {
     if (match) answers[match[1]] = match[2];
   });
   return answers;
+}
+
+function paperQuizPassingScore(quiz, total) {
+  const questionCount = Math.max(1, (quiz.questions || []).length);
+  const ratio = Number(quiz.passingScore || questionCount) / questionCount;
+  return Math.max(1, Math.min(total, Math.round(total * ratio)));
+}
+
+function scorePaperQuizPreview(quiz, variant, answers = {}) {
+  const rows = paperQuizRows(quiz, variant);
+  let correct = 0;
+  let answered = 0;
+  rows.forEach((row) => {
+    const answer = String(answers[row.number] ?? answers[String(row.number)] ?? "").trim().toUpperCase().slice(0, 1);
+    if (answer) answered += 1;
+    if (answer && answer === row.correctLetter) correct += 1;
+  });
+  const total = rows.length;
+  const passingScore = paperQuizPassingScore(quiz, total);
+  const rewardValue = Number(quiz.rewardValue || 0);
+  const awarded = total ? Math.round(rewardValue * Math.min(correct / passingScore, 1)) : 0;
+  const percent = total ? Math.round((correct / total) * 100) : 0;
+  return { rows, correct, answered, total, passingScore, rewardValue, awarded, percent, passed: correct >= passingScore };
 }
 
 function clamp(value, min, max) {
