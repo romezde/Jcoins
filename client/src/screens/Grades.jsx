@@ -18,7 +18,8 @@ export default function Grades({ data, run }) {
   const [search, setSearch] = useState("");
   const classes = useMemo(() => buildGradeClasses(data), [data.subjects, data.students, data.gradeSummaries]);
   const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
-  const summaries = (data.gradeSummaries || []).filter((row) => {
+  const classSummaries = activeClass ? gradeSummariesForClass(data, activeClass) : [];
+  const summaries = classSummaries.filter((row) => {
     if (!activeClass || row.subjectId !== activeClass.subjectId || row.section !== activeClass.section) return false;
     const q = search.trim().toLowerCase();
     return !q || [row.studentName, row.currentGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
@@ -73,9 +74,10 @@ function buildGradeClasses(data) {
     const cleanSubjectId = String(subjectId || "").trim();
     const cleanSection = String(section || "").trim();
     const subject = (data.subjects || []).find((item) => item.id === cleanSubjectId);
-    if (!subject) return;
+    if (!subject || !cleanSection) return;
     const key = `${cleanSubjectId}::${cleanSection || "__none"}`;
     const existing = classes.get(key);
+    const summaryCount = (data.gradeSummaries || []).filter((row) => row.subjectId === cleanSubjectId && String(row.section || "").trim() === cleanSection).length;
     classes.set(key, {
       key,
       subjectId: cleanSubjectId,
@@ -83,7 +85,7 @@ function buildGradeClasses(data) {
       section: cleanSection,
       sectionLabel: cleanSection ? `Section ${cleanSection}` : "No section",
       studentCount: Math.max(existing?.studentCount || 0, studentCount),
-      itemCount: (data.gradeSummaries || []).filter((row) => row.subjectId === cleanSubjectId && String(row.section || "").trim() === cleanSection).length
+      itemCount: Math.max(summaryCount, studentCount)
     });
   };
   const summaryGroups = new Map();
@@ -92,10 +94,31 @@ function buildGradeClasses(data) {
     summaryGroups.set(key, { subjectId: row.subjectId, section: String(row.section || "").trim(), count: (summaryGroups.get(key)?.count || 0) + 1 });
   });
   summaryGroups.forEach((item) => add(item.subjectId, item.section, item.count));
-  if (!summaryGroups.size) {
-    buildSubjectSectionClasses(data, () => 0).forEach((item) => add(item.subjectId, item.section, item.studentCount));
-  }
+  buildSubjectSectionClasses(data, () => 0).forEach((item) => add(item.subjectId, item.section, item.studentCount));
   return [...classes.values()].sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
+}
+
+function gradeSummariesForClass(data, activeClass) {
+  const rows = (data.gradeSummaries || []).filter((row) => row.subjectId === activeClass.subjectId && String(row.section || "").trim() === activeClass.section);
+  if (rows.length) return rows;
+  return (data.students || [])
+    .filter((student) => String(student.section || "").trim() === activeClass.section && (student.subjectIds || []).includes(activeClass.subjectId))
+    .map((student) => ({
+      studentId: student.id,
+      studentName: student.name,
+      subjectId: activeClass.subjectId,
+      subjectName: activeClass.subjectName,
+      section: activeClass.section,
+      currentGrade: 100,
+      passingGrade: activeClass.passingGrade || 75,
+      minimumGrade: 50,
+      gradesReleased: false,
+      riskStatus: "Safe",
+      priority: "Low",
+      missingItems: [],
+      visibleAdvice: "Initial grade. This will adjust as quiz, activity, attendance, written work, and exam records are added.",
+      visibleToStudent: true
+    }));
 }
 
 function GradeSettingsForm({ activeClass, setting, run }) {
