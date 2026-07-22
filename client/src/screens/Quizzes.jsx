@@ -868,10 +868,10 @@ function paperSheetLayout(rows) {
 
 function paperScanZones() {
   return {
-    code: zoneMarkers(82, 266, 492, 596),
-    type: zoneMarkers(112, 610, 410, 668),
-    answersLeft: zoneMarkers(78, 682, 350, 1338),
-    answersRight: zoneMarkers(528, 682, 808, 1338)
+    code: zoneMarkers(72, 262, 498, 602),
+    type: zoneMarkers(72, 616, 410, 672),
+    answersLeft: zoneMarkers(72, 682, 368, 1344),
+    answersRight: zoneMarkers(528, 682, 824, 1344)
   };
 }
 
@@ -1474,16 +1474,16 @@ function printPaperQuizPack(quiz) {
       .code-col { border: 1px solid #999; padding: 6px; }
       .code-col strong { display: block; margin-bottom: 5px; }
       .answer-key { columns: 4; column-gap: 20px; margin-top: 12px; font-size: 10pt; }
-      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+      .machine-data { margin-top: 8px; padding: 2px 0; border: 0; color: #555; font-size: 6pt; word-break: break-all; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
-      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
-      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
+      .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
+      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1520,20 +1520,20 @@ function printBlankPaperSheet(quiz) {
       h2 { margin: 0; font-size: 15pt; }
       .meta { color: #333; font-size: 9pt; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
-      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
-      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
+      .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
+      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
       .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
       .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
-      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+      .machine-data { margin-top: 8px; padding: 2px 0; border: 0; color: #555; font-size: 6pt; word-break: break-all; }
     </style></head><body>${sheet}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
@@ -1565,21 +1565,21 @@ function printDemoPaperSheet(quiz) {
       h2 { margin: 0; font-size: 15pt; }
       .meta { color: #333; font-size: 9pt; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
-      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
-      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
+      .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
+      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
       .omr-bubble.filled { background: #111; }
       .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
       .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
-      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+      .machine-data { margin-top: 8px; padding: 2px 0; border: 0; color: #555; font-size: 6pt; word-break: break-all; }
     </style></head><body>
       ${sheet}
     </body></html>`);
