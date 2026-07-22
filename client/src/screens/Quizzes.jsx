@@ -1133,7 +1133,7 @@ function printPaperQuizPack(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
-      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -1176,7 +1176,7 @@ function printBlankPaperSheet(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
-      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -1220,7 +1220,7 @@ function printDemoPaperSheet(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
-      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
