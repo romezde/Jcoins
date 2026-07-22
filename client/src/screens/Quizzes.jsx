@@ -314,6 +314,7 @@ function QuizActions({ quiz, data, run }) {
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     <PaperCheckModal quiz={quiz} run={run} />
     <PaperCheckModal quiz={quiz} run={run} scanner="v2" />
+    <PaperCheckModal quiz={quiz} run={run} scanner="v3" />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
@@ -324,6 +325,7 @@ function QuizActions({ quiz, data, run }) {
 function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   const rows = paperQuizRows(quiz, "A");
   const isV2 = scanner === "v2";
+  const isV3 = scanner === "v3";
   const cameraInputRef = useRef(null);
   const uploadInputRef = useRef(null);
   const cropperRef = useRef(null);
@@ -394,7 +396,7 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
     if (!file) return;
     setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: "", result: null });
     try {
-      const result = isV2 ? await scanPaperAnswerSheetV2(quiz, file) : await scanPaperAnswerSheet(quiz, file);
+      const result = isV3 ? await scanPaperAnswerSheetV3(quiz, file) : isV2 ? await scanPaperAnswerSheetV2(quiz, file) : await scanPaperAnswerSheet(quiz, file);
       const answersText = Object.entries(result.answers).map(([number, answer]) => `${number}${answer}`).join(" ");
       setForm({ studentCode: result.studentCode, variant: result.variant || "A", answersText });
       setScan({ loading: false, message: result.message, previewUrl: result.previewUrl || "", result });
@@ -402,7 +404,8 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
       setScan((current) => ({ ...current, loading: false, message: err.message, result: null }));
     }
   }
-  return <ActionModal title={`${isV2 ? "Check Paper V2" : "Check Paper"} - ${quiz.title}`} buttonLabel={isV2 ? "Check Paper V2" : "Check Paper"} icon={FileCheck2}>
+  const scannerLabel = isV3 ? "Check Paper V3" : isV2 ? "Check Paper V2" : "Check Paper";
+  return <ActionModal title={`${scannerLabel} - ${quiz.title}`} buttonLabel={scannerLabel} icon={FileCheck2}>
     <form onSubmit={submit}>
       <div className="notice">Take a photo or upload an image, crop to the answer sheet, scan, then review before saving.</div>
       <div className="inline">
@@ -452,7 +455,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><PaperCheckModal quiz={quiz} run={run} scanner="v2" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><PaperCheckModal quiz={quiz} run={run} scanner="v2" /><PaperCheckModal quiz={quiz} run={run} scanner="v3" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -863,6 +866,25 @@ function paperSheetLayout(rows) {
   };
 }
 
+function paperScanZones() {
+  return {
+    code: zoneMarkers(82, 266, 492, 596),
+    type: zoneMarkers(112, 610, 410, 668),
+    answersLeft: zoneMarkers(78, 682, 350, 1338),
+    answersRight: zoneMarkers(528, 682, 808, 1338)
+  };
+}
+
+function zoneMarkers(left, top, right, bottom) {
+  return {
+    tl: { x: left, y: top },
+    tr: { x: right, y: top },
+    bl: { x: left, y: bottom },
+    br: { x: right, y: bottom },
+    bounds: { left, top, right, bottom }
+  };
+}
+
 async function scanPaperAnswerSheet(quiz, file) {
   const image = await loadImageFromFile(file);
   const maxWidth = 1200;
@@ -962,6 +984,69 @@ async function scanPaperAnswerSheetV2(quiz, file) {
   };
 }
 
+async function scanPaperAnswerSheetV3(quiz, file) {
+  const image = await loadImageFromFile(file);
+  const maxWidth = 1200;
+  const scale = Math.min(1, maxWidth / image.naturalWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const page = detectPaperPage(imageData, canvas.width, canvas.height);
+  const previewUrl = canvas.toDataURL("image/jpeg", 0.72);
+  const markerCandidates = findMarkerCandidates(imageData, canvas.width, canvas.height, 180);
+  const zones = paperScanZones();
+  const zonePages = Object.fromEntries(Object.entries(zones).map(([key, zone]) => [key, detectZonePage(page, zone, markerCandidates)]));
+  const firstRows = paperQuizRows(quiz, "A");
+  const firstLayout = paperSheetLayout(firstRows);
+  const codePage = zonePages.code || page;
+  const typePage = zonePages.type || page;
+  const codeDigits = firstLayout.code.map((column) => readBubbleGroupV2(imageData, canvas.width, canvas.height, codePage, column, {
+    minRatio: 0.24,
+    minGap: 0.02,
+    strongRatio: 0.52,
+    strongGap: 0.018,
+    radiusScale: 2.15,
+    searchScale: 3.1
+  }).value || "").join("");
+  const typeRead = readBubbleGroupV2(imageData, canvas.width, canvas.height, typePage, firstLayout.type, {
+    minRatio: 0.34,
+    minGap: 0.055,
+    radiusScale: 2.8,
+    searchScale: 2.2
+  }).value || "A";
+  const rows = paperQuizRows(quiz, typeRead);
+  const layout = paperSheetLayout(rows);
+  const rowsPerColumn = Math.ceil(rows.length / 2);
+  const answers = {};
+  layout.answers.forEach((row, index) => {
+    const answerPage = index >= rowsPerColumn ? (zonePages.answersRight || page) : (zonePages.answersLeft || page);
+    const read = readBubbleGroupV2(imageData, canvas.width, canvas.height, answerPage, row.choices, {
+      minRatio: 0.44,
+      minGap: 0.095,
+      strongRatio: 0.74,
+      strongGap: 0.07,
+      radiusScale: 2.45,
+      searchScale: 2.2
+    });
+    if (read.value) answers[row.number] = read.value;
+  });
+  const missingCode = codeDigits.length !== 4;
+  const answered = Object.keys(answers).length;
+  const zoneCount = Object.values(zonePages).filter(Boolean).length;
+  return {
+    studentCode: missingCode ? "" : `JCS${codeDigits}`,
+    variant: typeRead,
+    answers,
+    rows,
+    usedMarkers: page.usedMarkers,
+    previewUrl,
+    message: `V3 ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
+  };
+}
+
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -1026,7 +1111,7 @@ function detectPaperPage(imageData, width, height) {
   return { x: 0, y: 0, scaleX: width / 1000, scaleY: height / 1414, unitScale: Math.min(width / 1000, height / 1414), usedMarkers: false };
 }
 
-function pageFromPaperMarkers(markers) {
+function pageFromPaperMarkers(markers, logicalBounds = paperScanMarkerBounds, options = {}) {
   if (!markers || !Object.values(markers).every(Boolean)) return null;
   const { tl, tr, bl, br } = markers;
   const topWidth = Math.hypot(tr.x - tl.x, tr.y - tl.y);
@@ -1035,14 +1120,15 @@ function pageFromPaperMarkers(markers) {
   const rightHeight = Math.hypot(br.x - tr.x, br.y - tr.y);
   const pageWidth = (topWidth + bottomWidth) / 2;
   const pageHeight = (leftHeight + rightHeight) / 2;
-  if (pageWidth < 120 || pageHeight < 180 || pageHeight / Math.max(1, pageWidth) < 1.1) return null;
+  if (pageWidth < (options.minWidth || 120) || pageHeight < (options.minHeight || 180)) return null;
+  if (!options.allowFlat && pageHeight / Math.max(1, pageWidth) < 1.1) return null;
   const widthSkew = Math.abs(topWidth - bottomWidth) / Math.max(topWidth, bottomWidth);
   const heightSkew = Math.abs(leftHeight - rightHeight) / Math.max(leftHeight, rightHeight);
   if (widthSkew > 0.42 || heightSkew > 0.42) return null;
-  const markerLeft = paperScanMarkerBounds.left;
-  const markerTop = paperScanMarkerBounds.top;
-  const markerRight = paperScanMarkerBounds.right;
-  const markerBottom = paperScanMarkerBounds.bottom;
+  const markerLeft = logicalBounds.left;
+  const markerTop = logicalBounds.top;
+  const markerRight = logicalBounds.right;
+  const markerBottom = logicalBounds.bottom;
   const scaleX = pageWidth / (markerRight - markerLeft);
   const scaleY = pageHeight / (markerBottom - markerTop);
   return {
@@ -1055,6 +1141,20 @@ function pageFromPaperMarkers(markers) {
     logicalBounds: { left: markerLeft, top: markerTop, right: markerRight, bottom: markerBottom },
     usedMarkers: true
   };
+}
+
+function detectZonePage(basePage, zone, candidates) {
+  const markers = {};
+  for (const corner of ["tl", "tr", "bl", "br"]) {
+    const expected = mapPaperPoint(basePage, zone[corner].x, zone[corner].y);
+    const maxDistance = Math.max(14, (basePage.unitScale || Math.min(basePage.scaleX, basePage.scaleY)) * 38);
+    const match = candidates
+      .map((candidate) => ({ ...candidate, distance: Math.hypot(candidate.x - expected.x, candidate.y - expected.y) }))
+      .filter((candidate) => candidate.distance <= maxDistance)
+      .sort((a, b) => (a.distance / Math.max(1, a.side)) - (b.distance / Math.max(1, b.side)))[0];
+    if (match) markers[corner] = match;
+  }
+  return pageFromPaperMarkers(markers, zone.bounds, { minWidth: 24, minHeight: 18, allowFlat: true });
 }
 
 function findPaperMarkers(imageData, width, height) {
@@ -1098,7 +1198,7 @@ function findPaperMarkers(imageData, width, height) {
   return best?.markers || null;
 }
 
-function findMarkerCandidates(imageData, width, height) {
+function findMarkerCandidates(imageData, width, height, limit = 80) {
   const visited = new Uint8Array(width * height);
   const data = imageData.data;
   const isDarkAt = (x, y) => {
@@ -1151,7 +1251,7 @@ function findMarkerCandidates(imageData, width, height) {
       });
     }
   }
-  return candidates.sort((a, b) => b.score - a.score).slice(0, 80);
+  return candidates.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner) {
@@ -1383,6 +1483,7 @@ function printPaperQuizPack(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1426,6 +1527,7 @@ function printBlankPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1470,6 +1572,7 @@ function printDemoPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .zone-marker { position: absolute; width: 3.4mm; height: 3.4mm; margin: -1.7mm 0 0 -1.7mm; border: 1.7mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1510,6 +1613,7 @@ function paperAnswerKeyHtml(quiz, variant) {
 
 function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
   const layout = paperSheetLayout(rows);
+  const zones = paperScanZones();
   const codeDigits = String(filled.studentCode || "").replace(/\D/g, "").slice(-4);
   const answerMap = filled.answers || {};
   const typeLabel = options.reusable ? "SHADE TYPE" : variant ? `TYPE ${variant}` : "SHADE TYPE";
@@ -1523,6 +1627,7 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
   ].join("");
   return `<section class="page omr-page">
     <span class="scan-marker tl"></span><span class="scan-marker tr"></span><span class="scan-marker bl"></span><span class="scan-marker br"></span>
+    ${paperZoneMarkersHtml(zones)}
     <div class="omr-title"><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | ${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)}</div></div>
     <div class="omr-type">${typeLabel}</div>
     <div class="omr-text" style="left:6%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
@@ -1532,6 +1637,12 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
     ${bubbles}
     <div class="machine-data" style="position:absolute;left:6%;right:6%;bottom:3%;">JCOINS-PAPER quiz=${escapeQuizHtml(quiz.id)} type=${variant}</div>
   </section>`;
+}
+
+function paperZoneMarkersHtml(zones) {
+  return Object.values(zones).flatMap((zone) => ["tl", "tr", "bl", "br"].map((corner) => (
+    `<span class="zone-marker" style="${omrStyle(zone[corner])}"></span>`
+  ))).join("");
 }
 
 function omrStyle(point) {
