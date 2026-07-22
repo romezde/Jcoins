@@ -146,6 +146,7 @@ const ASSISTANT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
 const ASSISTANT_FILE_TOTAL_LIMIT_BYTES = 100 * 1024 * 1024;
 const ASSISTANT_FILE_COUNT_LIMIT = 10;
 const ACTIVITY_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
+const ACTIVITY_SCORE_RELEASE_DAYS = 7;
 const ACTIVITY_PHOTO_TOTAL_LIMIT_BYTES = 100 * 1024 * 1024;
 const activityDataUrlLimit = (bytes) => Math.ceil(bytes * 4 / 3) + 2048;
 const uploadAssistantReference = multer({
@@ -973,7 +974,8 @@ function defaults() {
         weights: { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
         includeWrittenWorks: true,
         recitationBonusMax: 5,
-        passingGrade: 75
+        passingGrade: 75,
+        minimumGrade: 50
       },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
@@ -1307,6 +1309,7 @@ async function readDb() {
   db.settings.grades.includeWrittenWorks = db.settings.grades.includeWrittenWorks !== false;
   db.settings.grades.recitationBonusMax = Math.max(0, Math.min(20, Number(db.settings.grades.recitationBonusMax ?? d.settings.grades.recitationBonusMax)));
   db.settings.grades.passingGrade = Math.max(1, Math.min(100, Number(db.settings.grades.passingGrade || d.settings.grades.passingGrade)));
+  db.settings.grades.minimumGrade = Math.max(0, Math.min(100, Number(db.settings.grades.minimumGrade ?? d.settings.grades.minimumGrade)));
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.registration = { ...d.settings.registration, ...(db.settings.registration || {}) };
@@ -3076,6 +3079,17 @@ function activityMaxScoreAllowed(daysLateValue) {
   return Math.max(0, 100 - Number(daysLateValue || 0) * 10);
 }
 
+function activityScoreVisibleAt(activity, submission = {}) {
+  const deadline = parseActivityDateTime(activityDeadlineForSubmission(activity, submission), true);
+  if (!deadline) return "";
+  return new Date(deadline.getTime() + ACTIVITY_SCORE_RELEASE_DAYS * 86400000).toISOString();
+}
+
+function activityScoreReleased(activity, submission = {}, at = Date.now()) {
+  const visibleAt = activityScoreVisibleAt(activity, submission);
+  return !visibleAt || new Date(visibleAt).getTime() <= at;
+}
+
 function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
   if (!submission.submitted) return "";
   const autoScore = Math.max(0, Math.min(100, Number(maxScoreAllowed || 0)));
@@ -3763,6 +3777,7 @@ function normalizeGradeSetting(setting, db) {
   setting.includeWrittenWorks = setting.includeWrittenWorks !== false;
   setting.recitationBonusMax = Math.max(0, Math.min(20, Number(setting.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5)));
   setting.passingGrade = Math.max(1, Math.min(100, Number(setting.passingGrade || db.settings.grades?.passingGrade || 75)));
+  setting.minimumGrade = Math.max(0, Math.min(100, Number(setting.minimumGrade ?? db.settings.grades?.minimumGrade ?? 50)));
   return setting;
 }
 
@@ -3778,6 +3793,7 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
       includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
       recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
       passingGrade: db.settings.grades?.passingGrade ?? 75,
+      minimumGrade: db.settings.grades?.minimumGrade ?? 50,
       createdAt: now()
     }, db);
     db.gradeSettings.push(setting);
@@ -3789,7 +3805,8 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
     weights: db.settings.grades?.weights,
     includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
     recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
-    passingGrade: db.settings.grades?.passingGrade ?? 75
+    passingGrade: db.settings.grades?.passingGrade ?? 75,
+    minimumGrade: db.settings.grades?.minimumGrade ?? 50
   }, db);
 }
 
@@ -3805,7 +3822,8 @@ function gradeSettingInput(db, body, user) {
     weights,
     includeWrittenWorks: body.includeWrittenWorks !== false,
     recitationBonusMax: Math.max(0, Math.min(20, Number(body.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5))),
-    passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75)))
+    passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75))),
+    minimumGrade: Math.max(0, Math.min(100, Number(body.minimumGrade ?? db.settings.grades?.minimumGrade ?? 50)))
   };
 }
 
@@ -3974,6 +3992,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const activityPercents = [];
   hydrateActivities(db).filter((activity) => activity.subjectId === subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === section)).forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
+    if (user.role === "student" && row && !row.scoreReleased) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else missingItems.push(activity.title);
   });
@@ -3994,7 +4013,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     majorExams: categorySummary("Major Exams", weights.majorExams, majorPercents, missingItems.length)
   };
   const rawGrade = Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) + recitationBonus;
-  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade)));
+  const currentGrade = Math.max(Number(setting.minimumGrade ?? 50), Math.min(100, Math.round(rawGrade)));
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
   const summary = {
@@ -4005,6 +4024,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     section,
     currentGrade,
     passingGrade: setting.passingGrade,
+    minimumGrade: setting.minimumGrade,
     riskStatus,
     priority: note?.priority || (["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low"),
     recitationBonus,
@@ -4092,6 +4112,8 @@ function hydrateActivities(db) {
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
       const maxScoreAllowed = activityMaxScoreAllowed(late);
       const score = activitySubmissionScore(sub, maxScoreAllowed);
+      const scoreVisibleAt = activityScoreVisibleAt(a, sub);
+      const scoreReleased = activityScoreReleased(a, sub);
       const files = activitySubmissionFiles(sub);
       const publicFiles = files.map(publicActivityFile);
       const file = files[0] || null;
@@ -4110,6 +4132,8 @@ function hydrateActivities(db) {
         maxScoreAllowed,
         earned,
         score,
+        scoreVisibleAt,
+        scoreReleased,
         remarks: sub.remarks || "",
         studentNote: sub.studentNote || "",
         fileName: file?.fileName || "",
@@ -4392,6 +4416,10 @@ function filteredOverview(db, user, modules = null) {
     .map((activity) => {
       if (!sectionIds?.size && user.role !== "student") return activity;
       const rows = activity.rows.filter((row) => studentIds.has(row.studentId));
+      if (user.role === "student") {
+        const studentRows = rows.map((row) => row.scoreReleased ? row : { ...row, score: "", scoreHiddenUntil: row.scoreVisibleAt });
+        return { ...activity, rows: studentRows, tracker: `${studentRows.filter((row) => row.submitted).length}/${studentRows.length}` };
+      }
       return { ...activity, rows, tracker: `${rows.filter((row) => row.submitted).length}/${rows.length}` };
     }) : [];
   const activitySummaries = includeDashboard && !includeActivities ? hydrateActivitySummaries(db, students, subjectIds, sectionIds) : fullActivities;

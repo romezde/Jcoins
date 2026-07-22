@@ -63,7 +63,7 @@ export default function Grades({ data, run }) {
 
 function GradeSettingsForm({ activeClass, setting, run }) {
   const [form, setForm] = useState(() => settingsFormValues(setting));
-  useEffect(() => setForm(settingsFormValues(setting)), [setting?.id, JSON.stringify(setting?.weights || {})]);
+  useEffect(() => setForm(settingsFormValues(setting)), [setting?.id, JSON.stringify(setting?.weights || {}), setting?.passingGrade, setting?.minimumGrade, setting?.recitationBonusMax, setting?.includeWrittenWorks]);
   const total = Object.values(form.weights || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const setWeight = (key, value) => setForm({ ...form, weights: { ...form.weights, [key]: value } });
   function submit(event) {
@@ -74,6 +74,7 @@ function GradeSettingsForm({ activeClass, setting, run }) {
     <div className="form-grid two">
       {Object.entries(gradeCategoryLabels).map(([key, label]) => <Field key={key} label={`${label} Weight`} type="number" min="0" max="100" value={form.weights[key]} onChange={(value) => setWeight(key, value)} />)}
       <Field label="Passing Grade" type="number" min="1" max="100" value={form.passingGrade} onChange={(passingGrade) => setForm({ ...form, passingGrade })} />
+      <Field label="Minimum Grade" type="number" min="0" max="100" value={form.minimumGrade} onChange={(minimumGrade) => setForm({ ...form, minimumGrade })} />
       <Field label="Recitation Bonus Max" type="number" min="0" max="20" value={form.recitationBonusMax} onChange={(recitationBonusMax) => setForm({ ...form, recitationBonusMax })} />
     </div>
     <label className="check"><input type="checkbox" checked={form.includeWrittenWorks} onChange={(event) => setForm({ ...form, includeWrittenWorks: event.target.checked })} /> Include written works</label>
@@ -171,7 +172,8 @@ function gradeSettingForClass(data, activeClass) {
     weights: data.settings?.grades?.weights || { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
     includeWrittenWorks: data.settings?.grades?.includeWrittenWorks !== false,
     recitationBonusMax: data.settings?.grades?.recitationBonusMax ?? 5,
-    passingGrade: data.settings?.grades?.passingGrade ?? 75
+    passingGrade: data.settings?.grades?.passingGrade ?? 75,
+    minimumGrade: data.settings?.grades?.minimumGrade ?? 50
   };
 }
 
@@ -186,7 +188,8 @@ function settingsFormValues(setting = {}) {
     },
     includeWrittenWorks: setting.includeWrittenWorks !== false,
     recitationBonusMax: setting.recitationBonusMax ?? 5,
-    passingGrade: setting.passingGrade ?? 75
+    passingGrade: setting.passingGrade ?? 75,
+    minimumGrade: setting.minimumGrade ?? 50
   };
 }
 

@@ -75,6 +75,7 @@ export function StudentActivities({ data, run }) {
     daysLate: row.daysLate,
     maxScoreAllowed: row.maxScoreAllowed,
     score: row.score,
+    scoreHiddenUntil: row.scoreHiddenUntil,
     earned: row.earned,
     fileName: row.fileName,
     files: row.files || [],
@@ -113,7 +114,7 @@ export function StudentActivities({ data, run }) {
       row.submittedAt ? formatActivityDateTime(row.submittedAt) : "-",
       row.daysLate,
       row.maxScoreAllowed,
-      row.score === "" || row.score == null ? "-" : row.score,
+      row.scoreHiddenUntil ? `Releases ${formatActivityDateTime(row.scoreHiddenUntil)}` : row.score === "" || row.score == null ? "-" : row.score,
       <ActivityFileViewer activityId={row.id} studentId={data.student.id} files={row.files?.length ? row.files : row.fileName ? [{ fileIndex: 0, fileName: row.fileName }] : []} />,
       <div className="activity-upload-box">
         <input value={notes[row.id] ?? row.studentNote ?? ""} onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })} placeholder="Optional note" />
