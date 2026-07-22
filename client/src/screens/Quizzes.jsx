@@ -854,6 +854,9 @@ function pageFromPaperMarkers(markers) {
   const pageWidth = (topWidth + bottomWidth) / 2;
   const pageHeight = (leftHeight + rightHeight) / 2;
   if (pageWidth < 120 || pageHeight < 180 || pageHeight / Math.max(1, pageWidth) < 1.1) return null;
+  const widthSkew = Math.abs(topWidth - bottomWidth) / Math.max(topWidth, bottomWidth);
+  const heightSkew = Math.abs(leftHeight - rightHeight) / Math.max(leftHeight, rightHeight);
+  if (widthSkew > 0.42 || heightSkew > 0.42) return null;
   const markerLeft = paperScanMarkerBounds.left;
   const markerTop = paperScanMarkerBounds.top;
   const markerRight = paperScanMarkerBounds.right;
@@ -886,7 +889,7 @@ function findPaperMarkers(imageData, width, height) {
     br: [...candidates].sort((a, b) => (b.x + b.y) - (a.x + a.y))
   };
   let best = null;
-  const limit = 8;
+  const limit = 16;
   sorted.tl.slice(0, limit).forEach((tl) => {
     sorted.tr.slice(0, limit).forEach((tr) => {
       sorted.bl.slice(0, limit).forEach((bl) => {
@@ -899,9 +902,12 @@ function findPaperMarkers(imageData, width, height) {
           const bottom = Math.hypot(br.x - bl.x, br.y - bl.y);
           const left = Math.hypot(bl.x - tl.x, bl.y - tl.y);
           const right = Math.hypot(br.x - tr.x, br.y - tr.y);
+          const markerSides = [tl.side, tr.side, bl.side, br.side];
+          const averageSide = markerSides.reduce((sum, side) => sum + side, 0) / markerSides.length;
+          const sidePenalty = markerSides.reduce((sum, side) => sum + Math.abs(side - averageSide) / Math.max(1, averageSide), 0);
           const shapePenalty = Math.abs(top - bottom) / Math.max(top, bottom) + Math.abs(left - right) / Math.max(left, right);
           const area = ((top + bottom) / 2) * ((left + right) / 2);
-          const score = area - shapePenalty * area * 0.35 + (tl.score + tr.score + bl.score + br.score) * 8;
+          const score = area - shapePenalty * area * 0.55 - sidePenalty * area * 0.08 + (tl.score + tr.score + bl.score + br.score) * 12;
           if (!best || score > best.score) best = { markers, score };
         });
       });
@@ -915,11 +921,11 @@ function findMarkerCandidates(imageData, width, height) {
   const data = imageData.data;
   const isDarkAt = (x, y) => {
     const offset = (y * width + x) * 4;
-    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 115;
+    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 155;
   };
   const candidates = [];
-  const minSide = Math.max(7, Math.min(width, height) * 0.006);
-  const maxSide = Math.max(24, Math.min(width, height) * 0.055);
+  const minSide = Math.max(5, Math.min(width, height) * 0.004);
+  const maxSide = Math.max(30, Math.min(width, height) * 0.085);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const startIndex = y * width + x;
@@ -954,11 +960,11 @@ function findMarkerCandidates(imageData, width, height) {
       const fill = count / Math.max(1, boxWidth * boxHeight);
       const ratio = boxWidth / Math.max(1, boxHeight);
       const side = (boxWidth + boxHeight) / 2;
-      if (count < 35 || side < minSide || side > maxSide || fill < 0.35 || ratio < 0.65 || ratio > 1.55) continue;
+      if (count < 18 || side < minSide || side > maxSide || fill < 0.16 || ratio < 0.38 || ratio > 2.65) continue;
       candidates.push({
         x: (minX + maxX) / 2,
         y: (minY + maxY) / 2,
-        score: count * fill,
+        score: count * fill * (1 - Math.min(0.8, Math.abs(1 - ratio) * 0.25)),
         side
       });
     }
