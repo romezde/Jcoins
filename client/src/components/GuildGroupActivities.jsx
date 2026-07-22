@@ -1,25 +1,44 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Crown, Pencil, Users, Vote } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import { ActionModal, Field, Panel, Select, Table } from "./ui.jsx";
+import SubjectSectionPicker, { buildSubjectSectionClasses } from "./SubjectSectionPicker.jsx";
 
 export default function GuildGroupActivities({ data, run, role }) {
   const activities = data.groupActivities || [];
   if (role === "student") return <StudentGroupActivities activities={activities} run={run} />;
+  return <StaffGroupActivities data={data} run={run} activities={activities} />;
+}
+
+function StaffGroupActivities({ data, run, activities }) {
+  const [selectedClassKey, setSelectedClassKey] = useState("");
+  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => activities.filter((activity) => activity.subjectId === subjectId && String(activity.section || "").trim() === section).length), [data.subjects, data.students, activities]);
+  const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
+  const classActivities = activeClass ? activities.filter((activity) => activity.subjectId === activeClass.subjectId && String(activity.section || "").trim() === activeClass.section) : [];
   return <div className="dashboard-grid guild-group-activities">
     <GroupActivityForm data={data} run={run} />
-    <section className="panel wide guild-group-heading">
-      <div className="section-title"><Users size={20} /> Guild Group Activities</div>
-      <p className="muted-line">Activities are assigned per subject and section, then completed and graded by each guild separately.</p>
-    </section>
-    {activities.map((activity) => <StaffGroupActivity key={activity.id} activity={activity} data={data} run={run} />)}
-    {!activities.length && <section className="panel wide attendance-empty">No guild group activities yet.</section>}
+    <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Group Activity Classes" itemLabel="group activities" />
+    {activeClass && <section className="panel wide guild-group-heading">
+      <div className="section-head">
+        <div>
+          <div className="section-title"><Users size={20} /> {activeClass.subjectName} - {activeClass.sectionLabel}</div>
+          <p className="muted-line">Activities are completed and graded by each guild separately.</p>
+        </div>
+        <div className="inline">
+          <span className="filter-count">{classActivities.length} group activit{classActivities.length === 1 ? "y" : "ies"}</span>
+          <GroupActivityForm data={data} run={run} presetClass={activeClass} buttonLabel="Create Group Activity for This Class" />
+        </div>
+      </div>
+    </section>}
+    {activeClass && classActivities.map((activity) => <StaffGroupActivity key={activity.id} activity={activity} data={data} run={run} />)}
+    {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view guild group activities.</section>}
+    {activeClass && !classActivities.length && <section className="panel wide attendance-empty">No guild group activities found for this class.</section>}
   </div>;
 }
 
-function GroupActivityForm({ data, run, activity = null }) {
-  const [form, setForm] = useState(() => groupActivityForm(activity, data));
-  useEffect(() => setForm(groupActivityForm(activity, data)), [activity?.id, activity?.updatedAt]);
+function GroupActivityForm({ data, run, activity = null, presetClass = null, buttonLabel = null }) {
+  const [form, setForm] = useState(() => groupActivityForm(activity, data, presetClass));
+  useEffect(() => setForm(groupActivityForm(activity, data, presetClass)), [activity?.id, activity?.updatedAt, presetClass?.key]);
   const difficulties = (data.settings?.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} - up to ${item.points} JC` }));
   async function submit(event) {
     event.preventDefault();
@@ -30,7 +49,7 @@ function GroupActivityForm({ data, run, activity = null }) {
       activity ? "Group activity updated" : "Group activity created"
     );
   }
-  return <ActionModal title={activity ? `Edit ${activity.title}` : "Create Guild Group Activity"} buttonLabel={activity ? "Edit" : "Create Group Activity"} icon={activity ? Pencil : undefined}>
+  return <ActionModal title={activity ? `Edit ${activity.title}` : "Create Guild Group Activity"} buttonLabel={buttonLabel || (activity ? "Edit" : "Create Group Activity")} icon={activity ? Pencil : undefined}>
     <form onSubmit={submit}>
       <Field label="Activity Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
       <div className="form-grid two">
@@ -46,11 +65,11 @@ function GroupActivityForm({ data, run, activity = null }) {
   </ActionModal>;
 }
 
-function groupActivityForm(activity, data) {
+function groupActivityForm(activity, data, presetClass = null) {
   return {
     title: activity?.title || "",
-    subjectId: activity?.subjectId || data.subjects?.[0]?.id || "",
-    section: activity?.section || data.sections?.[0] || "",
+    subjectId: activity?.subjectId || presetClass?.subjectId || data.subjects?.[0]?.id || "",
+    section: activity?.section || presetClass?.section || data.sections?.[0] || "",
     difficulty: activity?.difficulty || "Easy",
     deadline: String(activity?.deadline || `${today()}T23:59`).slice(0, 16),
     instructions: activity?.instructions || ""

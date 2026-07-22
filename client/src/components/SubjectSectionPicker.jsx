@@ -10,7 +10,7 @@ export function buildSubjectSectionClasses(data, itemCount = () => 0) {
     if (cleanSubjectId && cleanSection) classPairs.set(`${cleanSubjectId}::${cleanSection}`, { subjectId: cleanSubjectId, section: cleanSection });
   };
   (data.students || []).forEach((student) => (student.subjectIds || []).forEach((subjectId) => add(subjectId, student.section)));
-  ["activities", "quizzes", "attendanceWeeks", "writtenWorks", "majorExams", "gradeSettings", "gradeSummaries"].forEach((key) => {
+  ["activities", "groupActivities", "quizzes", "attendanceWeeks", "writtenWorks", "majorExams", "gradeSettings", "gradeSummaries"].forEach((key) => {
     (data[key] || []).forEach((item) => add(item.subjectId, item.section));
   });
   return [...classPairs.values()].map(({ subjectId, section }) => {

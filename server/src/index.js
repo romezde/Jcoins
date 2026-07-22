@@ -889,7 +889,12 @@ function hydrateGroupActivities(db, user) {
     })
     .map((activity) => publicGroupActivity(db, activity, user))
     .filter(Boolean)
-    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    .sort((a, b) =>
+      String(a.subjectName || "").localeCompare(String(b.subjectName || ""), undefined, { numeric: true, sensitivity: "base" })
+      || String(a.section || "").localeCompare(String(b.section || ""), undefined, { numeric: true, sensitivity: "base" })
+      || String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
+      || String(a.title || "").localeCompare(String(b.title || ""), undefined, { numeric: true, sensitivity: "base" })
+    );
 }
 
 function groupActivityInput(db, body, user, existing = {}) {
