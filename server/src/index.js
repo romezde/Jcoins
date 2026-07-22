@@ -3926,23 +3926,30 @@ function quizTotalForStudent(quiz, submission) {
 }
 
 function percentAverage(values) {
-  if (!values.length) return 100;
+  if (!values.length) return null;
   return Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length);
 }
 
-function categorySummary(label, weight, percents, missing) {
-  const percent = percentAverage(percents);
+function categorySummary(label, weight, percents, missing, active = true) {
+  const categoryWeight = active ? Number(weight || 0) : 0;
+  const percent = active ? percentAverage(percents) : null;
   return {
     label,
-    weight,
+    weight: categoryWeight,
+    configuredWeight: Number(weight || 0),
     percent,
-    contribution: percent == null ? 0 : Math.round(percent * Number(weight || 0)) / 100,
-    missing
+    contribution: percent == null ? 0 : Math.round(percent * categoryWeight) / 100,
+    missing,
+    active
   };
 }
 
 function attendancePercentForStudent(db, studentId, subjectId, section) {
-  const weeks = (db.attendanceWeeks || []).filter((week) => week.subjectId === subjectId && String(week.section || "").trim() === String(section || "").trim());
+  const cleanSection = String(section || "").trim();
+  const weeks = (db.attendanceWeeks || []).filter((week) => {
+    const weekSection = String(week.section || "").trim();
+    return week.subjectId === subjectId && (!weekSection || weekSection === cleanSection);
+  });
   const values = [];
   weeks.forEach((week) => {
     activeAttendanceDates(week).forEach((date) => {
@@ -3977,8 +3984,9 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const weights = setting.weights || {};
   const missingItems = [];
   const writtenPercents = [];
+  const writtenWorks = (db.writtenWorks || []).filter((work) => work.subjectId === subjectId && work.section === section);
   if (setting.includeWrittenWorks !== false && Number(weights.writtenWorks || 0) > 0) {
-    (db.writtenWorks || []).filter((work) => work.subjectId === subjectId && work.section === section).forEach((work) => {
+    writtenWorks.forEach((work) => {
       const recorded = Object.prototype.hasOwnProperty.call(work.scores || {}, student.id);
       if (recorded) writtenPercents.push(Number(work.scores[student.id] || 0) / Number(work.maxScore || 1) * 100);
       else {
@@ -3988,7 +3996,8 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     });
   }
   const quizPercents = [];
-  (db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section && quiz.status !== "draft").forEach((quiz) => {
+  const quizzes = (db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section && quiz.status !== "draft");
+  quizzes.forEach((quiz) => {
     const submission = (quiz.submissions || []).find((item) => item.studentId === student.id);
     const total = quizTotalForStudent(quiz, submission);
     if (submission?.attempts?.length && total) quizPercents.push(Number(submission.bestScore || 0) / total * 100);
@@ -3998,7 +4007,8 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     }
   });
   const activityPercents = [];
-  hydrateActivities(db).filter((activity) => activity.subjectId === subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === section)).forEach((activity) => {
+  const activities = hydrateActivities(db).filter((activity) => activity.subjectId === subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === section));
+  activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (user.role === "student" && row && !row.scoreReleased) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
@@ -4009,7 +4019,8 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   });
   const attendance = attendancePercentForStudent(db, student.id, subjectId, section);
   const majorPercents = [];
-  (db.majorExams || []).filter((exam) => exam.subjectId === subjectId && exam.section === section).forEach((exam) => {
+  const majorExams = (db.majorExams || []).filter((exam) => exam.subjectId === subjectId && exam.section === section);
+  majorExams.forEach((exam) => {
     const recorded = Object.prototype.hasOwnProperty.call(exam.scores || {}, student.id);
     if (recorded) majorPercents.push(Number(exam.scores[student.id] || 0) / Number(exam.maxScore || 1) * 100);
     else {
@@ -4017,16 +4028,21 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
       missingItems.push(exam.title);
     }
   });
+  if (!majorExams.length && Number(weights.majorExams || 0) > 0) majorPercents.push(100);
   const recitationCount = (db.recitations || []).filter((recitation) => recitation.studentId === student.id && recitation.subjectId === subjectId).length;
   const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), recitationCount);
   const categories = {
-    writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length),
-    quizzes: categorySummary("Quizzes", weights.quizzes, quizPercents, missingItems.length),
-    activities: categorySummary("Activities / PT", weights.activities, activityPercents, missingItems.length),
-    attendance: categorySummary("Attendance", weights.attendance, attendance.values, attendance.missing),
-    majorExams: categorySummary("Major Exams", weights.majorExams, majorPercents, missingItems.length)
+    writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length, setting.includeWrittenWorks !== false && !!writtenWorks.length),
+    quizzes: categorySummary("Quizzes", weights.quizzes, quizPercents, missingItems.length, !!quizzes.length),
+    activities: categorySummary("Activities / PT", weights.activities, activityPercents, missingItems.length, !!activities.length),
+    attendance: categorySummary("Attendance", weights.attendance, attendance.values, attendance.missing, !!attendance.values.length),
+    majorExams: categorySummary("Major Exams", weights.majorExams, majorPercents, missingItems.length, true)
   };
-  const rawGrade = Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) + recitationBonus;
+  const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
+  const weightedPercent = activeWeight
+    ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100
+    : 100;
+  const rawGrade = weightedPercent + recitationBonus;
   const currentGrade = Math.max(Number(setting.minimumGrade ?? 50), Math.min(100, Math.round(rawGrade)));
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);

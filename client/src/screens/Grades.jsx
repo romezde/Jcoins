@@ -42,13 +42,15 @@ export default function Grades({ data, run }) {
         {setting?.releasedAt ? "Release Updated Grades" : "Release Grades to Students"}
       </button>
       <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
-      <Table columns={["Student", "Current", "Risk", "Priority", "Missing", "Advice", "Actions"]} rows={summaries.map((row) => [
+      <Table columns={["Student", "Current", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
         <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{row.currentGrade}%</strong>,
+        categoryPercent(row, "activities"),
+        categoryPercent(row, "attendance"),
+        categoryPercent(row, "quizzes"),
+        categoryPercent(row, "majorExams"),
         <span className={`grade-risk ${riskClass(row.riskStatus)}`}>{row.riskStatus}</span>,
-        row.priority,
         row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
-        row.visibleAdvice,
         <div className="inline"><GradeAdviceModal summary={row} run={run} /></div>
       ])} pageSize={25} />
       <button type="button" className="soft" onClick={() => exportGrades(activeClass, summaries)}>Export Grade Summary</button>
@@ -99,26 +101,7 @@ function buildGradeClasses(data) {
 }
 
 function gradeSummariesForClass(data, activeClass) {
-  const rows = (data.gradeSummaries || []).filter((row) => row.subjectId === activeClass.subjectId && String(row.section || "").trim() === activeClass.section);
-  if (rows.length) return rows;
-  return (data.students || [])
-    .filter((student) => String(student.section || "").trim() === activeClass.section && (student.subjectIds || []).includes(activeClass.subjectId))
-    .map((student) => ({
-      studentId: student.id,
-      studentName: student.name,
-      subjectId: activeClass.subjectId,
-      subjectName: activeClass.subjectName,
-      section: activeClass.section,
-      currentGrade: 100,
-      passingGrade: activeClass.passingGrade || 75,
-      minimumGrade: 50,
-      gradesReleased: false,
-      riskStatus: "Safe",
-      priority: "Low",
-      missingItems: [],
-      visibleAdvice: "Initial grade. This will adjust as quiz, activity, attendance, written work, and exam records are added.",
-      visibleToStudent: true
-    }));
+  return (data.gradeSummaries || []).filter((row) => row.subjectId === activeClass.subjectId && String(row.section || "").trim() === activeClass.section);
 }
 
 function GradeSettingsForm({ activeClass, setting, run }) {
@@ -305,6 +288,11 @@ function riskClass(status = "") {
   return `risk-${status.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "watch"}`;
 }
 
+function categoryPercent(row, key) {
+  const value = row.categories?.[key]?.percent;
+  return value == null ? "-" : `${Math.round(Number(value || 0))}%`;
+}
+
 function deleteWrittenWork(work, run) {
   return confirm(`Delete ${work.title}? This removes all recorded written work scores.`)
     && run(() => del(`/admin/written-works/${work.id}`), "Written work deleted");
@@ -320,8 +308,8 @@ function exportWrittenWork(work) {
 
 function exportGrades(activeClass, rows) {
   exportSpreadsheet(`grades-${safeFilePart(activeClass.subjectName)}-${safeFilePart(activeClass.sectionLabel)}.xls`, [
-    "Student", "Subject", "Section", "Current Grade", "Risk", "Priority", "Missing", "Advice"
+    "Student", "Subject", "Section", "Current Grade", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Priority", "Missing", "Advice"
   ], rows.map((row) => [
-    row.studentName, row.subjectName, row.section, `${row.currentGrade}%`, row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
+    row.studentName, row.subjectName, row.section, `${row.currentGrade}%`, categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
   ]), "Grades");
 }
