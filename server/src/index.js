@@ -1347,6 +1347,7 @@ async function readDb() {
     if (normalizeStudentAssistantAssignment(assignment)) changed = true;
   });
   db.activities ||= [];
+  if (syncExistingActivityAutoScores(db)) changed = true;
   db.groupActivities ||= [];
   db.quizzes ||= [];
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
@@ -3108,6 +3109,22 @@ function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
     submission.score = activitySubmissionScore({ ...submission, scoreMode: "auto" }, maxScoreAllowed);
     submission.scoreMode = "auto";
   }
+}
+
+function syncExistingActivityAutoScores(db) {
+  let changed = false;
+  for (const activity of db.activities || []) {
+    activity.deadline = normalizeActivityDeadline(activity.deadline);
+    for (const submission of activity.submissions || []) {
+      const beforeScore = submission.score;
+      const beforeMode = submission.scoreMode;
+      const submittedAt = submission.submittedAt || submission.dateSubmitted || "";
+      const daysLate = submission.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, submission), submittedAt) : 0;
+      syncActivityAutoScore(submission, activityMaxScoreAllowed(daysLate));
+      if (submission.score !== beforeScore || submission.scoreMode !== beforeMode) changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeActivityDeadline(value) {
