@@ -3923,7 +3923,7 @@ function normalizeGradeNote(note, db) {
   note.visibleAdvice = String(note.visibleAdvice || "").trim().slice(0, 2000);
   note.visibleToStudent = note.visibleToStudent !== false;
   note.priority = ["Low", "Medium", "Urgent"].includes(note.priority) ? note.priority : "Medium";
-  note.riskStatus = ["Safe", "Watch", "At Risk", "Critical"].includes(note.riskStatus) ? note.riskStatus : "";
+  note.riskStatus = ["Outstanding", "Safe", "Watch", "At Risk", "Critical"].includes(note.riskStatus) ? note.riskStatus : "";
   note.missingItems = Array.isArray(note.missingItems) ? note.missingItems.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 30) : [];
   return note;
 }
@@ -3991,6 +3991,7 @@ function recitationGradeBonus(db, studentId, subjectId, setting) {
 }
 
 function gradeRiskStatus(grade, passingGrade = 75) {
+  if (grade >= 96) return "Outstanding";
   if (grade >= Math.max(85, passingGrade + 10)) return "Safe";
   if (grade >= passingGrade) return "Watch";
   if (grade >= Math.max(0, passingGrade - 15)) return "At Risk";

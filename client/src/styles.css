@@ -3072,6 +3072,12 @@ td button {
   padding: 4px 10px;
   font-weight: 900;
 }
+.grade-score.risk-outstanding,
+.grade-risk.risk-outstanding {
+  color: #9ff7ff;
+  background: rgba(34, 211, 238, 0.14);
+  border: 1px solid rgba(34, 211, 238, 0.34);
+}
 .grade-score.risk-safe,
 .grade-risk.risk-safe {
   color: #8dffc0;

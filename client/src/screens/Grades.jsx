@@ -221,6 +221,7 @@ function quizQuestionTotal(quiz, row) {
 }
 
 function gradeRiskLabel(grade, passingGrade = 75) {
+  if (grade >= 96) return "Outstanding";
   if (grade >= Math.max(85, Number(passingGrade || 75) + 10)) return "Safe";
   if (grade >= Number(passingGrade || 75)) return "Watch";
   if (grade >= Math.max(0, Number(passingGrade || 75) - 15)) return "At Risk";
@@ -320,7 +321,7 @@ function GradeAdviceModal({ summary, run }) {
         <div className="account-item"><span>Current Grade</span><strong>{summary.currentGrade}%</strong></div>
         <div className="account-item"><span>Class</span><strong>{summary.subjectName} - {summary.section}</strong></div>
       </div>
-      <Select label="Risk Status" value={form.riskStatus} onChange={(riskStatus) => setForm({ ...form, riskStatus })} options={["", "Safe", "Watch", "At Risk", "Critical"].map((value) => ({ value, label: value || "Auto" }))} />
+      <Select label="Risk Status" value={form.riskStatus} onChange={(riskStatus) => setForm({ ...form, riskStatus })} options={["", "Outstanding", "Safe", "Watch", "At Risk", "Critical"].map((value) => ({ value, label: value || "Auto" }))} />
       <Select label="Priority" value={form.priority} onChange={(priority) => setForm({ ...form, priority })} options={["Low", "Medium", "Urgent"]} />
       <label>Student Advice<textarea value={form.visibleAdvice} onChange={(event) => setForm({ ...form, visibleAdvice: event.target.value })} /></label>
       <label>Private Teacher Note<textarea value={form.privateNote} onChange={(event) => setForm({ ...form, privateNote: event.target.value })} /></label>
