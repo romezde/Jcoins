@@ -1044,16 +1044,16 @@ function readBubbleGroup(imageData, width, height, page, bubbles) {
   const [best, second] = reads;
   if (!best) return { value: "", confidence: 0 };
   const gap = best.ratio - (second?.ratio || 0);
-  const confident = best.ratio >= 0.22 && (gap >= 0.035 || (best.ratio >= 0.42 && gap >= 0.02));
+  const confident = best.ratio >= 0.42 && (gap >= 0.16 || (best.ratio >= 0.68 && gap >= 0.08));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
 function bubbleDarkness(imageData, width, height, page, bubble) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
   const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
-  const radius = Math.max(3, Math.round(unitScale * 7));
-  const search = Math.max(2, Math.round(unitScale * 9));
-  const step = Math.max(2, Math.round(unitScale * 3));
+  const radius = Math.max(2, Math.round(unitScale * 4.5));
+  const search = Math.max(1, Math.round(unitScale * 3.5));
+  const step = Math.max(1, Math.round(unitScale * 1.75));
   let bestRatio = 0;
   for (let dy = -search; dy <= search; dy += step) {
     for (let dx = -search; dx <= search; dx += step) {
@@ -1072,7 +1072,7 @@ function bubbleDarknessAt(imageData, width, height, cx, cy, radius) {
       if (x < 0 || x >= width || y < 0 || y >= height || Math.hypot(x - cx, y - cy) > radius) continue;
       const offset = (y * width + x) * 4;
       const lum = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
-      if (lum < 135) dark += 1;
+      if (lum < 170) dark += 1;
       total += 1;
     }
   }
