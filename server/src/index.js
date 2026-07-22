@@ -3092,7 +3092,7 @@ function activityScoreReleased(activity, submission = {}, at = Date.now()) {
 function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
   if (!submission.submitted) return "";
   const autoScore = Math.max(0, Math.min(100, Number(maxScoreAllowed || 0)));
-  if (submission.score === "" || submission.score == null || submission.scoreMode === "auto") return autoScore;
+  if (submission.scoreMode !== "manual") return autoScore;
   const manualScore = Number(submission.score);
   return Number.isFinite(manualScore) ? Math.max(0, Math.min(autoScore, manualScore)) : autoScore;
 }
@@ -3105,7 +3105,7 @@ function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
     }
     return;
   }
-  if (submission.score === "" || submission.score == null || submission.scoreMode === "auto") {
+  if (submission.scoreMode !== "manual") {
     submission.score = activitySubmissionScore({ ...submission, scoreMode: "auto" }, maxScoreAllowed);
     submission.scoreMode = "auto";
   }
