@@ -322,8 +322,15 @@ function QuizActions({ quiz, data, run }) {
 
 function PaperCheckModal({ quiz, run }) {
   const rows = paperQuizRows(quiz, "A");
+  const cameraInputRef = useRef(null);
+  const uploadInputRef = useRef(null);
   const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
+  const [source, setSource] = useState({ file: null, previewUrl: "" });
+  const [crop, setCrop] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   const [scan, setScan] = useState({ loading: false, message: "", previewUrl: "", result: null });
+  useEffect(() => () => {
+    if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
+  }, [source.previewUrl]);
   async function submit(event) {
     event.preventDefault();
     const answers = parsePaperAnswers(form.answersText);
@@ -332,6 +339,18 @@ function PaperCheckModal({ quiz, run }) {
       variant: form.variant,
       answers
     }), "Paper quiz checked");
+  }
+  function chooseScanSource(file) {
+    if (!file) return;
+    if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
+    setSource({ file, previewUrl: URL.createObjectURL(file) });
+    setCrop({ top: 0, right: 0, bottom: 0, left: 0 });
+    setScan({ loading: false, message: "Crop the image so only the answer sheet is inside the box, then scan.", previewUrl: "", result: null });
+  }
+  async function scanCroppedSheet() {
+    if (!source.file) return;
+    const croppedFile = await cropImageFile(source.file, crop);
+    await scanSheet(croppedFile);
   }
   async function scanSheet(file) {
     if (!file) return;
@@ -347,8 +366,29 @@ function PaperCheckModal({ quiz, run }) {
   }
   return <ActionModal title={`Check Paper - ${quiz.title}`} buttonLabel="Check Paper" icon={FileCheck2}>
     <form onSubmit={submit}>
-      <div className="notice">Upload a clear, straight photo of the answer sheet, review the detected answers, then save.</div>
-      <label className="soft file-button">Scan Answer Sheet<input type="file" accept="image/*" capture="environment" onChange={(event) => { scanSheet(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <div className="notice">Take a photo or upload an image, crop to the answer sheet, scan, then review before saving.</div>
+      <div className="inline">
+        <button type="button" className="soft" onClick={() => cameraInputRef.current?.click()}>Take Photo</button>
+        <button type="button" className="soft" onClick={() => uploadInputRef.current?.click()}>Upload Image</button>
+        <input ref={cameraInputRef} style={{ display: "none" }} type="file" accept="image/*" capture="environment" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
+        <input ref={uploadInputRef} style={{ display: "none" }} type="file" accept="image/*" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
+      </div>
+      {source.previewUrl && <div className="paper-crop-workspace">
+        <div className="paper-cropper">
+          <img src={source.previewUrl} alt="Answer sheet crop preview" />
+          <div className="paper-crop-mask" style={{ inset: `${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%` }} />
+        </div>
+        <div className="paper-crop-controls">
+          {["top", "right", "bottom", "left"].map((side) => <label key={side}>
+            <span>{side}</span>
+            <input type="range" min="0" max="45" value={crop[side]} onChange={(event) => setCrop({ ...crop, [side]: Number(event.target.value) })} />
+          </label>)}
+        </div>
+        <div className="inline">
+          <button type="button" className="soft" onClick={() => setCrop({ top: 0, right: 0, bottom: 0, left: 0 })}>Reset Crop</button>
+          <button type="button" onClick={scanCroppedSheet} disabled={scan.loading}>{scan.loading ? "Scanning..." : "Scan Cropped Image"}</button>
+        </div>
+      </div>}
       {scan.previewUrl && <img className="paper-scan-preview" src={scan.previewUrl} alt="Scanned answer sheet preview" />}
       {scan.message && <p className="muted-line">{scan.message}</p>}
       <div className="form-grid two">
@@ -827,6 +867,26 @@ function loadImageFromFile(file) {
       reject(new Error("Could not read this image."));
     };
     image.src = url;
+  });
+}
+
+async function cropImageFile(file, crop) {
+  const image = await loadImageFromFile(file);
+  const left = Math.min(80, Math.max(0, Number(crop.left || 0)));
+  const right = Math.min(80, Math.max(0, Number(crop.right || 0)));
+  const top = Math.min(80, Math.max(0, Number(crop.top || 0)));
+  const bottom = Math.min(80, Math.max(0, Number(crop.bottom || 0)));
+  const sx = Math.round(image.naturalWidth * (left / 100));
+  const sy = Math.round(image.naturalHeight * (top / 100));
+  const sw = Math.max(1, Math.round(image.naturalWidth * ((100 - left - right) / 100)));
+  const sh = Math.max(1, Math.round(image.naturalHeight * ((100 - top - bottom) / 100)));
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", 0.92);
   });
 }
 
