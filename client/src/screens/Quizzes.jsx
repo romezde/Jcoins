@@ -347,7 +347,7 @@ function PaperCheckModal({ quiz, run }) {
   return <ActionModal title={`Check Paper - ${quiz.title}`} buttonLabel="Check Paper" icon={FileCheck2}>
     <form onSubmit={submit}>
       <div className="notice">Upload a clear, straight photo of the answer sheet, review the detected answers, then save.</div>
-      <label className="soft file-button">Scan Answer Sheet<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { scanSheet(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <label className="soft file-button">Scan Answer Sheet<input type="file" accept="image/*" capture="environment" onChange={(event) => { scanSheet(event.target.files?.[0]); event.target.value = ""; }} /></label>
       {scan.previewUrl && <img className="paper-scan-preview" src={scan.previewUrl} alt="Scanned answer sheet preview" />}
       {scan.message && <p className="muted-line">{scan.message}</p>}
       <div className="form-grid two">
