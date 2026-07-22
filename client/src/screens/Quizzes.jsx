@@ -330,6 +330,7 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
   const [source, setSource] = useState({ file: null, previewUrl: "", width: 0, height: 0 });
   const [crop, setCrop] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
+  const [showCropper, setShowCropper] = useState(false);
   const [scan, setScan] = useState({ loading: false, message: "", previewUrl: "", result: null });
   useEffect(() => () => {
     if (source.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(source.previewUrl);
@@ -350,12 +351,14 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
     const preview = await createScanPreview(file);
     setSource({ file, previewUrl: preview.url, width: preview.width, height: preview.height });
     setCrop({ top: 0, right: 0, bottom: 0, left: 0 });
+    setShowCropper(true);
     setScan({ loading: false, message: "Crop the image so only the answer sheet is inside the box, then scan.", previewUrl: "", result: null });
   }
   async function scanCroppedSheet() {
     if (!source.file) return;
     const croppedFile = await cropImageFile(source.file, crop);
     await scanSheet(croppedFile);
+    setShowCropper(false);
   }
   function startCropDrag(handle, event) {
     event.preventDefault();
@@ -407,7 +410,10 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
         <input ref={cameraInputRef} style={{ display: "none" }} type="file" accept="image/*" capture="environment" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
         <input ref={uploadInputRef} style={{ display: "none" }} type="file" accept="image/*" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
-      {source.previewUrl && <div className="paper-crop-workspace">
+      {source.previewUrl && !showCropper && <div className="inline">
+        <button type="button" className="soft" onClick={() => setShowCropper(true)}>Show Cropper</button>
+      </div>}
+      {source.previewUrl && showCropper && <div className="paper-crop-workspace">
         <div className="paper-cropper" ref={cropperRef} style={source.width && source.height ? { aspectRatio: `${source.width} / ${source.height}` } : undefined}>
           <img src={source.previewUrl} alt="Answer sheet crop preview" />
           <div className="paper-crop-mask" style={{ inset: `${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%` }}>
