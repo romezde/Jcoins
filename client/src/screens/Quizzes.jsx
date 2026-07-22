@@ -1114,6 +1114,7 @@ function detectPaperPage(imageData, width, height) {
 function pageFromPaperMarkers(markers, logicalBounds = paperScanMarkerBounds, options = {}) {
   if (!markers || !["tl", "tr", "bl", "br"].every((corner) => markers[corner])) return null;
   const { tl, tr, bl, br } = markers;
+  if (![tl, tr, bl, br].every((marker) => Number.isFinite(marker.x) && Number.isFinite(marker.y))) return null;
   const topWidth = Math.hypot(tr.x - tl.x, tr.y - tl.y);
   const bottomWidth = Math.hypot(br.x - bl.x, br.y - bl.y);
   const leftHeight = Math.hypot(bl.x - tl.x, bl.y - tl.y);
@@ -1144,9 +1145,12 @@ function pageFromPaperMarkers(markers, logicalBounds = paperScanMarkerBounds, op
 }
 
 function detectZonePage(basePage, zone, candidates) {
+  if (!basePage || !zone || !candidates?.length) return null;
   const markers = {};
   for (const corner of ["tl", "tr", "bl", "br"]) {
+    if (!zone[corner]) return null;
     const expected = mapPaperPoint(basePage, zone[corner].x, zone[corner].y);
+    if (!expected) return null;
     const maxDistance = Math.max(14, (basePage.unitScale || Math.min(basePage.scaleX, basePage.scaleY)) * 38);
     const match = candidates
       .map((candidate) => ({ ...candidate, distance: Math.hypot(candidate.x - expected.x, candidate.y - expected.y) }))
@@ -1352,6 +1356,7 @@ function readBubbleGroupV2(imageData, width, height, page, bubbles, options = {}
 
 function bubbleInkScoreV2(imageData, width, height, page, bubble, options = {}) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
+  if (!point) return 0;
   const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
   const radius = Math.max(2, Math.round(unitScale * (options.radiusScale ?? 2.6)));
   const search = Math.max(1, Math.round(unitScale * (options.searchScale ?? 3.4)));
@@ -1395,6 +1400,7 @@ function bubbleInkScoreAt(imageData, width, height, cx, cy, radius) {
 
 function bubbleDarkness(imageData, width, height, page, bubble, options = {}) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
+  if (!point) return 0;
   const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
   const radius = Math.max(2, Math.round(unitScale * (options.radiusScale ?? 3.25)));
   const search = Math.max(0, Math.round(unitScale * (options.searchScale ?? 2)));
@@ -1425,14 +1431,18 @@ function bubbleDarknessAt(imageData, width, height, cx, cy, radius) {
 }
 
 function mapPaperPoint(page, x, y) {
+  if (!page || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (![page.x, page.y, page.scaleX, page.scaleY].every(Number.isFinite)) return null;
   if (!page.corners || !page.logicalBounds) return {
     x: page.x + x * page.scaleX,
     y: page.y + y * page.scaleY
   };
   const { left, top, right, bottom } = page.logicalBounds;
+  if (![left, top, right, bottom].every(Number.isFinite) || right === left || bottom === top) return null;
   const u = (x - left) / (right - left);
   const v = (y - top) / (bottom - top);
   const { tl, tr, bl, br } = page.corners;
+  if (![tl, tr, bl, br].every((corner) => corner && Number.isFinite(corner.x) && Number.isFinite(corner.y))) return null;
   return {
     x: tl.x * (1 - u) * (1 - v) + tr.x * u * (1 - v) + bl.x * (1 - u) * v + br.x * u * v,
     y: tl.y * (1 - u) * (1 - v) + tr.y * u * (1 - v) + bl.y * (1 - u) * v + br.y * u * v
