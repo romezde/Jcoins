@@ -858,7 +858,7 @@ function paperSheetLayout(rows) {
   const codeY = Array.from({ length: 10 }, (_, value) => 292 + value * 28);
   const typeX = [165, 240, 315, 390];
   const answerStartY = 705;
-  const answerEndY = 1315;
+  const answerEndY = 1248;
   const rowsPerColumn = Math.ceil(rows.length / 2);
   const answerGap = Math.min(28, rowsPerColumn > 1 ? (answerEndY - answerStartY) / (rowsPerColumn - 1) : 28);
   return {
@@ -884,8 +884,8 @@ function paperScanZones() {
   return {
     code: zoneMarkers(30, 262, 530, 602),
     type: zoneMarkers(30, 606, 440, 676),
-    answersLeft: zoneMarkers(30, 676, 430, 1344),
-    answersRight: zoneMarkers(540, 676, 850, 1344)
+    answersLeft: zoneMarkers(30, 676, 430, 1282),
+    answersRight: zoneMarkers(540, 676, 850, 1282)
   };
 }
 
