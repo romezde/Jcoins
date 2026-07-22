@@ -7,7 +7,7 @@ export function buildSubjectSectionClasses(data, itemCount = () => 0) {
   const add = (subjectId, section = "") => {
     const cleanSubjectId = String(subjectId || "").trim();
     const cleanSection = String(section || "").trim();
-    if (cleanSubjectId) classPairs.set(`${cleanSubjectId}::${cleanSection || "__none"}`, { subjectId: cleanSubjectId, section: cleanSection });
+    if (cleanSubjectId && cleanSection) classPairs.set(`${cleanSubjectId}::${cleanSection}`, { subjectId: cleanSubjectId, section: cleanSection });
   };
   (data.students || []).forEach((student) => (student.subjectIds || []).forEach((subjectId) => add(subjectId, student.section)));
   ["activities", "quizzes", "attendanceWeeks", "writtenWorks", "majorExams", "gradeSettings", "gradeSummaries"].forEach((key) => {
