@@ -308,6 +308,7 @@ function QuizActions({ quiz, data, run }) {
     <QuizFormModal data={data} run={run} quiz={quiz} />
     <button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button>
     <button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button>
+    <button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button>
     <button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     <PaperCheckModal quiz={quiz} run={run} />
@@ -369,7 +370,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -827,11 +828,15 @@ function detectPaperPage(imageData, width, height) {
     br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br")
   };
   if (Object.values(markers).every(Boolean)) {
-    const scaleX = (((markers.tr.x + markers.br.x) / 2) - ((markers.tl.x + markers.bl.x) / 2)) / (956 - 44);
-    const scaleY = (((markers.bl.y + markers.br.y) / 2) - ((markers.tl.y + markers.tr.y) / 2)) / (1374 - 40);
+    const markerLeft = 60;
+    const markerTop = 56;
+    const markerRight = 940;
+    const markerBottom = 1358;
+    const scaleX = (((markers.tr.x + markers.br.x) / 2) - ((markers.tl.x + markers.bl.x) / 2)) / (markerRight - markerLeft);
+    const scaleY = (((markers.bl.y + markers.br.y) / 2) - ((markers.tl.y + markers.tr.y) / 2)) / (markerBottom - markerTop);
     return {
-      x: ((markers.tl.x + markers.bl.x) / 2) - 44 * scaleX,
-      y: ((markers.tl.y + markers.tr.y) / 2) - 40 * scaleY,
+      x: ((markers.tl.x + markers.bl.x) / 2) - markerLeft * scaleX,
+      y: ((markers.tl.y + markers.tr.y) / 2) - markerTop * scaleY,
       scaleX,
       scaleY,
       usedMarkers: true
@@ -940,7 +945,11 @@ function printPaperQuizPack(quiz) {
     return;
   }
   printWindow.opener = null;
-  const body = paperQuizVariants.map((variant) => paperQuizVersionHtml(quiz, variant)).join("");
+  const reusableRows = paperQuizRows(quiz, "A");
+  const questionPages = paperQuizVariants.map((variant) => paperQuizVersionHtml(quiz, variant, { includeAnswerSheet: false, includeAnswerKey: false })).join("");
+  const answerSheet = paperAnswerSheetHtml(quiz, "", reusableRows, {}, { reusable: true });
+  const answerKeys = paperQuizVariants.map((variant) => paperAnswerKeyHtml(quiz, variant)).join("");
+  const body = `${questionPages}${answerSheet}${answerKeys}`;
   printWindow.document.write(`<!doctype html>
     <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Paper Types</title>
     <style>
@@ -968,7 +977,7 @@ function printPaperQuizPack(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
-      .scan-marker { position: absolute; width: 7mm; height: 7mm; background: #111; }
+      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -981,6 +990,48 @@ function printPaperQuizPack(quiz) {
       .omr-bubble.filled { background: #111; }
       @media print { button { display: none; } }
     </style></head><body>${body}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 300);
+}
+
+function printBlankPaperSheet(quiz) {
+  const rows = paperQuizRows(quiz, "A");
+  if (!rows.length) {
+    alert("This quiz has no paper-checkable questions yet. Use Multiple Choice, True/False, or Matching.");
+    return;
+  }
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Allow pop-ups for JCoins to open the answer sheet.");
+    return;
+  }
+  printWindow.opener = null;
+  const sheet = paperAnswerSheetHtml(quiz, "", rows, {}, { reusable: true });
+  printWindow.document.write(`<!doctype html>
+    <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Answer Sheet</title>
+    <style>
+      @page { size: A4; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 10.5pt; line-height: 1.35; }
+      section.page { min-height: 265mm; break-after: page; page-break-after: always; }
+      h2 { margin: 0; font-size: 15pt; }
+      .meta { color: #333; font-size: 9pt; }
+      .omr-page { position: relative; height: 265mm; overflow: hidden; }
+      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
+      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
+      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
+      .scan-marker.tl { left: 2.5%; top: 1.5%; }
+      .scan-marker.tr { right: 2.5%; top: 1.5%; }
+      .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
+      .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .omr-label { position: absolute; font-weight: 700; }
+      .omr-text { position: absolute; }
+      .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
+      .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
+      .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
+      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+    </style></head><body>${sheet}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => printWindow.print(), 300);
@@ -1012,8 +1063,8 @@ function printDemoPaperSheet(quiz) {
       .meta { color: #333; font-size: 9pt; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
-      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
-      .scan-marker { position: absolute; width: 7mm; height: 7mm; background: #111; }
+      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
+      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -1033,26 +1084,34 @@ function printDemoPaperSheet(quiz) {
   window.setTimeout(() => printWindow.print(), 300);
 }
 
-function paperQuizVersionHtml(quiz, variant) {
+function paperQuizVersionHtml(quiz, variant, options = {}) {
   const rows = paperQuizRows(quiz, variant);
-  const key = rows.map((row) => `<span>${row.number}-${row.correctLetter || "?"}</span>`).join(" ");
+  const includeAnswerSheet = options.includeAnswerSheet !== false;
+  const includeAnswerKey = options.includeAnswerKey !== false;
   return `
     <section class="page">
       <header><div><h1>${escapeQuizHtml(quiz.title)}</h1><div class="meta">${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)} | ${rows.length} paper items</div></div><div class="type-badge">TYPE ${variant}</div></header>
       <p class="small">Write your name on the answer sheet. Shade your 4 JCS digits, paper type, and one answer per item.</p>
       ${rows.map((row) => `<article class="question"><div class="prompt">${row.number}. ${escapeQuizHtml(row.prompt)}</div>${row.choices.map((choice, index) => `<div class="option">(${String.fromCharCode(65 + index)}) ${escapeQuizHtml(choice)}</div>`).join("")}</article>`).join("")}
     </section>
-    ${paperAnswerSheetHtml(quiz, variant, rows)}
-    <section class="page">
-      <header><div><h2>Teacher Answer Key</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">KEY ${variant}</div></header>
-      <div class="answer-key">${key}</div>
-    </section>`;
+    ${includeAnswerSheet ? paperAnswerSheetHtml(quiz, variant, rows) : ""}
+    ${includeAnswerKey ? paperAnswerKeyHtml(quiz, variant) : ""}`;
 }
 
-function paperAnswerSheetHtml(quiz, variant, rows, filled = {}) {
+function paperAnswerKeyHtml(quiz, variant) {
+  const rows = paperQuizRows(quiz, variant);
+  const key = rows.map((row) => `<span>${row.number}-${row.correctLetter || "?"}</span>`).join(" ");
+  return `<section class="page">
+    <header><div><h2>Teacher Answer Key</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">KEY ${variant}</div></header>
+    <div class="answer-key">${key}</div>
+  </section>`;
+}
+
+function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
   const layout = paperSheetLayout(rows);
   const codeDigits = String(filled.studentCode || "").replace(/\D/g, "").slice(-4);
   const answerMap = filled.answers || {};
+  const typeLabel = options.reusable ? "SHADE TYPE" : variant ? `TYPE ${variant}` : "SHADE TYPE";
   const bubbles = [
     ...layout.code.flatMap((column, columnIndex) => column.map((bubble) => `${omrBubbleHtml({ ...bubble, filled: codeDigits[columnIndex] === bubble.value })}${bubble.value === 0 ? `<span class="omr-number" style="${omrStyle({ x: bubble.x, y: bubble.y - 26 })}">D${columnIndex + 1}</span>` : ""}`)),
     ...layout.type.map((bubble) => omrBubbleHtml({ ...bubble, filled: String(filled.variant || "") === bubble.value })),
@@ -1064,7 +1123,7 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}) {
   return `<section class="page omr-page">
     <span class="scan-marker tl"></span><span class="scan-marker tr"></span><span class="scan-marker bl"></span><span class="scan-marker br"></span>
     <div class="omr-title"><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | ${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)}</div></div>
-    <div class="omr-type">TYPE ${variant}</div>
+    <div class="omr-type">${typeLabel}</div>
     <div class="omr-text" style="left:6%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
     <div class="omr-label" style="left:6%;top:17%;">Student Code: JCS____</div>
     <div class="omr-label" style="left:6%;top:41%;">Paper Type</div>
