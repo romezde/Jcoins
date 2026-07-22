@@ -3076,6 +3076,28 @@ function activityMaxScoreAllowed(daysLateValue) {
   return Math.max(0, 100 - Number(daysLateValue || 0) * 10);
 }
 
+function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
+  if (!submission.submitted) return "";
+  const autoScore = Math.max(0, Math.min(100, Number(maxScoreAllowed || 0)));
+  if (submission.score === "" || submission.score == null || submission.scoreMode === "auto") return autoScore;
+  const manualScore = Number(submission.score);
+  return Number.isFinite(manualScore) ? Math.max(0, Math.min(autoScore, manualScore)) : autoScore;
+}
+
+function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
+  if (!submission.submitted) {
+    if (submission.scoreMode === "auto") {
+      delete submission.score;
+      delete submission.scoreMode;
+    }
+    return;
+  }
+  if (submission.score === "" || submission.score == null || submission.scoreMode === "auto") {
+    submission.score = activitySubmissionScore({ ...submission, scoreMode: "auto" }, maxScoreAllowed);
+    submission.scoreMode = "auto";
+  }
+}
+
 function normalizeActivityDeadline(value) {
   const text = String(value || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return `${text}T23:59`;
@@ -4069,7 +4091,7 @@ function hydrateActivities(db) {
       const late = sub.submitted ? activityDaysLate(effectiveDeadline, submittedAt) : 0;
       const earned = sub.submitted ? Math.max(0, base - late * db.settings.activities.latePenaltyPerDay) : 0;
       const maxScoreAllowed = activityMaxScoreAllowed(late);
-      const score = sub.score === "" || sub.score == null ? "" : Math.max(0, Math.min(Number(sub.score || 0), maxScoreAllowed));
+      const score = activitySubmissionScore(sub, maxScoreAllowed);
       const files = activitySubmissionFiles(sub);
       const publicFiles = files.map(publicActivityFile);
       const file = files[0] || null;
@@ -4109,7 +4131,8 @@ function syncActivityRewards(db, activity, createdBy) {
     const daysLate = submission.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, submission), submittedAt) : 0;
     const earned = submission.submitted ? Math.max(0, basePoints - daysLate * Number(db.settings.activities.latePenaltyPerDay || 0)) : 0;
     const maxScoreAllowed = activityMaxScoreAllowed(daysLate);
-    if (submission.score !== "" && submission.score != null) submission.score = Math.max(0, Math.min(Number(submission.score || 0), maxScoreAllowed));
+    syncActivityAutoScore(submission, maxScoreAllowed);
+    if (submission.score !== "" && submission.score != null && submission.scoreMode !== "auto") submission.score = Math.max(0, Math.min(Number(submission.score || 0), maxScoreAllowed));
     submission.snapshot = {
       type: activity.type,
       basePoints,
@@ -5934,8 +5957,15 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   else if (!sub.submitted) delete sub.submissionMethod;
   const late = sub.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, sub), sub.submittedAt) : 0;
   const maxScoreAllowed = activityMaxScoreAllowed(late);
-  const score = req.body.score === "" || req.body.score == null ? "" : Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
-  sub.score = Number.isFinite(score) || score === "" ? score : "";
+  if (req.body.score === "" || req.body.score == null) {
+    delete sub.scoreMode;
+    delete sub.score;
+    syncActivityAutoScore(sub, maxScoreAllowed);
+  } else {
+    const score = Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
+    sub.score = Number.isFinite(score) ? score : activitySubmissionScore(sub, maxScoreAllowed);
+    sub.scoreMode = "manual";
+  }
   sub.remarks = req.body.remarks || "";
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
   const row = hydrated.rows.find((r) => r.studentId === sub.studentId);
@@ -5985,6 +6015,7 @@ app.post("/api/admin/activities/:id/submissions/:studentId/files", auth, require
     sub.dateSubmitted = submittedAt;
     sub.submissionMethod = "upload";
     sub.remarks = String(req.body.remarks ?? sub.remarks ?? "");
+    syncActivityAutoScore(sub, activityMaxScoreAllowed(activityDaysLate(activityDeadlineForSubmission(activity, sub), submittedAt)));
     syncActivityRewards(db, activity, req.user.id);
     activity.updatedAt = now();
     await writeDb(db);
@@ -6082,6 +6113,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), act
     sub.studentNote = String(req.body?.studentNote || "").slice(0, 500);
     sub.files = storedFiles;
     sub.file = sub.files[0] || null;
+    syncActivityAutoScore(sub, activityMaxScoreAllowed(activityDaysLate(activityDeadlineForSubmission(activity, sub), submittedAt)));
     const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
     const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);
     sub.snapshot = {
