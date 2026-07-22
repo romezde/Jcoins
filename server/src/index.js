@@ -3074,7 +3074,7 @@ function activityDaysLate(deadline, submittedAt) {
 }
 
 function activityMaxScoreAllowed(daysLateValue) {
-  return Math.max(0, 100 - Number(daysLateValue || 0) * 10);
+  return Math.max(50, 100 - Number(daysLateValue || 0) * 10);
 }
 
 function activityScoreVisibleAt(activity, submission = {}) {
