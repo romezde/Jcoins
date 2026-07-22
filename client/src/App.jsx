@@ -806,7 +806,7 @@ function requiredModulesForTab(tab, role) {
     Activities: ["activities"],
     Quizzes: ["quizzes"],
     "Major Exams": ["majorExams"],
-    Grades: ["grades", "activities", "attendance", "quizzes", "majorExams", "recitations"],
+    Grades: ["grades", "activities", "attendance", "quizzes", "majorExams", "recitations", "guild"],
     Transactions: ["transactions"],
     Shop: ["shop"],
     "Trade Requests": ["shop"],

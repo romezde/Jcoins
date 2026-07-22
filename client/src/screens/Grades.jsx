@@ -26,6 +26,15 @@ function recitationGradeBonus(data, studentId, subjectId, setting) {
   return Math.min(Number(setting.recitationBonusMax || 0), recitationPoints / 100 * Number(setting.recitationBonusMax || 0));
 }
 
+function localGroupActivityPercent(activity, studentId) {
+  const guild = (activity.guildRows || []).find((row) => (row.members || []).some((member) => member.studentId === studentId));
+  if (!guild || guild.teacherScore == null) return null;
+  const grade = guild.memberGrades?.[studentId];
+  if (grade == null || grade === "") return null;
+  const percent = Number(grade);
+  return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
+}
+
 export default function Grades({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [search, setSearch] = useState("");
@@ -125,9 +134,10 @@ function computeLocalGradeSummaries(data, activeClass) {
   const writtenWorks = (data.writtenWorks || []).filter((work) => work.subjectId === activeClass.subjectId && String(work.section || "").trim() === activeClass.section);
   const quizzes = (data.quizzes || []).filter((quiz) => quiz.subjectId === activeClass.subjectId && String(quiz.section || "").trim() === activeClass.section && quiz.status !== "draft");
   const activities = (data.activities || []).filter((activity) => activity.subjectId === activeClass.subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === activeClass.section));
+  const groupActivities = (data.groupActivities || []).filter((activity) => activity.subjectId === activeClass.subjectId && String(activity.section || "").trim() === activeClass.section);
   const attendanceWeeks = (data.attendanceWeeks || []).filter((week) => week.subjectId === activeClass.subjectId && (!String(week.section || "").trim() || String(week.section || "").trim() === activeClass.section));
   const majorExams = (data.majorExams || []).filter((exam) => exam.subjectId === activeClass.subjectId && String(exam.section || "").trim() === activeClass.section);
-  return students.map((student) => localGradeSummaryForStudent(data, activeClass, setting, { writtenWorks, quizzes, activities, attendanceWeeks, majorExams }, student));
+  return students.map((student) => localGradeSummaryForStudent(data, activeClass, setting, { writtenWorks, quizzes, activities, groupActivities, attendanceWeeks, majorExams }, student));
 }
 
 function localGradeSummaryForStudent(data, activeClass, setting, records, student) {
@@ -161,6 +171,14 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
       missingItems.push(activity.title);
     }
   });
+  (records.groupActivities || []).forEach((activity) => {
+    const percent = localGroupActivityPercent(activity, student.id);
+    if (percent != null) activityPercents.push(percent);
+    else {
+      activityPercents.push(0);
+      missingItems.push(activity.title);
+    }
+  });
   const attendanceValues = [];
   records.attendanceWeeks.forEach((week) => {
     const cancelled = new Set(week.cancelledDates || []);
@@ -182,7 +200,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const categories = {
     writtenWorks: localCategory("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, setting.includeWrittenWorks !== false && records.writtenWorks.length),
     quizzes: localCategory("Quizzes", weights.quizzes, quizPercents, records.quizzes.length),
-    activities: localCategory("Activities / PT", weights.activities, activityPercents, records.activities.length),
+    activities: localCategory("Activities / PT", weights.activities, activityPercents, records.activities.length || records.groupActivities?.length),
     attendance: localCategory("Attendance", weights.attendance, attendanceValues, attendanceValues.length),
     majorExams: localCategory("Major Exams", weights.majorExams, majorPercents, true)
   };
