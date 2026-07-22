@@ -831,35 +831,139 @@ function loadImageFromFile(file) {
 }
 
 function detectPaperPage(imageData, width, height) {
-  const markers = {
+  const regionMarkers = {
     tl: findMarkerInRegion(imageData, width, height, 0, 0, width * 0.22, height * 0.18, "tl"),
     tr: findMarkerInRegion(imageData, width, height, width * 0.78, 0, width, height * 0.18, "tr"),
     bl: findMarkerInRegion(imageData, width, height, 0, height * 0.82, width * 0.22, height, "bl"),
     br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br")
   };
-  if (Object.values(markers).every(Boolean)) {
-    const markerLeft = paperScanMarkerBounds.left;
-    const markerTop = paperScanMarkerBounds.top;
-    const markerRight = paperScanMarkerBounds.right;
-    const markerBottom = paperScanMarkerBounds.bottom;
-    const topWidth = Math.hypot(markers.tr.x - markers.tl.x, markers.tr.y - markers.tl.y);
-    const bottomWidth = Math.hypot(markers.br.x - markers.bl.x, markers.br.y - markers.bl.y);
-    const leftHeight = Math.hypot(markers.bl.x - markers.tl.x, markers.bl.y - markers.tl.y);
-    const rightHeight = Math.hypot(markers.br.x - markers.tr.x, markers.br.y - markers.tr.y);
-    const scaleX = ((topWidth + bottomWidth) / 2) / (markerRight - markerLeft);
-    const scaleY = ((leftHeight + rightHeight) / 2) / (markerBottom - markerTop);
-    return {
-      x: Math.min(markers.tl.x, markers.bl.x) - markerLeft * scaleX,
-      y: Math.min(markers.tl.y, markers.tr.y) - markerTop * scaleY,
-      scaleX,
-      scaleY,
-      unitScale: Math.min(scaleX, scaleY),
-      corners: markers,
-      logicalBounds: { left: markerLeft, top: markerTop, right: markerRight, bottom: markerBottom },
-      usedMarkers: true
-    };
-  }
+  const regionPage = pageFromPaperMarkers(regionMarkers);
+  if (regionPage) return regionPage;
+  const globalPage = pageFromPaperMarkers(findPaperMarkers(imageData, width, height));
+  if (globalPage) return globalPage;
   return { x: 0, y: 0, scaleX: width / 1000, scaleY: height / 1414, unitScale: Math.min(width / 1000, height / 1414), usedMarkers: false };
+}
+
+function pageFromPaperMarkers(markers) {
+  if (!markers || !Object.values(markers).every(Boolean)) return null;
+  const { tl, tr, bl, br } = markers;
+  const topWidth = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+  const bottomWidth = Math.hypot(br.x - bl.x, br.y - bl.y);
+  const leftHeight = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+  const rightHeight = Math.hypot(br.x - tr.x, br.y - tr.y);
+  const pageWidth = (topWidth + bottomWidth) / 2;
+  const pageHeight = (leftHeight + rightHeight) / 2;
+  if (pageWidth < 120 || pageHeight < 180 || pageHeight / Math.max(1, pageWidth) < 1.1) return null;
+  const markerLeft = paperScanMarkerBounds.left;
+  const markerTop = paperScanMarkerBounds.top;
+  const markerRight = paperScanMarkerBounds.right;
+  const markerBottom = paperScanMarkerBounds.bottom;
+  const scaleX = pageWidth / (markerRight - markerLeft);
+  const scaleY = pageHeight / (markerBottom - markerTop);
+  return {
+    x: Math.min(tl.x, bl.x) - markerLeft * scaleX,
+    y: Math.min(tl.y, tr.y) - markerTop * scaleY,
+    scaleX,
+    scaleY,
+    unitScale: Math.min(scaleX, scaleY),
+    corners: markers,
+    logicalBounds: { left: markerLeft, top: markerTop, right: markerRight, bottom: markerBottom },
+    usedMarkers: true
+  };
+}
+
+function findPaperMarkers(imageData, width, height) {
+  const candidates = findMarkerCandidates(imageData, width, height);
+  if (candidates.length < 4) return null;
+  const distinct = (picked) => {
+    const minimumGap = Math.min(width, height) * 0.08;
+    return [...picked].every((marker, index, list) => list.slice(index + 1).every((other) => Math.hypot(marker.x - other.x, marker.y - other.y) > minimumGap));
+  };
+  const sorted = {
+    tl: [...candidates].sort((a, b) => (a.x + a.y) - (b.x + b.y)),
+    tr: [...candidates].sort((a, b) => (b.x - b.y) - (a.x - a.y)),
+    bl: [...candidates].sort((a, b) => (b.y - b.x) - (a.y - a.x)),
+    br: [...candidates].sort((a, b) => (b.x + b.y) - (a.x + a.y))
+  };
+  let best = null;
+  const limit = 8;
+  sorted.tl.slice(0, limit).forEach((tl) => {
+    sorted.tr.slice(0, limit).forEach((tr) => {
+      sorted.bl.slice(0, limit).forEach((bl) => {
+        sorted.br.slice(0, limit).forEach((br) => {
+          const markers = { tl, tr, bl, br };
+          if (!distinct([tl, tr, bl, br])) return;
+          const page = pageFromPaperMarkers(markers);
+          if (!page) return;
+          const top = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+          const bottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+          const left = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+          const right = Math.hypot(br.x - tr.x, br.y - tr.y);
+          const shapePenalty = Math.abs(top - bottom) / Math.max(top, bottom) + Math.abs(left - right) / Math.max(left, right);
+          const area = ((top + bottom) / 2) * ((left + right) / 2);
+          const score = area - shapePenalty * area * 0.35 + (tl.score + tr.score + bl.score + br.score) * 8;
+          if (!best || score > best.score) best = { markers, score };
+        });
+      });
+    });
+  });
+  return best?.markers || null;
+}
+
+function findMarkerCandidates(imageData, width, height) {
+  const visited = new Uint8Array(width * height);
+  const data = imageData.data;
+  const isDarkAt = (x, y) => {
+    const offset = (y * width + x) * 4;
+    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 115;
+  };
+  const candidates = [];
+  const minSide = Math.max(7, Math.min(width, height) * 0.006);
+  const maxSide = Math.max(24, Math.min(width, height) * 0.055);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const startIndex = y * width + x;
+      if (visited[startIndex] || !isDarkAt(x, y)) continue;
+      const stack = [[x, y]];
+      visited[startIndex] = 1;
+      let count = 0;
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+      while (stack.length) {
+        const [cx, cy] = stack.pop();
+        count += 1;
+        minX = Math.min(minX, cx);
+        maxX = Math.max(maxX, cx);
+        minY = Math.min(minY, cy);
+        maxY = Math.max(maxY, cy);
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) return;
+          const index = ny * width + nx;
+          if (!visited[index] && isDarkAt(nx, ny)) {
+            visited[index] = 1;
+            stack.push([nx, ny]);
+          }
+        });
+      }
+      const boxWidth = maxX - minX + 1;
+      const boxHeight = maxY - minY + 1;
+      const fill = count / Math.max(1, boxWidth * boxHeight);
+      const ratio = boxWidth / Math.max(1, boxHeight);
+      const side = (boxWidth + boxHeight) / 2;
+      if (count < 35 || side < minSide || side > maxSide || fill < 0.35 || ratio < 0.65 || ratio > 1.55) continue;
+      candidates.push({
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        score: count * fill,
+        side
+      });
+    }
+  }
+  return candidates.sort((a, b) => b.score - a.score).slice(0, 80);
 }
 
 function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner) {
