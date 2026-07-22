@@ -33,7 +33,7 @@ const answerVisibility = [
 const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
 const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
 const paperQuizVariants = ["A", "B", "C", "D"];
-const paperScanMarkerBounds = { left: 44, top: 40, right: 956, bottom: 1374 };
+const paperScanMarkerBounds = { left: 46, top: 43, right: 954, bottom: 1371 };
 
 export default function Quizzes({ data, run, role }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
@@ -1044,16 +1044,16 @@ function readBubbleGroup(imageData, width, height, page, bubbles) {
   const [best, second] = reads;
   if (!best) return { value: "", confidence: 0 };
   const gap = best.ratio - (second?.ratio || 0);
-  const confident = best.ratio >= 0.42 && (gap >= 0.16 || (best.ratio >= 0.68 && gap >= 0.08));
+  const confident = best.ratio >= 0.54 && (gap >= 0.18 || (best.ratio >= 0.78 && gap >= 0.1));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
 function bubbleDarkness(imageData, width, height, page, bubble) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
   const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
-  const radius = Math.max(2, Math.round(unitScale * 4.5));
-  const search = Math.max(1, Math.round(unitScale * 3.5));
-  const step = Math.max(1, Math.round(unitScale * 1.75));
+  const radius = Math.max(2, Math.round(unitScale * 3.25));
+  const search = Math.max(1, Math.round(unitScale * 2));
+  const step = Math.max(1, Math.round(unitScale));
   let bestRatio = 0;
   for (let dy = -search; dy <= search; dy += step) {
     for (let dx = -search; dx <= search; dx += step) {
@@ -1072,7 +1072,7 @@ function bubbleDarknessAt(imageData, width, height, cx, cy, radius) {
       if (x < 0 || x >= width || y < 0 || y >= height || Math.hypot(x - cx, y - cy) > radius) continue;
       const offset = (y * width + x) * 4;
       const lum = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
-      if (lum < 170) dark += 1;
+      if (lum < 150) dark += 1;
       total += 1;
     }
   }
@@ -1133,7 +1133,7 @@ function printPaperQuizPack(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
-      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -1176,7 +1176,7 @@ function printBlankPaperSheet(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
-      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
@@ -1220,7 +1220,7 @@ function printDemoPaperSheet(quiz) {
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
       .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 15pt; }
-      .scan-marker { position: absolute; width: 7mm; height: 7mm; border: 3mm solid #111; background: transparent; }
+      .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 0; background: #111; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
