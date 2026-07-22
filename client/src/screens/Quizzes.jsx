@@ -936,10 +936,12 @@ async function scanPaperAnswerSheetV2(quiz, file) {
   const answers = {};
   layout.answers.forEach((row) => {
     const read = readBubbleGroupV2(imageData, canvas.width, canvas.height, page, row.choices, {
-      minRatio: 0.3,
-      minGap: 0.045,
-      radiusScale: 2.55,
-      searchScale: 3.8
+      minRatio: 0.48,
+      minGap: 0.12,
+      strongRatio: 0.78,
+      strongGap: 0.08,
+      radiusScale: 2.45,
+      searchScale: 1.7
     });
     if (read.value) answers[row.number] = read.value;
   });
@@ -1238,7 +1240,9 @@ function readBubbleGroupV2(imageData, width, height, page, bubbles, options = {}
   const gap = best.ratio - (second?.ratio || 0);
   const minRatio = options.minRatio ?? 0.3;
   const minGap = options.minGap ?? 0.045;
-  const confident = best.ratio >= minRatio && (gap >= minGap || best.ratio >= 0.62);
+  const strongRatio = options.strongRatio ?? 0.62;
+  const strongGap = options.strongGap ?? minGap;
+  const confident = best.ratio >= minRatio && (gap >= minGap || (best.ratio >= strongRatio && gap >= strongGap));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
 }
 
