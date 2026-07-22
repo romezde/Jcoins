@@ -2633,12 +2633,15 @@ function syncScheduledAttendanceWeeks(db, referenceDate = localDate()) {
         createdBy: "system"
       };
       db.attendanceWeeks.push(week);
+      defaultAttendanceRecordsForDates(db, week, scheduledDates, "system");
       changes += 1;
       return;
     }
     const nextDates = [...new Set([...(week.dates || []), ...scheduledDates])].sort();
     if (JSON.stringify(nextDates) !== JSON.stringify(week.dates || [])) {
+      const addedDates = nextDates.filter((date) => !(week.dates || []).includes(date));
       week.dates = nextDates;
+      defaultAttendanceRecordsForDates(db, week, addedDates, "system");
       changes += 1;
     }
     week.cancelledDates ||= [];
@@ -4422,6 +4425,25 @@ function syncAttendanceTransaction(db, record, week, userId = "system", noteSuff
   }
 }
 
+function defaultAttendanceRecordsForDates(db, week, dates = [], userId = "system") {
+  const activeDates = new Set((dates || []).filter((date) => !(week.cancelledDates || []).includes(date)));
+  if (!activeDates.size) return;
+  const students = studentsForClass(db, week.subjectId, week.section);
+  students.forEach((student) => {
+    activeDates.forEach((date) => {
+      let record = db.attendanceRecords.find((item) => item.weekId === week.id && item.date === date && item.studentId === student.id);
+      if (!record) {
+        record = { id: randomUUID(), weekId: week.id, date, studentId: student.id, status: "check" };
+        db.attendanceRecords.push(record);
+      } else if (!record.status) {
+        record.status = "check";
+      }
+      syncAttendanceTransaction(db, record, week, userId);
+    });
+  });
+  syncWeekBonuses(db, week, userId);
+}
+
 function syncWeekBonus(db, studentId, week, kind, earned, amount, userId = "system", noteSuffix = "") {
   const existing = db.transactions.find((t) => t.meta?.kind === kind && t.meta.weekId === week.id && t.studentId === studentId);
   const note = `${subjectName(db, week.subjectId)} ${week.title} bonus${noteSuffix ? ` | ${noteSuffix}` : ""}`;
@@ -5558,6 +5580,7 @@ app.post("/api/admin/attendance/weeks", auth, requireRole("admin", "teacher"), a
   const week = { id: randomUUID(), subjectId: req.body.subjectId, section, title: req.body.title || `Week ${db.attendanceWeeks.length + 1}`, dates: firstDate ? [firstDate] : [], cancelledDates: [], createdAt: now() };
   week.dates.sort();
   db.attendanceWeeks.push(week);
+  defaultAttendanceRecordsForDates(db, week, week.dates, req.user.id);
   await writeDb(db);
   res.status(201).json({ week });
 });
@@ -5578,8 +5601,10 @@ app.post("/api/admin/attendance/weeks/:id/dates", auth, requireRole("admin", "te
   if (!week) return res.status(404).json({ error: "Week not found." });
   if (!canUseSubject(req.user, week.subjectId) || (week.section && !canUseSection(req.user, week.section))) return res.status(403).json({ error: "This attendance week is outside your assigned class scope." });
   const date = req.body.date || today();
-  if (!week.dates.includes(date)) week.dates.push(date);
+  const isNewDate = !week.dates.includes(date);
+  if (isNewDate) week.dates.push(date);
   week.dates.sort();
+  if (isNewDate) defaultAttendanceRecordsForDates(db, week, [date], req.user.id);
   syncWeekBonuses(db, week, req.user.id);
   await writeDb(db);
   res.json({ week });
