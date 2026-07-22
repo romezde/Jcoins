@@ -51,6 +51,7 @@ const RECITATION_ROW_PREFIX = "recitation:";
 const ACTIVITY_ROW_PREFIX = "activity:";
 const GROUP_ACTIVITY_ROW_PREFIX = "group-activity:";
 const QUIZ_ROW_PREFIX = "quiz:";
+const MAJOR_EXAM_ROW_PREFIX = "major-exam:";
 const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
 const SCHEDULE_ROW_PREFIX = "schedule:";
@@ -79,6 +80,7 @@ const STORAGE_ROW_TYPES = [
   { key: "activities", label: "Activities", prefix: ACTIVITY_ROW_PREFIX },
   { key: "groupActivities", label: "Guild group activities", prefix: GROUP_ACTIVITY_ROW_PREFIX },
   { key: "quizzes", label: "Quizzes", prefix: QUIZ_ROW_PREFIX },
+  { key: "majorExams", label: "Major exams", prefix: MAJOR_EXAM_ROW_PREFIX },
   { key: "requests", label: "Requests", prefix: REQUEST_ROW_PREFIX },
   { key: "feedback", label: "Feedback", prefix: FEEDBACK_ROW_PREFIX },
   { key: "schedules", label: "Schedules", prefix: SCHEDULE_ROW_PREFIX },
@@ -262,6 +264,7 @@ const persistedRecitationHashes = new Map();
 const persistedActivityHashes = new Map();
 const persistedGroupActivityHashes = new Map();
 const persistedQuizHashes = new Map();
+const persistedMajorExamHashes = new Map();
 const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
 const persistedScheduleHashes = new Map();
@@ -988,6 +991,7 @@ async function createInitialDb() {
     activities: [],
     groupActivities: [],
     quizzes: [],
+    majorExams: [],
     shopItems: defaultShopItems,
     sales: [],
     requests: [],
@@ -1319,6 +1323,8 @@ async function readDb() {
   db.groupActivities ||= [];
   db.quizzes ||= [];
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
+  db.majorExams ||= [];
+  db.majorExams.forEach((exam) => normalizeMajorExam(exam, db));
   db.shopItems ||= [];
   defaultShopItems.forEach((item) => {
     if (!db.shopItems.some((existing) => existing.id === item.id)) {
@@ -1415,6 +1421,7 @@ async function persistDb(db) {
     const activities = extractEntityRows(dbToStore, "activities", ACTIVITY_ROW_PREFIX);
     const groupActivities = extractEntityRows(dbToStore, "groupActivities", GROUP_ACTIVITY_ROW_PREFIX);
     const quizzes = extractEntityRows(dbToStore, "quizzes", QUIZ_ROW_PREFIX);
+    const majorExams = extractEntityRows(dbToStore, "majorExams", MAJOR_EXAM_ROW_PREFIX);
     const requests = extractEntityRows(dbToStore, "requests", REQUEST_ROW_PREFIX);
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
     const schedules = extractEntityRows(dbToStore, "schedules", SCHEDULE_ROW_PREFIX);
@@ -1441,6 +1448,7 @@ async function persistDb(db) {
       syncEntityRows(activities.items, activities.rowIds, ACTIVITY_ROW_PREFIX, persistedActivityHashes),
       syncEntityRows(groupActivities.items, groupActivities.rowIds, GROUP_ACTIVITY_ROW_PREFIX, persistedGroupActivityHashes),
       syncEntityRows(quizzes.items, quizzes.rowIds, QUIZ_ROW_PREFIX, persistedQuizHashes),
+      syncEntityRows(majorExams.items, majorExams.rowIds, MAJOR_EXAM_ROW_PREFIX, persistedMajorExamHashes),
       syncEntityRows(requests.items, requests.rowIds, REQUEST_ROW_PREFIX, persistedRequestHashes),
       syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes),
       syncEntityRows(schedules.items, schedules.rowIds, SCHEDULE_ROW_PREFIX, persistedScheduleHashes),
@@ -1491,6 +1499,7 @@ async function readSupabaseDb() {
     db.activities,
     db.groupActivities,
     db.quizzes,
+    db.majorExams,
     db.requests,
     db.feedback,
     db.schedules,
@@ -1516,6 +1525,7 @@ async function readSupabaseDb() {
     readEntityRows(ACTIVITY_ROW_PREFIX, db.activities || [], persistedActivityHashes),
     readEntityRows(GROUP_ACTIVITY_ROW_PREFIX, db.groupActivities || [], persistedGroupActivityHashes),
     readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes),
+    readEntityRows(MAJOR_EXAM_ROW_PREFIX, db.majorExams || [], persistedMajorExamHashes),
     readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes),
     readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes),
     readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes),
@@ -2212,6 +2222,9 @@ function purgeStudentData(db, studentId) {
   (db.quizzes || []).forEach((quiz) => {
     quiz.submissions = (quiz.submissions || []).filter((submission) => submission.studentId !== studentId);
     quiz.retakeStudentIds = (quiz.retakeStudentIds || []).filter((id) => id !== studentId);
+  });
+  (db.majorExams || []).forEach((exam) => {
+    if (exam.scores && typeof exam.scores === "object") delete exam.scores[studentId];
   });
   reconcileGroupActivities(db);
 }
@@ -3436,6 +3449,76 @@ function hydrateQuizzes(db, user) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+function normalizeMajorExam(exam, db) {
+  exam.title = String(exam.title || "Major Exam").trim().slice(0, 140) || "Major Exam";
+  exam.subjectId = String(exam.subjectId || "");
+  exam.section = String(exam.section || "").trim();
+  exam.date = String(exam.date || today()).slice(0, 10);
+  const rawMaxScore = Number(exam.maxScore || 100);
+  exam.maxScore = Number.isFinite(rawMaxScore) ? Math.max(1, Math.min(1000, rawMaxScore)) : 100;
+  exam.remarks = String(exam.remarks || "").trim().slice(0, 500);
+  exam.scores = exam.scores && typeof exam.scores === "object" && !Array.isArray(exam.scores) ? exam.scores : {};
+  const studentIds = new Set(studentsForClass(db, exam.subjectId, exam.section).map((student) => student.id));
+  exam.scores = Object.fromEntries(Object.entries(exam.scores)
+    .filter(([studentId]) => studentIds.has(studentId))
+    .map(([studentId, score]) => [studentId, Math.max(0, Math.min(Number(exam.maxScore), Number(score || 0)))]));
+  return exam;
+}
+
+function canUseMajorExam(user, exam) {
+  return canUseSubject(user, exam.subjectId) && canUseSection(user, exam.section);
+}
+
+function majorExamInput(db, body, user, existing = {}) {
+  const subjectId = String(body.subjectId ?? existing.subjectId ?? "");
+  const section = String(body.section ?? existing.section ?? "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(user, subjectId)) throw new Error("Choose an available subject.");
+  if (!section || !db.sections.includes(section) || !canUseSection(user, section)) throw new Error("Choose an available section.");
+  const rawMaxScore = Number(body.maxScore ?? existing.maxScore ?? 100);
+  if (!Number.isFinite(rawMaxScore)) throw new Error("Maximum score must be a number.");
+  const maxScore = Math.max(1, Math.min(1000, rawMaxScore));
+  return {
+    title: String(body.title ?? existing.title ?? "Major Exam").trim().slice(0, 140) || "Major Exam",
+    subjectId,
+    section,
+    date: String(body.date ?? existing.date ?? today()).slice(0, 10),
+    maxScore,
+    remarks: String(body.remarks ?? existing.remarks ?? "").trim().slice(0, 500)
+  };
+}
+
+function publicMajorExam(db, exam) {
+  normalizeMajorExam(exam, db);
+  const students = studentsForClass(db, exam.subjectId, exam.section);
+  const rows = students.map((student) => {
+    const hasScore = Object.prototype.hasOwnProperty.call(exam.scores || {}, student.id);
+    const score = hasScore ? exam.scores[student.id] : "";
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      section: student.section || "",
+      score,
+      percent: hasScore ? Math.round(Number(score || 0) / Number(exam.maxScore || 1) * 100) : "",
+      recorded: hasScore
+    };
+  });
+  return {
+    ...exam,
+    subjectName: subjectName(db, exam.subjectId),
+    tracker: `${rows.filter((row) => row.recorded).length}/${rows.length}`,
+    studentCount: rows.length,
+    rows
+  };
+}
+
+function hydrateMajorExams(db, user) {
+  return (db.majorExams || [])
+    .map((exam) => normalizeMajorExam(exam, db))
+    .filter((exam) => canUseMajorExam(user, exam))
+    .map((exam) => publicMajorExam(db, exam))
+    .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
 function activitySubmissionFiles(sub = {}) {
   return Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
 }
@@ -3749,6 +3832,7 @@ function filteredOverview(db, user, modules = null) {
   const includeDashboard = wantsModule(modules, "dashboard");
   const includeActivities = wantsModule(modules, "activities");
   const includeQuizzes = wantsModule(modules, "quizzes");
+  const includeMajorExams = wantsModule(modules, "majorExams");
   const includeTransactions = wantsModule(modules, "transactions");
   const includeAttendance = wantsModule(modules, "attendance");
   const includeRecitations = wantsModule(modules, "recitations");
@@ -3789,6 +3873,7 @@ function filteredOverview(db, user, modules = null) {
     recitations: includeRecitations ? db.recitations.filter((r) => studentIds.has(r.studentId)).map((r) => ({ ...r, studentName: studentName(db, r.studentId), subjectName: subjectName(db, r.subjectId) })).sort(byDateDesc) : [],
     activities: includeActivities ? fullActivities : activitySummaries,
     quizzes: includeQuizzes ? hydrateQuizzes(db, user) : [],
+    majorExams: includeMajorExams ? hydrateMajorExams(db, user) : [],
     shopItems: includeShop ? db.shopItems.map((item) => activeShopPrice(db, item.id)) : [],
     sales: includeShop ? db.sales : [],
     appearanceItems: includeAppearance ? db.appearanceItems : [],
@@ -4464,6 +4549,7 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   const removedActivityIds = new Set(db.activities.filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
   const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
   const removedQuizIds = new Set((db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId).map((quiz) => quiz.id));
+  db.majorExams = (db.majorExams || []).filter((exam) => exam.subjectId !== subjectId);
   db.subjects = db.subjects.filter((s) => s.id !== subjectId);
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
   db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
@@ -4505,6 +4591,7 @@ app.delete("/api/admin/sections/:name", auth, requireRole("admin", "teacher"), a
   if (!canUseSection(req.user, name)) return res.status(403).json({ error: "This section is outside your assigned class scope." });
   db.sections = db.sections.filter((section) => section !== name);
   db.schedules = (db.schedules || []).filter((schedule) => schedule.section !== name);
+  db.majorExams = (db.majorExams || []).filter((exam) => exam.section !== name);
   const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.section === name).map((activity) => activity.id));
   db.groupActivities = (db.groupActivities || []).filter((activity) => activity.section !== name);
   db.transactions = db.transactions.filter((transaction) => !removedGroupActivityIds.has(transaction.meta?.groupActivityId));
@@ -5059,6 +5146,76 @@ app.delete("/api/admin/activities/:id/materials", auth, requireRole("admin", "te
   await removeObsoleteActivityFileRows(activity.id, ACTIVITY_MATERIAL_OWNER, 0, previousFileCount);
   await writeDb(db);
   res.json({ ok: true });
+});
+
+app.post("/api/admin/major-exams", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = majorExamInput(db, req.body, req.user);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const exam = normalizeMajorExam({ id: randomUUID(), ...input, scores: {}, createdAt: now(), createdBy: req.user.id, updatedAt: now() }, db);
+  db.majorExams.push(exam);
+  await writeDb(db);
+  res.status(201).json({ exam: publicMajorExam(db, exam) });
+});
+
+app.put("/api/admin/major-exams/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const exam = (db.majorExams || []).find((item) => item.id === req.params.id);
+  if (!exam) return res.status(404).json({ error: "Major exam not found." });
+  if (!canUseMajorExam(req.user, exam)) return res.status(403).json({ error: "This exam is outside your assigned class scope." });
+  let input;
+  try {
+    input = majorExamInput(db, req.body, req.user, exam);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const hasScores = Object.keys(exam.scores || {}).length > 0;
+  if (hasScores && (input.subjectId !== exam.subjectId || input.section !== exam.section)) {
+    return res.status(409).json({ error: "Subject and section are locked after scores are recorded." });
+  }
+  Object.assign(exam, input, { updatedAt: now(), updatedBy: req.user.id });
+  normalizeMajorExam(exam, db);
+  await writeDb(db);
+  res.json({ exam: publicMajorExam(db, exam) });
+});
+
+app.delete("/api/admin/major-exams/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const exam = (db.majorExams || []).find((item) => item.id === req.params.id);
+  if (!exam) return res.status(404).json({ error: "Major exam not found." });
+  if (!canUseMajorExam(req.user, exam)) return res.status(403).json({ error: "This exam is outside your assigned class scope." });
+  db.majorExams = (db.majorExams || []).filter((item) => item.id !== exam.id);
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/major-exams/:id/scores", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const exam = (db.majorExams || []).find((item) => item.id === req.params.id);
+  if (!exam) return res.status(404).json({ error: "Major exam not found." });
+  if (!canUseMajorExam(req.user, exam)) return res.status(403).json({ error: "This exam is outside your assigned class scope." });
+  normalizeMajorExam(exam, db);
+  const studentId = String(req.body.studentId || "");
+  const student = db.students.find((item) => item.id === studentId);
+  if (!scopedStudentIds(db, req.user).has(studentId) || !studentIsInClass(db, student, exam.subjectId, exam.section)) {
+    return res.status(403).json({ error: "This student is outside the exam class scope." });
+  }
+  exam.scores ||= {};
+  if (req.body.score === "" || req.body.score == null) {
+    delete exam.scores[studentId];
+  } else {
+    const score = Number(req.body.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(exam.maxScore)) return res.status(400).json({ error: `Score must be from 0 to ${exam.maxScore}.` });
+    exam.scores[studentId] = score;
+  }
+  exam.updatedAt = now();
+  exam.updatedBy = req.user.id;
+  await writeDb(db);
+  res.json({ exam: publicMajorExam(db, exam) });
 });
 
 app.put("/api/admin/activities/:id/extensions", auth, requireRole("admin", "teacher"), async (req, res) => {

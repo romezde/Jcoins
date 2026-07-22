@@ -3048,6 +3048,16 @@ td button {
   gap: 4px;
   min-width: 130px;
 }
+.score-input {
+  max-width: 110px;
+}
+.major-exam-score-cell {
+  display: grid;
+  grid-template-columns: minmax(82px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+}
 .activity-submission-control .muted-line {
   margin: 0;
   font-size: 12px;
@@ -3949,6 +3959,10 @@ td button {
   .activity-materials-box {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+  .major-exam-score-cell {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
   .modal-card p,
   .modal-card label {

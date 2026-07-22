@@ -11,6 +11,7 @@ import Attendance from "./screens/Attendance.jsx";
 import Recitation from "./screens/Recitation.jsx";
 import Activities from "./screens/Activities.jsx";
 import Quizzes from "./screens/Quizzes.jsx";
+import MajorExams from "./screens/MajorExams.jsx";
 import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
@@ -497,7 +498,7 @@ function navGroupsForRole(role) {
     ];
   }
   return [
-    { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes"] },
+    { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes", "Major Exams"] },
     { id: "people", label: "People Management", icon: UsersRound, tabs: ["Students", "Teachers", "Student Assistants", "Sections", "Subjects"] },
     { id: "economy", label: "Economy", icon: Coins, tabs: ["Transactions", "Shop", "Appearance Shop", "Approvals"] },
     { id: "experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Name Wheel", "Profile"] },
@@ -775,6 +776,7 @@ function buildSearchResults(tabs, data) {
   (data?.students || []).forEach((student) => add(list, "Student", `${student.name}${student.username ? ` (${student.username})` : ""}`, "Students", `${student.section} ${student.rank}`));
   (data?.subjects || []).forEach((subject) => add(list, "Subject", subject.name, tabs.includes("Subjects") ? "Subjects" : "Leaderboard"));
   (data?.activities || []).forEach((activity) => add(list, "Activity", activity.title, "Activities", `${activity.subjectName} ${activity.type}`));
+  (data?.majorExams || []).forEach((exam) => add(list, "Major Exam", exam.title, "Major Exams", `${exam.subjectName} ${exam.section} ${exam.date}`));
   (data?.shopItems || []).forEach((item) => add(list, "Shop Item", item.name, "Shop", `${item.tier} ${item.cost} ${item.notes}`));
   (data?.appearanceItems || []).forEach((item) => add(list, "Appearance", item.name, "Appearance Shop", `${item.type} ${item.tier} ${item.price} ${item.preview}`));
   (data?.users || []).forEach((user) => add(list, "Account", user.username, tabs.includes("Teachers") ? "Teachers" : "Account", `${user.role} ${(user.sectionIds || []).join(" ")}`));
@@ -801,6 +803,7 @@ function requiredModulesForTab(tab, role) {
     Recitation: ["recitations"],
     Activities: ["activities"],
     Quizzes: ["quizzes"],
+    "Major Exams": ["majorExams"],
     Transactions: ["transactions"],
     Shop: ["shop"],
     "Trade Requests": ["shop"],
@@ -830,6 +833,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Recitation") return <Recitation data={assistantData} run={run} />;
   if (tab === "Activities") return role === "student" ? <StudentActivities data={data} run={run} /> : <Activities data={data} run={run} />;
   if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
+  if (tab === "Major Exams") return <MajorExams data={data} run={run} />;
   if (tab === "Transactions") return <Transactions data={assistantData} run={run} role={role} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
@@ -854,6 +858,7 @@ function ModuleHeader({ tab, data }) {
     Subjects: data.subjects?.length,
     Activities: data.activities?.length,
     Quizzes: data.quizzes?.length,
+    "Major Exams": data.majorExams?.length,
     Transactions: data.transactions?.length,
     History: data.auditLogs?.length ?? data.transactions?.length,
     Approvals: data.requests?.filter((request) => request.status === "pending").length,
