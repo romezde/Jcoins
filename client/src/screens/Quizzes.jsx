@@ -326,11 +326,11 @@ function PaperCheckModal({ quiz, run }) {
   const uploadInputRef = useRef(null);
   const cropperRef = useRef(null);
   const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
-  const [source, setSource] = useState({ file: null, previewUrl: "" });
+  const [source, setSource] = useState({ file: null, previewUrl: "", width: 0, height: 0 });
   const [crop, setCrop] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   const [scan, setScan] = useState({ loading: false, message: "", previewUrl: "", result: null });
   useEffect(() => () => {
-    if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
+    if (source.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(source.previewUrl);
   }, [source.previewUrl]);
   async function submit(event) {
     event.preventDefault();
@@ -341,10 +341,12 @@ function PaperCheckModal({ quiz, run }) {
       answers
     }), "Paper quiz checked");
   }
-  function chooseScanSource(file) {
+  async function chooseScanSource(file) {
     if (!file) return;
-    if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
-    setSource({ file, previewUrl: URL.createObjectURL(file) });
+    if (source.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(source.previewUrl);
+    setScan({ loading: false, message: "Preparing image preview...", previewUrl: "", result: null });
+    const preview = await createScanPreview(file);
+    setSource({ file, previewUrl: preview.url, width: preview.width, height: preview.height });
     setCrop({ top: 0, right: 0, bottom: 0, left: 0 });
     setScan({ loading: false, message: "Crop the image so only the answer sheet is inside the box, then scan.", previewUrl: "", result: null });
   }
@@ -404,7 +406,7 @@ function PaperCheckModal({ quiz, run }) {
         <input ref={uploadInputRef} style={{ display: "none" }} type="file" accept="image/*" onChange={(event) => { chooseScanSource(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
       {source.previewUrl && <div className="paper-crop-workspace">
-        <div className="paper-cropper" ref={cropperRef}>
+        <div className="paper-cropper" ref={cropperRef} style={source.width && source.height ? { aspectRatio: `${source.width} / ${source.height}` } : undefined}>
           <img src={source.previewUrl} alt="Answer sheet crop preview" />
           <div className="paper-crop-mask" style={{ inset: `${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%` }}>
             {["top-left", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left"].map((handle) => (
@@ -906,6 +908,20 @@ function loadImageFromFile(file) {
     };
     image.src = url;
   });
+}
+
+async function createScanPreview(file) {
+  const image = await loadImageFromFile(file);
+  const maxSide = 900;
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, width, height);
+  return { url: canvas.toDataURL("image/jpeg", 0.82), width, height };
 }
 
 async function cropImageFile(file, crop) {
