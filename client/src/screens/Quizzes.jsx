@@ -1015,28 +1015,27 @@ async function scanPaperAnswerSheetV3(quiz, file) {
   const zonePages = Object.fromEntries(Object.entries(zones).map(([key, zone]) => [key, detectZonePage(page, zone, markerCandidates)]));
   const firstRows = paperQuizRows(quiz, "A");
   const firstLayout = paperSheetLayout(firstRows);
-  const codePage = zonePages.code || page;
-  const typePage = zonePages.type || page;
-  const codeDigits = firstLayout.code.map((column) => readBubbleGroupV3(imageData, canvas.width, canvas.height, codePage, column, {
+  const codeDigits = zonePages.code ? firstLayout.code.map((column) => readBubbleGroupV3(imageData, canvas.width, canvas.height, zonePages.code, column, {
     minRatio: 0.24,
     minGap: 0.02,
     strongRatio: 0.52,
     strongGap: 0.018,
     radiusScale: 2.15,
     searchScale: 4.6
-  }).value || "").join("");
-  const typeRead = readBubbleGroupV3(imageData, canvas.width, canvas.height, typePage, firstLayout.type, {
+  }).value || "").join("") : "";
+  const typeRead = zonePages.type ? readBubbleGroupV3(imageData, canvas.width, canvas.height, zonePages.type, firstLayout.type, {
     minRatio: 0.36,
     minGap: 0.08,
     radiusScale: 2.8,
     searchScale: 4.2
-  }).value || "A";
-  const rows = paperQuizRows(quiz, typeRead);
+  }).value || "" : "";
+  const rows = paperQuizRows(quiz, typeRead || "A");
   const layout = paperSheetLayout(rows);
   const rowsPerColumn = Math.ceil(rows.length / 2);
   const answers = {};
   layout.answers.forEach((row, index) => {
-    const answerPage = index >= rowsPerColumn ? (zonePages.answersRight || page) : (zonePages.answersLeft || page);
+    const answerPage = index >= rowsPerColumn ? zonePages.answersRight : zonePages.answersLeft;
+    if (!answerPage) return;
     const read = readBubbleGroupV3(imageData, canvas.width, canvas.height, answerPage, row.choices, {
       minRatio: 0.46,
       minGap: 0.12,
@@ -1052,12 +1051,12 @@ async function scanPaperAnswerSheetV3(quiz, file) {
   const zoneCount = Object.values(zonePages).filter(Boolean).length;
   return {
     studentCode: missingCode ? "" : `JCS${codeDigits}`,
-    variant: typeRead,
+    variant: typeRead || "A",
     answers,
     rows,
     usedMarkers: page.usedMarkers,
     previewUrl,
-    message: `V3 combined scan ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
+    message: `V3 combined scan ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, ${typeRead ? `Type ${typeRead}` : "no paper type"}, and ${answered}/${rows.length} answers. Review before saving.`
   };
 }
 
@@ -1113,10 +1112,10 @@ async function cropImageFile(file, crop) {
 
 function detectPaperPage(imageData, width, height) {
   const regionMarkers = {
-    tl: findMarkerInRegion(imageData, width, height, 0, 0, width * 0.22, height * 0.18, "tl"),
-    tr: findMarkerInRegion(imageData, width, height, width * 0.78, 0, width, height * 0.18, "tr"),
-    bl: findMarkerInRegion(imageData, width, height, 0, height * 0.82, width * 0.22, height, "bl"),
-    br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br")
+    tl: findMarkerInRegion(imageData, width, height, 0, 0, width * 0.22, height * 0.18, "tl", { pageMarker: true }),
+    tr: findMarkerInRegion(imageData, width, height, width * 0.78, 0, width, height * 0.18, "tr", { pageMarker: true }),
+    bl: findMarkerInRegion(imageData, width, height, 0, height * 0.82, width * 0.22, height, "bl", { pageMarker: true }),
+    br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br", { pageMarker: true })
   };
   const regionPage = pageFromPaperMarkers(regionMarkers);
   if (regionPage) return regionPage;
@@ -1176,7 +1175,7 @@ function detectZonePage(basePage, zone, candidates) {
 }
 
 function findPaperMarkers(imageData, width, height) {
-  const candidates = findMarkerCandidates(imageData, width, height);
+  const candidates = findMarkerCandidates(imageData, width, height).filter((candidate) => candidate.side >= Math.max(14, Math.min(width, height) * 0.018));
   if (candidates.length < 4) return null;
   const distinct = (picked) => {
     const minimumGap = Math.min(width, height) * 0.08;
@@ -1272,7 +1271,7 @@ function findMarkerCandidates(imageData, width, height, limit = 80) {
   return candidates.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner) {
+function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner, options = {}) {
   const x0 = Math.max(0, Math.floor(rx0));
   const y0 = Math.max(0, Math.floor(ry0));
   const x1 = Math.min(width, Math.ceil(rx1));
@@ -1325,7 +1324,7 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
       const boxHeight = maxY - minY + 1;
       const fill = count / Math.max(1, boxWidth * boxHeight);
       const ratio = boxWidth / Math.max(1, boxHeight);
-      const minSide = Math.max(8, Math.min(width, height) * 0.01);
+      const minSide = options.pageMarker ? Math.max(14, Math.min(width, height) * 0.018) : Math.max(8, Math.min(width, height) * 0.01);
       const maxSide = Math.max(minSide * 2, Math.min(regionWidth, regionHeight) * 0.45);
       if (count < 50 || boxWidth < minSide || boxHeight < minSide || boxWidth > maxSide || boxHeight > maxSide || fill < 0.2 || ratio < 0.45 || ratio > 2.2) continue;
       const cx = (minX + maxX) / 2;
