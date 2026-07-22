@@ -26,6 +26,7 @@ export function StudentProfile({ data, run }) {
       <h1 className="cosmetic-name">{data.student.name}</h1>
       {badge && <div className="cosmetic-badge">{badge}</div>}
       <div className="big-coins">{data.student.currentJCoins.toLocaleString()} JCoins</div>
+      <div className="rank-pill rank-chip">Quiz Code: {data.student.quizCode || "-"}</div>
       <div className="rank-pill rank-chip">{data.student.rank}</div>
       <div className="bar"><div className="fill" style={{ width: `${data.student.progress}%` }} /></div>
       <p>{data.student.progress}% to {data.student.nextRank}</p>
@@ -188,6 +189,7 @@ export function Account({ data, role }) {
         <AccountItem label="Role" value={role || user.role || "Unknown"} />
         <AccountItem label="Section" value={sections} />
         <AccountItem label="Temporary Password" value={user.mustChangePassword ? "Active" : "Inactive"} />
+        {student && <AccountItem label="Quiz Code" value={student.quizCode || "-"} />}
         {student && <AccountItem label="Current Rank" value={student.rank} />}
         {student && <AccountItem label="Current JCoins" value={`${student.currentJCoins?.toLocaleString?.() || 0} JC`} />}
       </div>
