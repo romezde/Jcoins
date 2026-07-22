@@ -13,6 +13,12 @@ const gradeCategoryLabels = {
   majorExams: "Major Exams"
 };
 
+function attendanceGradeValue(status) {
+  if (status === "check") return 100;
+  if (status === "late" || status === "excused") return 50;
+  return 0;
+}
+
 export default function Grades({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [search, setSearch] = useState("");
@@ -153,7 +159,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     const cancelled = new Set(week.cancelledDates || []);
     (week.dates || []).filter((date) => !cancelled.has(date)).forEach((date) => {
       const record = (data.attendanceRecords || []).find((item) => item.weekId === week.id && item.studentId === student.id && item.date === date);
-      attendanceValues.push(record?.status === "check" ? 100 : ["late", "excused"].includes(record?.status) ? 50 : 0);
+      attendanceValues.push(attendanceGradeValue(record?.status));
     });
   });
   const majorPercents = [];

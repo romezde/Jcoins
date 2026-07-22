@@ -3958,6 +3958,12 @@ function categorySummary(label, weight, percents, missing, active = true) {
   };
 }
 
+function attendanceGradeValue(status) {
+  if (status === "check") return 100;
+  if (status === "late" || status === "excused") return 50;
+  return 0;
+}
+
 function attendancePercentForStudent(db, studentId, subjectId, section) {
   const cleanSection = String(section || "").trim();
   const weeks = (db.attendanceWeeks || []).filter((week) => {
@@ -3968,7 +3974,7 @@ function attendancePercentForStudent(db, studentId, subjectId, section) {
   weeks.forEach((week) => {
     activeAttendanceDates(week).forEach((date) => {
       const status = (db.attendanceRecords || []).find((record) => record.weekId === week.id && record.studentId === studentId && record.date === date)?.status || "";
-      values.push(status === "check" ? 100 : ["late", "excused"].includes(status) ? 50 : 0);
+      values.push(attendanceGradeValue(status));
     });
   });
   return { values, missing: values.filter((value) => value === 0).length };
