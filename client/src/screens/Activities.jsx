@@ -85,12 +85,33 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       <ActivityExtensionControl activity={activity} row={r} run={run} />,
       r.daysLate,
       r.maxScoreAllowed,
-      <input className="score-input" type="number" min="0" max={r.maxScoreAllowed} defaultValue={r.score ?? ""} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: e.target.value, remarks: r.remarks }), "Score saved")} />,
+      <ActivityScoreInput activity={activity} row={r} run={run} />,
       <ActivitySubmissionFileCell activity={activity} row={r} run={run} />,
       r.earned,
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: r.score, remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
+}
+
+function ActivityScoreInput({ activity, row, run }) {
+  const [score, setScore] = useState(row.score ?? "");
+  useEffect(() => setScore(row.score ?? ""), [row.score, row.studentId, activity.id]);
+  const changed = String(score ?? "") !== String(row.score ?? "");
+  return <input
+    className="score-input"
+    type="number"
+    min="0"
+    max={row.maxScoreAllowed}
+    value={score}
+    onChange={(event) => setScore(event.target.value)}
+    onBlur={() => changed && run(() => put(`/admin/activities/${activity.id}/submissions`, {
+      studentId: row.studentId,
+      submitted: row.submitted,
+      submittedAt: row.submittedAt,
+      score,
+      remarks: row.remarks
+    }), "Score saved")}
+  />;
 }
 
 function ActivitySubmissionFileCell({ activity, row, run }) {
