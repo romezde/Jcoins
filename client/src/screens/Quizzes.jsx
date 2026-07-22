@@ -882,10 +882,10 @@ function paperSheetLayout(rows) {
 
 function paperScanZones() {
   return {
-    code: zoneMarkers(30, 262, 530, 602),
-    type: zoneMarkers(30, 606, 440, 676),
-    answersLeft: zoneMarkers(30, 676, 430, 1282),
-    answersRight: zoneMarkers(540, 676, 850, 1282)
+    code: zoneMarkers(64, 230, 540, 600),
+    type: zoneMarkers(64, 548, 450, 668),
+    answersLeft: zoneMarkers(64, 680, 430, 1282),
+    answersRight: zoneMarkers(540, 680, 850, 1282)
   };
 }
 
@@ -1010,9 +1010,8 @@ async function scanPaperAnswerSheetV3(quiz, file) {
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const page = detectPaperPage(imageData, canvas.width, canvas.height);
   const previewUrl = canvas.toDataURL("image/jpeg", 0.72);
-  const markerCandidates = findMarkerCandidates(imageData, canvas.width, canvas.height, 180);
   const zones = paperScanZones();
-  const zonePages = Object.fromEntries(Object.entries(zones).map(([key, zone]) => [key, detectZonePage(page, zone, markerCandidates)]));
+  const zonePages = Object.fromEntries(Object.entries(zones).map(([key, zone]) => [key, pageFromZoneBounds(page, zone.bounds)]));
   const firstRows = paperQuizRows(quiz, "A");
   const firstLayout = paperSheetLayout(firstRows);
   const codeDigits = zonePages.code ? firstLayout.code.map((column) => readBubbleGroupV3(imageData, canvas.width, canvas.height, zonePages.code, column, {
@@ -1056,7 +1055,7 @@ async function scanPaperAnswerSheetV3(quiz, file) {
     rows,
     usedMarkers: page.usedMarkers,
     previewUrl,
-    message: `V3 combined scan ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section marker groups found. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, ${typeRead ? `Type ${typeRead}` : "no paper type"}, and ${answered}/${rows.length} answers. Review before saving.`
+    message: `V3 combined scan ${page.usedMarkers ? "page markers found" : "using image edges"}; ${zoneCount}/4 section boxes mapped. Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, ${typeRead ? `Type ${typeRead}` : "no paper type"}, and ${answered}/${rows.length} answers. Review before saving.`
   };
 }
 
@@ -1172,6 +1171,17 @@ function detectZonePage(basePage, zone, candidates) {
     if (match) markers[corner] = match;
   }
   return pageFromPaperMarkers(markers, zone.bounds, { minWidth: 24, minHeight: 18, allowFlat: true });
+}
+
+function pageFromZoneBounds(basePage, bounds) {
+  if (!basePage || !bounds) return null;
+  const markers = {
+    tl: mapPaperPoint(basePage, bounds.left, bounds.top),
+    tr: mapPaperPoint(basePage, bounds.right, bounds.top),
+    bl: mapPaperPoint(basePage, bounds.left, bounds.bottom),
+    br: mapPaperPoint(basePage, bounds.right, bounds.bottom)
+  };
+  return pageFromPaperMarkers(markers, bounds, { minWidth: 24, minHeight: 18, allowFlat: true });
 }
 
 function findPaperMarkers(imageData, width, height) {
@@ -1536,7 +1546,7 @@ function printPaperQuizPack(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1579,7 +1589,7 @@ function printBlankPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1623,7 +1633,7 @@ function printDemoPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1689,13 +1699,21 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
 }
 
 function paperZoneMarkersHtml(zones) {
-  return Object.values(zones).flatMap((zone) => ["tl", "tr", "bl", "br"].map((corner) => (
-    `<span class="zone-marker" style="${omrStyle(zone[corner])}"></span>`
-  ))).join("");
+  return Object.values(zones).map((zone) => (
+    `<span class="zone-box" style="${omrRectStyle(zone.bounds)}"></span>`
+  )).join("");
 }
 
 function omrStyle(point) {
   return `left:${(point.x / 10).toFixed(3)}%;top:${(point.y / 14.14).toFixed(3)}%;`;
+}
+
+function omrRectStyle(bounds) {
+  const left = bounds.left / 10;
+  const top = bounds.top / 14.14;
+  const width = (bounds.right - bounds.left) / 10;
+  const height = (bounds.bottom - bounds.top) / 14.14;
+  return `left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;`;
 }
 
 function omrBubbleHtml(point) {
