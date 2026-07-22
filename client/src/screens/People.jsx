@@ -229,13 +229,14 @@ export default function People({ data, run, role, view = "students" }) {
         <Field label="Search Student" value={studentFilter.search} onChange={(search) => setStudentFilter({ ...studentFilter, search })} />
         <div className="filter-count">{filteredStudents.length} student{filteredStudents.length === 1 ? "" : "s"}</div>
       </div>
-      <Table columns={["Name", "Username", "Section", "Subjects", "JCoins", "Rank", "Actions"]} rows={filteredStudents.map((s) => {
+      <Table columns={["Name", "Code", "Username", "Section", "Subjects", "JCoins", "Rank", "Actions"]} rows={filteredStudents.map((s) => {
         const edit = edits[s.id] || s;
         return [
           <div className="student-name-cell">
             <button type="button" className="ghost table-name-button" onClick={() => openStudentProfile(s)}>{s.name}</button>
             <input value={edit.name} onChange={(e) => setEdits({ ...edits, [s.id]: { ...edit, name: e.target.value } })} />
           </div>,
+          s.quizCode || "-",
           s.username || "No account",
           <select value={edit.section || ""} onChange={(e) => setEdits({ ...edits, [s.id]: { ...edit, section: e.target.value } })}><option value="">No section</option>{sections.map((section) => <option key={section} value={section}>{section}</option>)}</select>,
           <DropdownChecklist label="Subjects" compact items={visibleSubjects} selected={edit.subjectIds || []} onChange={(ids) => setEdits({ ...edits, [s.id]: { ...edit, subjectIds: ids } })} />,
@@ -277,6 +278,7 @@ export function StudentProfileModal({ profile, onClose }) {
         <div className="bar"><div className="fill" style={{ width: `${student.progress || 0}%` }} /></div>
         <p className="needed-coins">{needed ? `${needed.toLocaleString()} JCoins needed to reach ${student.nextRank}` : "Max rank reached"}</p>
         <div className="account-grid">
+          <AccountMini label="Quiz Code" value={student.quizCode || "-"} />
           <AccountMini label="Subjects" value={(student.subjectNames || []).join(", ") || "None"} />
           <AccountMini label="Recent Activities" value={profile.activities?.length || 0} />
           <AccountMini label="Recent Transactions" value={profile.transactions?.length || 0} />

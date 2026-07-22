@@ -31,6 +31,8 @@ const answerVisibility = [
   { value: "never", label: "Never" }
 ];
 const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
+const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
+const paperQuizVariants = ["A", "B", "C", "D"];
 
 export default function Quizzes({ data, run, role }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
@@ -305,7 +307,9 @@ function QuizActions({ quiz, data, run }) {
   return <div className="inline">
     <QuizFormModal data={data} run={run} quiz={quiz} />
     <button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button>
+    <button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
+    <PaperCheckModal quiz={quiz} run={run} />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
@@ -313,10 +317,35 @@ function QuizActions({ quiz, data, run }) {
   </div>;
 }
 
+function PaperCheckModal({ quiz, run }) {
+  const rows = paperQuizRows(quiz, "A");
+  const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
+  async function submit(event) {
+    event.preventDefault();
+    const answers = parsePaperAnswers(form.answersText);
+    await run(() => post(`/admin/quizzes/${quiz.id}/paper-submissions`, {
+      studentCode: form.studentCode,
+      variant: form.variant,
+      answers
+    }), "Paper quiz checked");
+  }
+  return <ActionModal title={`Check Paper - ${quiz.title}`} buttonLabel="Check Paper" icon={FileCheck2}>
+    <form onSubmit={submit}>
+      <div className="notice">Use this after checking a printed answer sheet. Enter answers as letters, for example: 1A 2B 3C 4D.</div>
+      <div className="form-grid two">
+        <Field label="Student Code" value={form.studentCode} onChange={(studentCode) => setForm({ ...form, studentCode })} placeholder="JCS1234" />
+        <Select label="Paper Type" value={form.variant} onChange={(variant) => setForm({ ...form, variant })} options={paperQuizVariants.map((variant) => ({ value: variant, label: `Type ${variant}` }))} />
+      </div>
+      <Field label={`Answers (${rows.length} items)`} value={form.answersText} onChange={(answersText) => setForm({ ...form, answersText })} placeholder="1A 2B 3C 4D" />
+      <button>Save Paper Score</button>
+    </form>
+  </ActionModal>;
+}
+
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
-    <Table columns={["Student", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
+    <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
 }
 
@@ -615,6 +644,149 @@ function quizTypesForQuiz(quiz) {
 
 function quizTypesLabel(quiz) {
   return quizTypesForQuiz(quiz).map((type) => quizTypeLabel(type)).join(", ");
+}
+
+function stableHash32(value) {
+  let hash = 2166136261;
+  const text = String(value);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function deterministicShuffle(items, seed) {
+  return [...items].map((item, index) => ({
+    item,
+    key: stableHash32(`${seed}:${index}:${JSON.stringify(item)}`)
+  })).sort((a, b) => a.key - b.key).map((entry) => entry.item);
+}
+
+function normalizePaperVariant(value) {
+  const variant = String(value || "A").trim().toUpperCase();
+  return paperQuizVariants.includes(variant) ? variant : "A";
+}
+
+function paperQuizRows(quiz, variantInput = "A") {
+  const variant = normalizePaperVariant(variantInput);
+  const seedBase = `${quiz.id}:${quiz.currentVersionId || ""}:${variant}`;
+  const rows = [];
+  (quiz.questions || []).forEach((question, questionIndex) => {
+    if (!paperQuizTypes.includes(question.type)) return;
+    if (["multiple_choice", "true_false"].includes(question.type)) {
+      const choices = question.type === "true_false"
+        ? ["True", "False"]
+        : deterministicShuffle(question.options || [], `${seedBase}:options:${question.id}`);
+      rows.push({
+        questionId: question.id,
+        sourceQuestionIndex: questionIndex,
+        type: question.type,
+        prompt: question.prompt,
+        choices,
+        correctText: question.answer
+      });
+      return;
+    }
+    const pairs = question.matchingPairs || [];
+    const choices = deterministicShuffle([...new Set(pairs.map((pair) => pair.right).filter(Boolean))], `${seedBase}:matching:${question.id}`);
+    pairs.forEach((pair, pairIndex) => {
+      rows.push({
+        questionId: question.id,
+        pairId: pair.id,
+        sourceQuestionIndex: questionIndex,
+        sourcePairIndex: pairIndex,
+        type: "matching",
+        prompt: `${question.prompt}\n${pair.left}`,
+        choices,
+        correctText: pair.right
+      });
+    });
+  });
+  return deterministicShuffle(rows, `${seedBase}:questions`).map((row, index) => {
+    const choices = (row.choices || []).slice(0, 26);
+    const correctIndex = choices.findIndex((choice) => String(choice) === String(row.correctText));
+    return {
+      ...row,
+      number: index + 1,
+      choices,
+      correctLetter: correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : ""
+    };
+  });
+}
+
+function parsePaperAnswers(text) {
+  const answers = {};
+  String(text || "").toUpperCase().match(/\d+\s*[:.)-]?\s*[A-Z]/g)?.forEach((token) => {
+    const match = token.match(/(\d+)\D*([A-Z])/);
+    if (match) answers[match[1]] = match[2];
+  });
+  return answers;
+}
+
+function printPaperQuizPack(quiz) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Allow pop-ups for JCoins to open the printable paper quiz.");
+    return;
+  }
+  printWindow.opener = null;
+  const body = paperQuizVariants.map((variant) => paperQuizVersionHtml(quiz, variant)).join("");
+  printWindow.document.write(`<!doctype html>
+    <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Paper Types</title>
+    <style>
+      @page { size: A4; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 10.5pt; line-height: 1.35; }
+      section.page { min-height: 265mm; break-after: page; page-break-after: always; }
+      header { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 9px; border-bottom: 2px solid #111; }
+      h1, h2 { margin: 0; }
+      h1 { font-size: 18pt; }
+      h2 { font-size: 15pt; }
+      .meta, .small { color: #333; font-size: 9pt; }
+      .type-badge { border: 2px solid #111; padding: 8px 12px; font-size: 18pt; font-weight: 800; align-self: start; }
+      .question { margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
+      .prompt { white-space: pre-wrap; font-weight: 700; margin-bottom: 5px; }
+      .option { margin: 3px 0 3px 18px; }
+      .sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; margin-top: 12px; }
+      .bubble-row { display: flex; align-items: center; gap: 7px; min-height: 22px; }
+      .bubble { display: inline-flex; width: 18px; height: 18px; border: 1.6px solid #111; border-radius: 50%; align-items: center; justify-content: center; font-size: 8pt; line-height: 1; }
+      .code-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+      .code-col { border: 1px solid #999; padding: 6px; }
+      .code-col strong { display: block; margin-bottom: 5px; }
+      .answer-key { columns: 4; column-gap: 20px; margin-top: 12px; font-size: 10pt; }
+      .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+      @media print { button { display: none; } }
+    </style></head><body>${body}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 300);
+}
+
+function paperQuizVersionHtml(quiz, variant) {
+  const rows = paperQuizRows(quiz, variant);
+  const key = rows.map((row) => `<span>${row.number}-${row.correctLetter || "?"}</span>`).join(" ");
+  return `
+    <section class="page">
+      <header><div><h1>${escapeQuizHtml(quiz.title)}</h1><div class="meta">${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)} | ${rows.length} paper items</div></div><div class="type-badge">TYPE ${variant}</div></header>
+      <p class="small">Write your name on the answer sheet. Shade your 4 JCS digits, paper type, and one answer per item.</p>
+      ${rows.map((row) => `<article class="question"><div class="prompt">${row.number}. ${escapeQuizHtml(row.prompt)}</div>${row.choices.map((choice, index) => `<div class="option">(${String.fromCharCode(65 + index)}) ${escapeQuizHtml(choice)}</div>`).join("")}</article>`).join("")}
+    </section>
+    <section class="page">
+      <header><div><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">TYPE ${variant}</div></header>
+      <p>Name: ________________________________ Section: __________________ Date: __________ Score: ________</p>
+      <h2>Student Code: JCS____</h2>
+      <div class="code-grid">${[1, 2, 3, 4].map((digit) => `<div class="code-col"><strong>Digit ${digit}</strong>${Array.from({ length: 10 }, (_, value) => `<div class="bubble-row"><span class="bubble">${value}</span><span>${value}</span></div>`).join("")}</div>`).join("")}</div>
+      <h2>Paper Type</h2>
+      <div class="bubble-row">${paperQuizVariants.map((type) => `<span class="bubble">${type}</span><span>${type}</span>`).join("")}</div>
+      <h2>Answers</h2>
+      <div class="sheet-grid">${rows.map((row) => `<div class="bubble-row"><strong>${row.number}.</strong>${row.choices.map((_, index) => `<span class="bubble">${String.fromCharCode(65 + index)}</span>`).join("")}</div>`).join("")}</div>
+      <div class="machine-data">JCOINS-PAPER quiz=${escapeQuizHtml(quiz.id)} type=${variant}</div>
+    </section>
+    <section class="page">
+      <header><div><h2>Teacher Answer Key</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">KEY ${variant}</div></header>
+      <div class="answer-key">${key}</div>
+    </section>`;
 }
 
 function printQuizPaper(quiz) {

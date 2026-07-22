@@ -377,6 +377,8 @@ const quizDifficulties = ["Easy", "Moderate", "Hard", "Advanced"];
 const answerVisibilityOptions = ["immediate", "after_deadline", "scheduled", "never"];
 const quizQuestionTypes = ["multiple_choice", "true_false", "fill_blank", "matching", "multiple_select", "numerical", "computation"];
 const quizTypes = ["mixed", ...quizQuestionTypes];
+const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
+const paperQuizVariants = ["A", "B", "C", "D"];
 const STUDENT_ASSISTANT_DAILY_REWARD = 50;
 const STUDENT_ASSISTANT_REWARD_INTERVAL_MS = 15 * 60 * 1000;
 const defaultShopItems = [
@@ -1392,6 +1394,7 @@ async function readDb() {
     s.subjectIds ||= db.subjects.map((sub) => sub.id);
     s.profilePhoto ||= "";
   });
+  if (assignStudentQuizCodes(db)) changed = true;
   db.users.forEach((u) => { u.subjectIds ||= []; u.sectionIds ||= []; });
   db.users.forEach((u) => {
     if (u.role === "teacher" && !u.subjectIds.length) {
@@ -2851,6 +2854,43 @@ function normalizeStudentName(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
 }
 
+function normalizeStudentQuizCode(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(-4);
+  return digits.length === 4 ? `JCS${digits}` : "";
+}
+
+function studentQuizCodeDigits(student) {
+  const hash = createHash("sha256").update(String(student.id || student.name || randomUUID())).digest("hex");
+  return String((parseInt(hash.slice(0, 8), 16) % 9000) + 1000);
+}
+
+function assignStudentQuizCodes(db) {
+  const used = new Set();
+  let changed = false;
+  (db.students || []).forEach((student, index) => {
+    const existing = normalizeStudentQuizCode(student.quizCode);
+    if (existing && !used.has(existing)) {
+      if (student.quizCode !== existing) {
+        student.quizCode = existing;
+        changed = true;
+      }
+      used.add(existing);
+      return;
+    }
+    let digits = studentQuizCodeDigits(student);
+    for (let offset = 0; offset < 9000; offset++) {
+      const candidate = `JCS${String(((Number(digits) - 1000 + index + offset) % 9000) + 1000).padStart(4, "0")}`;
+      if (!used.has(candidate)) {
+        student.quizCode = candidate;
+        used.add(candidate);
+        changed = true;
+        return;
+      }
+    }
+  });
+  return changed;
+}
+
 function studentRegistrationUsername({ surname, firstName }) {
   const clean = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   return `${clean(surname)}.${clean(firstName)}`;
@@ -3270,6 +3310,97 @@ function publicCompletedQuizAttempt(attempt) {
   return visible;
 }
 
+function stableHash32(value) {
+  let hash = 2166136261;
+  const text = String(value);
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function deterministicShuffle(items, seed) {
+  return [...items].map((item, index) => ({
+    item,
+    key: stableHash32(`${seed}:${index}:${JSON.stringify(item)}`)
+  })).sort((a, b) => a.key - b.key).map((entry) => entry.item);
+}
+
+function normalizePaperVariant(value) {
+  const variant = String(value || "A").trim().toUpperCase();
+  return paperQuizVariants.includes(variant) ? variant : "A";
+}
+
+function paperQuizRows(quiz, variantInput = "A") {
+  const variant = normalizePaperVariant(variantInput);
+  const seedBase = `${quiz.id}:${quiz.currentVersionId || ""}:${variant}`;
+  const rows = [];
+  (quiz.questions || []).forEach((question, questionIndex) => {
+    if (!paperQuizTypes.includes(question.type)) return;
+    if (["multiple_choice", "true_false"].includes(question.type)) {
+      const choices = question.type === "true_false"
+        ? ["True", "False"]
+        : deterministicShuffle(question.options || [], `${seedBase}:options:${question.id}`);
+      rows.push({
+        questionId: question.id,
+        sourceQuestionIndex: questionIndex,
+        type: question.type,
+        prompt: question.prompt,
+        choices,
+        correctText: question.answer
+      });
+      return;
+    }
+    const pairs = question.matchingPairs || [];
+    const choices = deterministicShuffle([...new Set(pairs.map((pair) => pair.right).filter(Boolean))], `${seedBase}:matching:${question.id}`);
+    pairs.forEach((pair, pairIndex) => {
+      rows.push({
+        questionId: question.id,
+        pairId: pair.id,
+        sourceQuestionIndex: questionIndex,
+        sourcePairIndex: pairIndex,
+        type: "matching",
+        prompt: `${question.prompt}\n${pair.left}`,
+        choices,
+        correctText: pair.right
+      });
+    });
+  });
+  return deterministicShuffle(rows, `${seedBase}:questions`).map((row, index) => {
+    const choices = (row.choices || []).slice(0, 26);
+    const correctIndex = choices.findIndex((choice) => String(choice) === String(row.correctText));
+    return {
+      ...row,
+      number: index + 1,
+      choices,
+      correctLetter: correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : ""
+    };
+  });
+}
+
+function paperQuizPassingScore(quiz, total) {
+  const questionCount = Math.max(1, (quiz.questions || []).length);
+  const ratio = Number(quiz.passingScore || questionCount) / questionCount;
+  return Math.max(1, Math.min(total, Math.round(total * ratio)));
+}
+
+function scorePaperQuiz(quiz, variant, answers = {}) {
+  const rows = paperQuizRows(quiz, variant);
+  const normalizedAnswers = {};
+  let correct = 0;
+  rows.forEach((row) => {
+    const answer = String(answers[row.number] ?? answers[String(row.number)] ?? "").trim().toUpperCase().slice(0, 1);
+    normalizedAnswers[row.number] = answer;
+    if (answer && answer === row.correctLetter) correct += 1;
+  });
+  const total = rows.length;
+  const passingScore = paperQuizPassingScore(quiz, total);
+  const rewardValue = Number(quiz.rewardValue || 0);
+  const awarded = total ? Math.round(rewardValue * Math.min(correct / passingScore, 1)) : 0;
+  return { rows, answers: normalizedAnswers, correct, total, passingScore, rewardValue, awarded };
+}
+
 function finishTimedOutQuizAttempt(quiz, submission) {
   const active = submission.activeAttempt;
   if (!active) return null;
@@ -3393,6 +3524,7 @@ function publicQuiz(quiz, db, user) {
     return {
       studentId: student.id,
       studentName: student.name,
+      studentCode: student.quizCode || "",
       section: student.section || "",
       attempts: submission?.attempts?.length || 0,
       latestScore: latest ? `${latest.correct}/${latest.total}` : "",
@@ -4699,6 +4831,7 @@ app.post("/api/admin/students", auth, requireRole("admin", "teacher"), async (re
   }
   const student = { id: randomUUID(), name, section: section || "", subjectIds, createdAt: now() };
   db.students.push(student);
+  assignStudentQuizCodes(db);
   db.users.push({ id: randomUUID(), username, passwordHash: await bcrypt.hash(String(tempPassword), 10), role: "student", mustChangePassword: true, studentId: student.id, subjectIds: [], sectionIds: [] });
   db.transactions.push(tx(student.id, "starting", startingBalance, "Starting balance", now(), req.user.id));
   await writeDb(db);
@@ -4777,6 +4910,7 @@ app.post("/api/admin/students/bulk", auth, requireRole("admin", "teacher"), asyn
   for (const item of prepared) {
     const student = { id: randomUUID(), name: item.name, section: item.section, subjectIds: item.subjectIds, createdAt: now() };
     db.students.push(student);
+    assignStudentQuizCodes(db);
     db.users.push({ id: randomUUID(), username: item.username, passwordHash: await bcrypt.hash(item.tempPassword, 10), role: "student", mustChangePassword: true, studentId: student.id, subjectIds: [], sectionIds: [] });
     db.transactions.push(tx(student.id, "starting", item.startingJCoins, "Starting balance", now(), req.user.id));
     created.push({ id: student.id, name: student.name, username: item.username });
@@ -5586,6 +5720,75 @@ app.delete("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), asyn
   db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id));
   await writeDb(db);
   res.json({ ok: true });
+});
+
+app.post("/api/admin/quizzes/:id/paper-submissions", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  normalizeQuiz(quiz, db);
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  const studentCode = normalizeStudentQuizCode(req.body.studentCode);
+  if (!studentCode) return res.status(400).json({ error: "Enter a valid JCS student code." });
+  const student = db.students.find((item) => normalizeStudentQuizCode(item.quizCode) === studentCode);
+  if (!student || !studentIsInClass(db, student, quiz.subjectId, quiz.section)) return res.status(404).json({ error: "No enrolled student matches that JCS code for this quiz." });
+  if (!scopedStudentIds(db, req.user).has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const variant = normalizePaperVariant(req.body.variant);
+  const result = scorePaperQuiz(quiz, variant, req.body.answers || {});
+  if (!result.total) return res.status(400).json({ error: "This quiz has no paper-checkable questions. Use Multiple Choice, True/False, or Matching." });
+  let submission = quiz.submissions.find((item) => item.studentId === student.id);
+  if (!submission) {
+    submission = { studentId: student.id, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
+    quiz.submissions.push(submission);
+  }
+  const submittedAt = now();
+  const attempt = {
+    id: randomUUID(),
+    attemptNumber: submission.attempts.length + 1,
+    answers: result.answers,
+    correct: result.correct,
+    total: result.total,
+    passingScore: result.passingScore,
+    difficulty: quiz.difficulty,
+    rewardValue: result.rewardValue,
+    quizVersionId: quiz.currentVersionId || "",
+    awarded: result.awarded,
+    startedAt: submittedAt,
+    dueAt: "",
+    timedOut: false,
+    submittedAt,
+    source: "paper",
+    paperVariant: variant,
+    checkedBy: req.user.id
+  };
+  submission.attempts.push(attempt);
+  submission.activeAttempt = null;
+  submission.bestScore = Math.max(Number(submission.bestScore || 0), result.correct);
+  submission.bestAwarded = Math.max(Number(submission.bestAwarded || 0), result.awarded);
+  const existing = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === student.id);
+  const note = `${quiz.title} quiz reward`;
+  const meta = { kind: "quiz", quizId: quiz.id, subjectId: quiz.subjectId, section: quiz.section, difficulty: quiz.difficulty, passingScore: result.passingScore, bestScore: submission.bestScore, source: "paper" };
+  if (existing) {
+    existing.amount = submission.bestAwarded;
+    existing.note = note;
+    existing.meta = { ...(existing.meta || {}), ...meta };
+  } else if (submission.bestAwarded) {
+    db.transactions.push(tx(student.id, "quiz", submission.bestAwarded, note, submittedAt, req.user.id, meta));
+  }
+  addAuditLog(db, req.user, "quiz.paper.check", {
+    entityType: "quiz",
+    entityId: quiz.id,
+    targetStudentId: student.id,
+    amount: result.awarded,
+    summary: `Checked paper quiz for ${student.name}: ${result.correct}/${result.total}.`,
+    meta: { quizId: quiz.id, variant, studentCode }
+  });
+  await writeDb(db);
+  res.status(201).json({
+    attempt: publicCompletedQuizAttempt(attempt),
+    student: { id: student.id, name: student.name, quizCode: student.quizCode },
+    submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded }
+  });
 });
 
 function quizMutationResponse(status, body, mutated = false, request = null) {
@@ -6501,6 +6704,7 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
     if (!Array.isArray(payload.subjectIds) || payload.subjectIds.some((subjectId) => !db.subjects.some((subject) => subject.id === subjectId))) return res.status(400).json({ error: "One or more registration subjects no longer exist." });
     const student = { id: randomUUID(), name: payload.fullName, section: payload.section, subjectIds: payload.subjectIds, createdAt: now() };
     db.students.push(student);
+    assignStudentQuizCodes(db);
     db.users.push({ id: randomUUID(), username: payload.username, passwordHash: payload.passwordHash, role: "student", mustChangePassword: false, studentId: student.id, subjectIds: [], sectionIds: [] });
     request.studentId = student.id;
     delete request.payload.passwordHash;
