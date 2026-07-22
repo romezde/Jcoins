@@ -16,7 +16,7 @@ const gradeCategoryLabels = {
 export default function Grades({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [search, setSearch] = useState("");
-  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => (data.gradeSummaries || []).filter((row) => row.subjectId === subjectId && row.section === section).length), [data.subjects, data.students, data.gradeSummaries]);
+  const classes = useMemo(() => buildGradeClasses(data), [data.subjects, data.students, data.gradeSummaries]);
   const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
   const summaries = (data.gradeSummaries || []).filter((row) => {
     if (!activeClass || row.subjectId !== activeClass.subjectId || row.section !== activeClass.section) return false;
@@ -65,6 +65,37 @@ export default function Grades({ data, run }) {
     {activeClass && writtenWorks.map((work) => <WrittenWorkCard key={work.id} work={work} run={run} />)}
     {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view grades.</section>}
   </div>;
+}
+
+function buildGradeClasses(data) {
+  const classes = new Map();
+  const add = (subjectId, section = "", studentCount = 0) => {
+    const cleanSubjectId = String(subjectId || "").trim();
+    const cleanSection = String(section || "").trim();
+    const subject = (data.subjects || []).find((item) => item.id === cleanSubjectId);
+    if (!subject) return;
+    const key = `${cleanSubjectId}::${cleanSection || "__none"}`;
+    const existing = classes.get(key);
+    classes.set(key, {
+      key,
+      subjectId: cleanSubjectId,
+      subjectName: subject.name,
+      section: cleanSection,
+      sectionLabel: cleanSection ? `Section ${cleanSection}` : "No section",
+      studentCount: Math.max(existing?.studentCount || 0, studentCount),
+      itemCount: (data.gradeSummaries || []).filter((row) => row.subjectId === cleanSubjectId && String(row.section || "").trim() === cleanSection).length
+    });
+  };
+  const summaryGroups = new Map();
+  (data.gradeSummaries || []).forEach((row) => {
+    const key = `${row.subjectId}::${String(row.section || "").trim() || "__none"}`;
+    summaryGroups.set(key, { subjectId: row.subjectId, section: String(row.section || "").trim(), count: (summaryGroups.get(key)?.count || 0) + 1 });
+  });
+  summaryGroups.forEach((item) => add(item.subjectId, item.section, item.count));
+  if (!summaryGroups.size) {
+    buildSubjectSectionClasses(data, () => 0).forEach((item) => add(item.subjectId, item.section, item.studentCount));
+  }
+  return [...classes.values()].sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
 }
 
 function GradeSettingsForm({ activeClass, setting, run }) {

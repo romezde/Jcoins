@@ -4094,10 +4094,17 @@ function hydrateGradeSummaries(db, user) {
   classPairs.forEach(({ subjectId, section }) => {
     if (!db.subjects.some((subject) => subject.id === subjectId)) return;
     if (user.role !== "student" && (!canUseSubject(user, subjectId) || !canUseSection(user, section))) return;
-    const strictStudents = students.filter((student) => studentIsInClass(db, student, subjectId, section));
-    const classStudents = strictStudents.length ? strictStudents : gradeClassHasRecords(db, subjectId, section)
-      ? students.filter((student) => String(student.section || "").trim() === section)
-      : [];
+    const hasRecords = gradeClassHasRecords(db, subjectId, section);
+    const classStudentMap = new Map();
+    if (hasRecords && section) {
+      students
+        .filter((student) => String(student.section || "").trim() === section)
+        .forEach((student) => classStudentMap.set(student.id, student));
+    }
+    students
+      .filter((student) => studentIsInClass(db, student, subjectId, section))
+      .forEach((student) => classStudentMap.set(student.id, student));
+    const classStudents = [...classStudentMap.values()];
     classStudents.forEach((student) => {
       const summary = gradeSummaryForStudent(db, student, subjectId, section, user);
       if (summary) rows.push(summary);
