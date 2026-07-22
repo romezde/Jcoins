@@ -33,7 +33,7 @@ const answerVisibility = [
 const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
 const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
 const paperQuizVariants = ["A", "B", "C", "D"];
-const paperScanMarkerBounds = { left: 46, top: 43, right: 954, bottom: 1371 };
+const paperScanMarkerBounds = { left: 46, top: 50, right: 954, bottom: 1405 };
 
 export default function Quizzes({ data, run, role }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
