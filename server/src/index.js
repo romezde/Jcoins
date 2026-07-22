@@ -3414,6 +3414,16 @@ function scorePaperQuiz(quiz, variant, answers = {}) {
   return { rows, answers: normalizedAnswers, correct, total, passingScore, rewardValue, awarded };
 }
 
+function scoreManualQuiz(quiz, scoreInput, totalInput) {
+  const defaultTotal = Math.max(1, paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 1);
+  const total = Math.max(1, Math.min(500, Math.round(Number(totalInput || defaultTotal))));
+  const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0))));
+  const passingScore = paperQuizPassingScore(quiz, total);
+  const rewardValue = Number(quiz.rewardValue || 0);
+  const awarded = total ? Math.round(rewardValue * Math.min(correct / passingScore, 1)) : 0;
+  return { correct, total, passingScore, rewardValue, awarded };
+}
+
 function finishTimedOutQuizAttempt(quiz, submission) {
   const active = submission.activeAttempt;
   if (!active) return null;
@@ -5795,6 +5805,71 @@ app.post("/api/admin/quizzes/:id/paper-submissions", auth, requireRole("admin", 
     amount: result.awarded,
     summary: `Checked paper quiz for ${student.name}: ${result.correct}/${result.total}.`,
     meta: { quizId: quiz.id, variant, studentCode }
+  });
+  await writeDb(db);
+  res.status(201).json({
+    attempt: publicCompletedQuizAttempt(attempt),
+    student: { id: student.id, name: student.name, quizCode: student.quizCode },
+    submission: { attempts: submission.attempts.length, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded }
+  });
+});
+
+app.post("/api/admin/quizzes/:id/manual-scores", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  normalizeQuiz(quiz, db);
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  const student = db.students.find((item) => item.id === req.body.studentId);
+  if (!student || !studentIsInClass(db, student, quiz.subjectId, quiz.section)) return res.status(404).json({ error: "No enrolled student matches this quiz." });
+  if (!scopedStudentIds(db, req.user).has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  const result = scoreManualQuiz(quiz, req.body.score, req.body.total);
+  let submission = quiz.submissions.find((item) => item.studentId === student.id);
+  if (!submission) {
+    submission = { studentId: student.id, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
+    quiz.submissions.push(submission);
+  }
+  const submittedAt = now();
+  const attempt = {
+    id: randomUUID(),
+    attemptNumber: submission.attempts.length + 1,
+    answers: {},
+    correct: result.correct,
+    total: result.total,
+    passingScore: result.passingScore,
+    difficulty: quiz.difficulty,
+    rewardValue: result.rewardValue,
+    quizVersionId: quiz.currentVersionId || "",
+    awarded: result.awarded,
+    startedAt: submittedAt,
+    dueAt: "",
+    timedOut: false,
+    submittedAt,
+    source: "manual",
+    checkedBy: req.user.id,
+    remarks: String(req.body.remarks || "").trim()
+  };
+  submission.attempts.push(attempt);
+  submission.activeAttempt = null;
+  submission.bestScore = Math.max(Number(submission.bestScore || 0), result.correct);
+  submission.bestAwarded = Math.max(Number(submission.bestAwarded || 0), result.awarded);
+  const existing = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === student.id);
+  const note = `${quiz.title} quiz reward`;
+  const meta = { kind: "quiz", quizId: quiz.id, subjectId: quiz.subjectId, section: quiz.section, difficulty: quiz.difficulty, passingScore: result.passingScore, bestScore: submission.bestScore, source: "manual" };
+  if (existing) {
+    existing.amount = submission.bestAwarded;
+    existing.note = note;
+    existing.meta = { ...(existing.meta || {}), ...meta };
+  } else if (submission.bestAwarded) {
+    db.transactions.push(tx(student.id, "quiz", submission.bestAwarded, note, submittedAt, req.user.id, meta));
+  }
+  addAuditLog(db, req.user, "quiz.manual.score", {
+    entityType: "quiz",
+    entityId: quiz.id,
+    targetStudentId: student.id,
+    amount: result.awarded,
+    summary: `Manually recorded quiz score for ${student.name}: ${result.correct}/${result.total}.`,
+    meta: { quizId: quiz.id, score: result.correct, total: result.total }
   });
   await writeDb(db);
   res.status(201).json({

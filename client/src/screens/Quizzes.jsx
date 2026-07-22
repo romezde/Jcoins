@@ -314,6 +314,7 @@ function QuizActions({ quiz, data, run }) {
     <button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     <PaperCheckModal quiz={quiz} run={run} scanner="v3" />
+    <ManualQuizScoreModal quiz={quiz} data={data} run={run} />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
@@ -447,6 +448,34 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   </ActionModal>;
 }
 
+function ManualQuizScoreModal({ quiz, data, run }) {
+  const students = studentsForQuiz(data, quiz);
+  const defaultTotal = Math.max(1, paperQuizRows(quiz, "A").length || quiz.questions?.length || 1);
+  const [form, setForm] = useState({ studentId: students[0]?.id || "", score: "", total: defaultTotal, remarks: "" });
+  const preview = scoreManualQuizPreview(quiz, form.score, form.total);
+  async function submit(event) {
+    event.preventDefault();
+    await run(() => post(`/admin/quizzes/${quiz.id}/manual-scores`, {
+      studentId: form.studentId,
+      score: form.score,
+      total: form.total,
+      remarks: form.remarks
+    }), "Manual quiz score saved");
+  }
+  return <ActionModal title={`Manual Score - ${quiz.title}`} buttonLabel="Manual Score" icon={Pencil}>
+    <form onSubmit={submit}>
+      <Select label="Student" value={form.studentId} onChange={(studentId) => setForm({ ...form, studentId })} options={students.map((student) => ({ value: student.id, label: `${student.name}${student.quizCode ? ` (${student.quizCode})` : ""}` }))} />
+      <div className="form-grid two">
+        <Field label="Score" type="number" min="0" max={form.total} step="1" required value={form.score} onChange={(score) => setForm({ ...form, score })} />
+        <Field label="Total Items" type="number" min="1" max="500" step="1" required value={form.total} onChange={(total) => setForm({ ...form, total })} />
+      </div>
+      <Field label="Remarks" value={form.remarks} onChange={(remarks) => setForm({ ...form, remarks })} />
+      <div className="notice">Preview: {preview.correct}/{preview.total} ({preview.percent}%) | Passing {preview.passingScore}/{preview.total} | {preview.passed ? "Passed" : "Not passed yet"} | Reward {preview.awarded}/{preview.rewardValue} JCoins</div>
+      <button disabled={!students.length}>Save Manual Score</button>
+    </form>
+  </ActionModal>;
+}
+
 function PaperScorePreview({ score }) {
   return <div className="notice">
     Score preview: {score.correct}/{score.total} ({score.percent}%) | Answered {score.answered}/{score.total} | Passing {score.passingScore}/{score.total} | {score.passed ? "Passed" : "Not passed yet"} | Reward {score.awarded}/{score.rewardValue} JCoins
@@ -462,7 +491,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} scanner="v3" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} scanner="v3" /><ManualQuizScoreModal quiz={quiz} data={data} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -876,6 +905,17 @@ function scorePaperQuizPreview(quiz, variant, answers = {}) {
   const awarded = total ? Math.round(rewardValue * Math.min(correct / passingScore, 1)) : 0;
   const percent = total ? Math.round((correct / total) * 100) : 0;
   return { rows, correct, answered, total, passingScore, rewardValue, awarded, percent, passed: correct >= passingScore };
+}
+
+function scoreManualQuizPreview(quiz, scoreInput, totalInput) {
+  const defaultTotal = Math.max(1, paperQuizRows(quiz, "A").length || quiz.questions?.length || 1);
+  const total = Math.max(1, Math.min(500, Math.round(Number(totalInput || defaultTotal))));
+  const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0))));
+  const passingScore = paperQuizPassingScore(quiz, total);
+  const rewardValue = Number(quiz.rewardValue || 0);
+  const awarded = Math.round(rewardValue * Math.min(correct / passingScore, 1));
+  const percent = Math.round((correct / total) * 100);
+  return { correct, total, passingScore, rewardValue, awarded, percent, passed: correct >= passingScore };
 }
 
 function clamp(value, min, max) {
