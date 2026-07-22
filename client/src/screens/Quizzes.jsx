@@ -1547,6 +1547,7 @@ function printPaperQuizPack(quiz) {
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
       .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-mark { position: absolute; width: 3mm; height: 3mm; margin: -1.5mm 0 0 -1.5mm; border: 0.7mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1590,6 +1591,7 @@ function printBlankPaperSheet(quiz) {
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
       .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-mark { position: absolute; width: 3mm; height: 3mm; margin: -1.5mm 0 0 -1.5mm; border: 0.7mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1634,6 +1636,7 @@ function printDemoPaperSheet(quiz) {
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
       .zone-box { position: absolute; border: 0.45mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-mark { position: absolute; width: 3mm; height: 3mm; margin: -1.5mm 0 0 -1.5mm; border: 0.7mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1699,9 +1702,14 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
 }
 
 function paperZoneMarkersHtml(zones) {
-  return Object.values(zones).map((zone) => (
-    `<span class="zone-box" style="${omrRectStyle(zone.bounds)}"></span>`
-  )).join("");
+  return Object.entries(zones).map(([key, zone]) => {
+    if (key === "answersLeft" || key === "answersRight") {
+      return `<span class="zone-box" style="${omrRectStyle(zone.bounds)}"></span>`;
+    }
+    return ["tl", "tr", "bl", "br"].map((corner) => (
+      `<span class="zone-mark" style="${omrStyle(zone[corner])}"></span>`
+    )).join("");
+  }).join("");
 }
 
 function omrStyle(point) {
