@@ -320,6 +320,7 @@ function QuizActions({ quiz, data, run }) {
 function PaperCheckModal({ quiz, run }) {
   const rows = paperQuizRows(quiz, "A");
   const [form, setForm] = useState({ studentCode: "", variant: "A", answersText: "" });
+  const [scan, setScan] = useState({ loading: false, message: "", previewUrl: "", result: null });
   async function submit(event) {
     event.preventDefault();
     const answers = parsePaperAnswers(form.answersText);
@@ -329,17 +330,41 @@ function PaperCheckModal({ quiz, run }) {
       answers
     }), "Paper quiz checked");
   }
+  async function scanSheet(file) {
+    if (!file) return;
+    setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: URL.createObjectURL(file), result: null });
+    try {
+      const result = await scanPaperAnswerSheet(quiz, file);
+      const answersText = Object.entries(result.answers).map(([number, answer]) => `${number}${answer}`).join(" ");
+      setForm({ studentCode: result.studentCode, variant: result.variant || "A", answersText });
+      setScan((current) => ({ ...current, loading: false, message: result.message, result }));
+    } catch (err) {
+      setScan((current) => ({ ...current, loading: false, message: err.message, result: null }));
+    }
+  }
   return <ActionModal title={`Check Paper - ${quiz.title}`} buttonLabel="Check Paper" icon={FileCheck2}>
     <form onSubmit={submit}>
-      <div className="notice">Use this after checking a printed answer sheet. Enter answers as letters, for example: 1A 2B 3C 4D.</div>
+      <div className="notice">Upload a clear, straight photo of the answer sheet, review the detected answers, then save.</div>
+      <label className="soft file-button">Scan Answer Sheet<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { scanSheet(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      {scan.previewUrl && <img className="paper-scan-preview" src={scan.previewUrl} alt="Scanned answer sheet preview" />}
+      {scan.message && <p className="muted-line">{scan.message}</p>}
       <div className="form-grid two">
         <Field label="Student Code" value={form.studentCode} onChange={(studentCode) => setForm({ ...form, studentCode })} placeholder="JCS1234" />
         <Select label="Paper Type" value={form.variant} onChange={(variant) => setForm({ ...form, variant })} options={paperQuizVariants.map((variant) => ({ value: variant, label: `Type ${variant}` }))} />
       </div>
       <Field label={`Answers (${rows.length} items)`} value={form.answersText} onChange={(answersText) => setForm({ ...form, answersText })} placeholder="1A 2B 3C 4D" />
+      {scan.result && <PaperScanReview result={scan.result} />}
       <button>Save Paper Score</button>
     </form>
   </ActionModal>;
+}
+
+function PaperScanReview({ result }) {
+  const unanswered = result.rows.filter((row) => !result.answers[row.number]).length;
+  return <div className="paper-scan-review">
+    <div className="notice">Detected {result.studentCode || "no student code"} | Type {result.variant || "?"} | {result.rows.length - unanswered}/{result.rows.length} answers</div>
+    {!!unanswered && <p className="error">{unanswered} item{unanswered === 1 ? "" : "s"} need manual review before saving.</p>}
+  </div>;
 }
 
 function QuizCard({ quiz, data, run }) {
@@ -724,6 +749,189 @@ function parsePaperAnswers(text) {
   return answers;
 }
 
+function paperSheetLayout(rows) {
+  const codeX = [120, 230, 340, 450];
+  const codeY = Array.from({ length: 10 }, (_, value) => 292 + value * 28);
+  const typeX = [140, 215, 290, 365];
+  const answerStartY = 705;
+  const answerEndY = 1315;
+  const rowsPerColumn = Math.ceil(rows.length / 2);
+  const answerGap = Math.min(28, rowsPerColumn > 1 ? (answerEndY - answerStartY) / (rowsPerColumn - 1) : 28);
+  return {
+    code: codeX.map((x) => codeY.map((y, value) => ({ x, y, value: String(value) }))),
+    type: paperQuizVariants.map((value, index) => ({ x: typeX[index], y: 630, value })),
+    answers: rows.map((row, index) => {
+      const column = index >= rowsPerColumn ? 1 : 0;
+      const rowIndex = column ? index - rowsPerColumn : index;
+      const baseX = column ? 570 : 120;
+      const y = answerStartY + rowIndex * answerGap;
+      return {
+        number: row.number,
+        labelX: baseX - 25,
+        y,
+        choices: row.choices.map((_, choiceIndex) => ({ x: baseX + choiceIndex * 42, y, value: String.fromCharCode(65 + choiceIndex) }))
+      };
+    })
+  };
+}
+
+async function scanPaperAnswerSheet(quiz, file) {
+  const image = await loadImageFromFile(file);
+  const maxWidth = 1400;
+  const scale = Math.min(1, maxWidth / image.naturalWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const page = detectPaperPage(imageData, canvas.width, canvas.height);
+  const firstRows = paperQuizRows(quiz, "A");
+  const firstLayout = paperSheetLayout(firstRows);
+  const codeDigits = firstLayout.code.map((column) => readBubbleGroup(imageData, canvas.width, canvas.height, page, column).value || "").join("");
+  const typeRead = readBubbleGroup(imageData, canvas.width, canvas.height, page, firstLayout.type).value || "A";
+  const rows = paperQuizRows(quiz, typeRead);
+  const layout = paperSheetLayout(rows);
+  const answers = {};
+  layout.answers.forEach((row) => {
+    const read = readBubbleGroup(imageData, canvas.width, canvas.height, page, row.choices);
+    if (read.value) answers[row.number] = read.value;
+  });
+  const missingCode = codeDigits.length !== 4;
+  const answered = Object.keys(answers).length;
+  return {
+    studentCode: missingCode ? "" : `JCS${codeDigits}`,
+    variant: typeRead,
+    answers,
+    rows,
+    usedMarkers: page.usedMarkers,
+    message: `${page.usedMarkers ? "Scan markers found." : "Using image edges; crop the answer sheet if detection is off."} Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
+  };
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not read this image."));
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+function detectPaperPage(imageData, width, height) {
+  const markers = {
+    tl: findMarkerInRegion(imageData, width, height, 0, 0, width * 0.22, height * 0.18, "tl"),
+    tr: findMarkerInRegion(imageData, width, height, width * 0.78, 0, width, height * 0.18, "tr"),
+    bl: findMarkerInRegion(imageData, width, height, 0, height * 0.82, width * 0.22, height, "bl"),
+    br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br")
+  };
+  if (Object.values(markers).every(Boolean)) {
+    const scaleX = (((markers.tr.x + markers.br.x) / 2) - ((markers.tl.x + markers.bl.x) / 2)) / (956 - 44);
+    const scaleY = (((markers.bl.y + markers.br.y) / 2) - ((markers.tl.y + markers.tr.y) / 2)) / (1374 - 40);
+    return {
+      x: ((markers.tl.x + markers.bl.x) / 2) - 44 * scaleX,
+      y: ((markers.tl.y + markers.tr.y) / 2) - 40 * scaleY,
+      scaleX,
+      scaleY,
+      usedMarkers: true
+    };
+  }
+  return { x: 0, y: 0, scaleX: width / 1000, scaleY: height / 1414, usedMarkers: false };
+}
+
+function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner) {
+  const x0 = Math.max(0, Math.floor(rx0));
+  const y0 = Math.max(0, Math.floor(ry0));
+  const x1 = Math.min(width, Math.ceil(rx1));
+  const y1 = Math.min(height, Math.ceil(ry1));
+  const regionWidth = x1 - x0;
+  const regionHeight = y1 - y0;
+  const visited = new Uint8Array(Math.max(1, regionWidth * regionHeight));
+  const data = imageData.data;
+  const isDarkAt = (x, y) => {
+    const offset = (y * width + x) * 4;
+    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114 < 70;
+  };
+  const cornerPoint = {
+    tl: [x0, y0],
+    tr: [x1, y0],
+    bl: [x0, y1],
+    br: [x1, y1]
+  }[corner];
+  let best = null;
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const startIndex = (y - y0) * regionWidth + (x - x0);
+      if (visited[startIndex] || !isDarkAt(x, y)) continue;
+      const stack = [[x, y]];
+      visited[startIndex] = 1;
+      let count = 0;
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+      while (stack.length) {
+        const [cx, cy] = stack.pop();
+        count += 1;
+        minX = Math.min(minX, cx);
+        maxX = Math.max(maxX, cx);
+        minY = Math.min(minY, cy);
+        maxY = Math.max(maxY, cy);
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1) return;
+          const index = (ny - y0) * regionWidth + (nx - x0);
+          if (!visited[index] && isDarkAt(nx, ny)) {
+            visited[index] = 1;
+            stack.push([nx, ny]);
+          }
+        });
+      }
+      const boxWidth = maxX - minX + 1;
+      const boxHeight = maxY - minY + 1;
+      const fill = count / Math.max(1, boxWidth * boxHeight);
+      const ratio = boxWidth / Math.max(1, boxHeight);
+      if (count < 50 || fill < 0.35 || ratio < 0.45 || ratio > 2.2) continue;
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const distance = Math.hypot(cx - cornerPoint[0], cy - cornerPoint[1]);
+      const score = count / Math.max(1, distance);
+      if (!best || score > best.score) best = { x: cx, y: cy, score };
+    }
+  }
+  return best;
+}
+
+function readBubbleGroup(imageData, width, height, page, bubbles) {
+  const reads = bubbles.map((bubble) => ({ ...bubble, ratio: bubbleDarkness(imageData, width, height, page, bubble) }))
+    .sort((a, b) => b.ratio - a.ratio);
+  const [best, second] = reads;
+  if (!best) return { value: "", confidence: 0 };
+  const gap = best.ratio - (second?.ratio || 0);
+  const confident = best.ratio >= 0.26 && gap >= 0.045;
+  return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
+}
+
+function bubbleDarkness(imageData, width, height, page, bubble) {
+  const cx = Math.round(page.x + bubble.x * page.scaleX);
+  const cy = Math.round(page.y + bubble.y * page.scaleY);
+  const radius = Math.max(5, Math.round(Math.min(page.scaleX, page.scaleY) * 10));
+  const data = imageData.data;
+  let dark = 0;
+  let total = 0;
+  for (let y = cy - radius; y <= cy + radius; y += 1) {
+    for (let x = cx - radius; x <= cx + radius; x += 1) {
+      if (x < 0 || x >= width || y < 0 || y >= height || Math.hypot(x - cx, y - cy) > radius) continue;
+      const offset = (y * width + x) * 4;
+      const lum = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
+      if (lum < 155) dark += 1;
+      total += 1;
+    }
+  }
+  return total ? dark / total : 0;
+}
+
 function printPaperQuizPack(quiz) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
@@ -756,6 +964,19 @@ function printPaperQuizPack(quiz) {
       .code-col strong { display: block; margin-bottom: 5px; }
       .answer-key { columns: 4; column-gap: 20px; margin-top: 12px; font-size: 10pt; }
       .machine-data { margin-top: 8px; padding: 6px; border: 1px dashed #777; font-size: 8pt; word-break: break-all; }
+      .omr-page { position: relative; height: 265mm; overflow: hidden; }
+      .omr-title { position: absolute; left: 6%; top: 3.5%; right: 18%; }
+      .omr-type { position: absolute; right: 6%; top: 3.5%; border: 2px solid #111; padding: 7px 10px; font-weight: 800; font-size: 16pt; }
+      .scan-marker { position: absolute; width: 7mm; height: 7mm; background: #111; }
+      .scan-marker.tl { left: 2.5%; top: 1.5%; }
+      .scan-marker.tr { right: 2.5%; top: 1.5%; }
+      .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
+      .scan-marker.br { right: 2.5%; bottom: 1.5%; }
+      .omr-label { position: absolute; font-weight: 700; }
+      .omr-text { position: absolute; }
+      .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
+      .omr-bubble-label { position: absolute; margin: -7px 0 0 12px; font-size: 8pt; font-weight: 700; }
+      .omr-number { position: absolute; margin: -8px 0 0 -20px; font-size: 8pt; font-weight: 700; }
       @media print { button { display: none; } }
     </style></head><body>${body}</body></html>`);
   printWindow.document.close();
@@ -772,21 +993,42 @@ function paperQuizVersionHtml(quiz, variant) {
       <p class="small">Write your name on the answer sheet. Shade your 4 JCS digits, paper type, and one answer per item.</p>
       ${rows.map((row) => `<article class="question"><div class="prompt">${row.number}. ${escapeQuizHtml(row.prompt)}</div>${row.choices.map((choice, index) => `<div class="option">(${String.fromCharCode(65 + index)}) ${escapeQuizHtml(choice)}</div>`).join("")}</article>`).join("")}
     </section>
-    <section class="page">
-      <header><div><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">TYPE ${variant}</div></header>
-      <p>Name: ________________________________ Section: __________________ Date: __________ Score: ________</p>
-      <h2>Student Code: JCS____</h2>
-      <div class="code-grid">${[1, 2, 3, 4].map((digit) => `<div class="code-col"><strong>Digit ${digit}</strong>${Array.from({ length: 10 }, (_, value) => `<div class="bubble-row"><span class="bubble">${value}</span><span>${value}</span></div>`).join("")}</div>`).join("")}</div>
-      <h2>Paper Type</h2>
-      <div class="bubble-row">${paperQuizVariants.map((type) => `<span class="bubble">${type}</span><span>${type}</span>`).join("")}</div>
-      <h2>Answers</h2>
-      <div class="sheet-grid">${rows.map((row) => `<div class="bubble-row"><strong>${row.number}.</strong>${row.choices.map((_, index) => `<span class="bubble">${String.fromCharCode(65 + index)}</span>`).join("")}</div>`).join("")}</div>
-      <div class="machine-data">JCOINS-PAPER quiz=${escapeQuizHtml(quiz.id)} type=${variant}</div>
-    </section>
+    ${paperAnswerSheetHtml(quiz, variant, rows)}
     <section class="page">
       <header><div><h2>Teacher Answer Key</h2><div class="meta">${escapeQuizHtml(quiz.title)} | Type ${variant}</div></div><div class="type-badge">KEY ${variant}</div></header>
       <div class="answer-key">${key}</div>
     </section>`;
+}
+
+function paperAnswerSheetHtml(quiz, variant, rows) {
+  const layout = paperSheetLayout(rows);
+  const bubbles = [
+    ...layout.code.flatMap((column, columnIndex) => column.map((bubble) => `${omrBubbleHtml(bubble)}${bubble.value === 0 ? `<span class="omr-number" style="${omrStyle({ x: bubble.x, y: bubble.y - 26 })}">D${columnIndex + 1}</span>` : ""}`)),
+    ...layout.type.map((bubble) => omrBubbleHtml(bubble)),
+    ...layout.answers.flatMap((row) => [
+      `<span class="omr-number" style="${omrStyle({ x: row.labelX, y: row.y })}">${row.number}.</span>`,
+      ...row.choices.map((bubble) => omrBubbleHtml(bubble))
+    ])
+  ].join("");
+  return `<section class="page omr-page">
+    <span class="scan-marker tl"></span><span class="scan-marker tr"></span><span class="scan-marker bl"></span><span class="scan-marker br"></span>
+    <div class="omr-title"><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | ${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)}</div></div>
+    <div class="omr-type">TYPE ${variant}</div>
+    <div class="omr-text" style="left:6%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
+    <div class="omr-label" style="left:6%;top:17%;">Student Code: JCS____</div>
+    <div class="omr-label" style="left:6%;top:41%;">Paper Type</div>
+    <div class="omr-label" style="left:6%;top:47%;">Answers</div>
+    ${bubbles}
+    <div class="machine-data" style="position:absolute;left:6%;right:6%;bottom:3%;">JCOINS-PAPER quiz=${escapeQuizHtml(quiz.id)} type=${variant}</div>
+  </section>`;
+}
+
+function omrStyle(point) {
+  return `left:${(point.x / 10).toFixed(3)}%;top:${(point.y / 14.14).toFixed(3)}%;`;
+}
+
+function omrBubbleHtml(point) {
+  return `<span class="omr-bubble" style="${omrStyle(point)}"></span><span class="omr-bubble-label" style="${omrStyle({ x: point.x, y: point.y })}">${point.value}</span>`;
 }
 
 function printQuizPaper(quiz) {

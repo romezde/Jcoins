@@ -4942,6 +4942,22 @@ td button {
   gap: 8px;
 }
 
+.paper-scan-preview {
+  display: block;
+  width: min(100%, 360px);
+  max-height: 320px;
+  object-fit: contain;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+}
+
+.paper-scan-review {
+  display: grid;
+  gap: 8px;
+}
+
 .quiz-correct-checks,
 .quiz-matching-editor,
 .quiz-student-matching,
