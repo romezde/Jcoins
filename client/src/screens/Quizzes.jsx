@@ -1519,7 +1519,6 @@ function printPaperQuizPack(quiz) {
       .machine-data { margin-top: 8px; padding: 2px 0; border: 0; color: #555; font-size: 6pt; word-break: break-all; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
-      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
@@ -1563,7 +1562,6 @@ function printBlankPaperSheet(quiz) {
       .meta { color: #333; font-size: 9pt; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
-      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
@@ -1608,7 +1606,6 @@ function printDemoPaperSheet(quiz) {
       .meta { color: #333; font-size: 9pt; }
       .omr-page { position: relative; height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
-      .omr-type { position: absolute; right: 11%; top: 4.5%; border: 2px solid #111; padding: 6px 10px; font-weight: 800; font-size: 14pt; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
@@ -1658,7 +1655,6 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
   const zones = paperScanZones();
   const codeDigits = String(filled.studentCode || "").replace(/\D/g, "").slice(-4);
   const answerMap = filled.answers || {};
-  const typeLabel = options.reusable ? "SHADE TYPE" : variant ? `TYPE ${variant}` : "SHADE TYPE";
   const bubbles = [
     ...layout.code.flatMap((column, columnIndex) => column.map((bubble) => `${omrBubbleHtml({ ...bubble, filled: codeDigits[columnIndex] === bubble.value })}${bubble.value === 0 ? `<span class="omr-number" style="${omrStyle({ x: bubble.x, y: bubble.y - 26 })}">D${columnIndex + 1}</span>` : ""}`)),
     ...layout.type.map((bubble) => omrBubbleHtml({ ...bubble, filled: String(filled.variant || "") === bubble.value })),
@@ -1671,7 +1667,6 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
     <span class="scan-marker tl"></span><span class="scan-marker tr"></span><span class="scan-marker bl"></span><span class="scan-marker br"></span>
     ${paperZoneMarkersHtml(zones)}
     <div class="omr-title"><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | ${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)}</div></div>
-    <div class="omr-type">${typeLabel}</div>
     <div class="omr-text" style="left:8%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
     <div class="omr-label" style="left:8%;top:16.5%;">Student Code: JCS____</div>
     <div class="omr-label" style="left:8%;top:40%;">Paper Type</div>
