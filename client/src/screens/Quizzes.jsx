@@ -313,6 +313,7 @@ function QuizActions({ quiz, data, run }) {
     <button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
     <PaperCheckModal quiz={quiz} run={run} />
+    <PaperCheckModal quiz={quiz} run={run} scanner="v2" />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
     {quiz.status === "closed" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz reopened")}>Reopen</button>}
@@ -320,8 +321,9 @@ function QuizActions({ quiz, data, run }) {
   </div>;
 }
 
-function PaperCheckModal({ quiz, run }) {
+function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   const rows = paperQuizRows(quiz, "A");
+  const isV2 = scanner === "v2";
   const cameraInputRef = useRef(null);
   const uploadInputRef = useRef(null);
   const cropperRef = useRef(null);
@@ -388,7 +390,7 @@ function PaperCheckModal({ quiz, run }) {
     if (!file) return;
     setScan({ loading: true, message: "Scanning answer sheet...", previewUrl: "", result: null });
     try {
-      const result = await scanPaperAnswerSheet(quiz, file);
+      const result = isV2 ? await scanPaperAnswerSheetV2(quiz, file) : await scanPaperAnswerSheet(quiz, file);
       const answersText = Object.entries(result.answers).map(([number, answer]) => `${number}${answer}`).join(" ");
       setForm({ studentCode: result.studentCode, variant: result.variant || "A", answersText });
       setScan({ loading: false, message: result.message, previewUrl: result.previewUrl || "", result });
@@ -396,7 +398,7 @@ function PaperCheckModal({ quiz, run }) {
       setScan((current) => ({ ...current, loading: false, message: err.message, result: null }));
     }
   }
-  return <ActionModal title={`Check Paper - ${quiz.title}`} buttonLabel="Check Paper" icon={FileCheck2}>
+  return <ActionModal title={`${isV2 ? "Check Paper V2" : "Check Paper"} - ${quiz.title}`} buttonLabel={isV2 ? "Check Paper V2" : "Check Paper"} icon={FileCheck2}>
     <form onSubmit={submit}>
       <div className="notice">Take a photo or upload an image, crop to the answer sheet, scan, then review before saving.</div>
       <div className="inline">
@@ -442,7 +444,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><PaperCheckModal quiz={quiz} run={run} scanner="v2" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
@@ -897,6 +899,57 @@ async function scanPaperAnswerSheet(quiz, file) {
   };
 }
 
+async function scanPaperAnswerSheetV2(quiz, file) {
+  const image = await loadImageFromFile(file);
+  const maxWidth = 1200;
+  const scale = Math.min(1, maxWidth / image.naturalWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const page = detectPaperPage(imageData, canvas.width, canvas.height);
+  const previewUrl = canvas.toDataURL("image/jpeg", 0.72);
+  const firstRows = paperQuizRows(quiz, "A");
+  const firstLayout = paperSheetLayout(firstRows);
+  const codeDigits = firstLayout.code.map((column) => readBubbleGroupV2(imageData, canvas.width, canvas.height, page, column, {
+    minRatio: 0.3,
+    minGap: 0.035,
+    radiusScale: 2.25,
+    searchScale: 3.4
+  }).value || "").join("");
+  const typeRead = readBubbleGroupV2(imageData, canvas.width, canvas.height, page, firstLayout.type, {
+    minRatio: 0.34,
+    minGap: 0.055,
+    radiusScale: 2.8,
+    searchScale: 3
+  }).value || "A";
+  const rows = paperQuizRows(quiz, typeRead);
+  const layout = paperSheetLayout(rows);
+  const answers = {};
+  layout.answers.forEach((row) => {
+    const read = readBubbleGroupV2(imageData, canvas.width, canvas.height, page, row.choices, {
+      minRatio: 0.3,
+      minGap: 0.045,
+      radiusScale: 2.55,
+      searchScale: 3.8
+    });
+    if (read.value) answers[row.number] = read.value;
+  });
+  const missingCode = codeDigits.length !== 4;
+  const answered = Object.keys(answers).length;
+  return {
+    studentCode: missingCode ? "" : `JCS${codeDigits}`,
+    variant: typeRead,
+    answers,
+    rows,
+    usedMarkers: page.usedMarkers,
+    previewUrl,
+    message: `${page.usedMarkers ? "V2 scan markers found." : "V2 using image edges; crop tighter if detection is off."} Detected ${missingCode ? "no complete code" : `JCS${codeDigits}`}, Type ${typeRead}, and ${answered}/${rows.length} answers. Review before saving.`
+  };
+}
+
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -1167,6 +1220,63 @@ function readBubbleGroup(imageData, width, height, page, bubbles, options = {}) 
   const strongGap = options.strongGap ?? 0.1;
   const confident = best.ratio >= minRatio && (gap >= minGap || (best.ratio >= strongRatio && gap >= strongGap));
   return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
+}
+
+function readBubbleGroupV2(imageData, width, height, page, bubbles, options = {}) {
+  const reads = bubbles.map((bubble) => ({
+    ...bubble,
+    ratio: bubbleInkScoreV2(imageData, width, height, page, bubble, options)
+  })).sort((a, b) => b.ratio - a.ratio);
+  const [best, second] = reads;
+  if (!best) return { value: "", confidence: 0 };
+  const gap = best.ratio - (second?.ratio || 0);
+  const minRatio = options.minRatio ?? 0.3;
+  const minGap = options.minGap ?? 0.045;
+  const confident = best.ratio >= minRatio && (gap >= minGap || best.ratio >= 0.62);
+  return { value: confident ? best.value : "", confidence: gap, ratio: best.ratio };
+}
+
+function bubbleInkScoreV2(imageData, width, height, page, bubble, options = {}) {
+  const point = mapPaperPoint(page, bubble.x, bubble.y);
+  const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
+  const radius = Math.max(2, Math.round(unitScale * (options.radiusScale ?? 2.6)));
+  const search = Math.max(1, Math.round(unitScale * (options.searchScale ?? 3.4)));
+  const step = Math.max(1, Math.round(unitScale * 0.8));
+  let bestScore = 0;
+  for (let dy = -search; dy <= search; dy += step) {
+    for (let dx = -search; dx <= search; dx += step) {
+      const center = bubbleInkScoreAt(imageData, width, height, Math.round(point.x + dx), Math.round(point.y + dy), radius);
+      bestScore = Math.max(bestScore, center);
+    }
+  }
+  return bestScore;
+}
+
+function bubbleInkScoreAt(imageData, width, height, cx, cy, radius) {
+  const data = imageData.data;
+  let veryDark = 0;
+  let dark = 0;
+  let total = 0;
+  let centerDark = 0;
+  let centerTotal = 0;
+  const centerRadius = Math.max(1, Math.round(radius * 0.55));
+  for (let y = cy - radius; y <= cy + radius; y += 1) {
+    for (let x = cx - radius; x <= cx + radius; x += 1) {
+      const distance = Math.hypot(x - cx, y - cy);
+      if (x < 0 || x >= width || y < 0 || y >= height || distance > radius) continue;
+      const offset = (y * width + x) * 4;
+      const lum = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
+      if (lum < 120) veryDark += 1;
+      if (lum < 170) dark += 1;
+      if (distance <= centerRadius) {
+        centerTotal += 1;
+        if (lum < 165) centerDark += 1;
+      }
+      total += 1;
+    }
+  }
+  if (!total || !centerTotal) return 0;
+  return (veryDark / total) * 0.35 + (dark / total) * 0.25 + (centerDark / centerTotal) * 0.4;
 }
 
 function bubbleDarkness(imageData, width, height, page, bubble, options = {}) {
