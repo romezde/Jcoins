@@ -1547,19 +1547,22 @@ function printPaperQuizPack(quiz) {
   printWindow.document.write(`<!doctype html>
     <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Paper Types</title>
     <style>
-      @page { size: A4; margin: 12mm; }
+      @page { size: legal; margin: 10mm; }
       * { box-sizing: border-box; }
-      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 10.5pt; line-height: 1.35; }
-      section.page { min-height: 265mm; break-after: page; page-break-after: always; }
-      header { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 9px; border-bottom: 2px solid #111; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 8.5pt; line-height: 1.18; }
+      section.page { min-height: 330mm; break-after: page; page-break-after: always; }
+      header { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 5px; border-bottom: 1.4px solid #111; }
       h1, h2 { margin: 0; }
-      h1 { font-size: 18pt; }
-      h2 { font-size: 15pt; }
-      .meta, .small { color: #333; font-size: 9pt; }
-      .type-badge { border: 2px solid #111; padding: 8px 12px; font-size: 18pt; font-weight: 800; align-self: start; }
-      .question { margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
-      .prompt { white-space: pre-wrap; font-weight: 700; margin-bottom: 5px; }
-      .option { margin: 3px 0 3px 18px; }
+      h1 { font-size: 13pt; }
+      h2 { font-size: 12pt; }
+      .meta, .small { color: #333; font-size: 7.5pt; }
+      .small { margin: 4px 0 6px; }
+      .type-badge { border: 1.5px solid #111; padding: 4px 8px; font-size: 12pt; font-weight: 800; align-self: start; }
+      .question-columns { columns: 2; column-gap: 9mm; column-rule: 0.5px solid #ccc; }
+      .question { margin: 0 0 5px; break-inside: avoid; page-break-inside: avoid; }
+      .prompt { white-space: pre-wrap; font-weight: 700; margin-bottom: 2px; }
+      .option-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 6px; margin-left: 9px; }
+      .option { margin: 0; }
       .sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; margin-top: 12px; }
       .bubble-row { display: flex; align-items: center; gap: 7px; min-height: 22px; }
       .bubble { display: inline-flex; width: 18px; height: 18px; border: 1.6px solid #111; border-radius: 50%; align-items: center; justify-content: center; font-size: 8pt; line-height: 1; }
@@ -1568,7 +1571,7 @@ function printPaperQuizPack(quiz) {
       .code-col strong { display: block; margin-bottom: 5px; }
       .answer-key { columns: 4; column-gap: 20px; margin-top: 12px; font-size: 10pt; }
       .machine-data { margin-top: 8px; padding: 2px 0; border: 0; color: #555; font-size: 6pt; word-break: break-all; }
-      .omr-page { position: relative; height: 265mm; overflow: hidden; }
+      .omr-page { position: relative; height: 265mm; min-height: 265mm; overflow: hidden; }
       .omr-title { position: absolute; left: 9%; top: 4.5%; right: 24%; }
       .scan-marker { position: absolute; width: 9mm; height: 9mm; border: 4.5mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .scan-marker.tl { left: 2.5%; top: 1.5%; }
@@ -1689,7 +1692,7 @@ function paperQuizVersionHtml(quiz, variant, options = {}) {
     <section class="page">
       <header><div><h1>${escapeQuizHtml(quiz.title)}</h1><div class="meta">${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)} | ${rows.length} paper items</div></div><div class="type-badge">TYPE ${variant}</div></header>
       <p class="small">Write your name on the answer sheet. Shade your 4 JCS digits, paper type, and one answer per item.</p>
-      ${rows.map((row) => `<article class="question"><div class="prompt">${row.number}. ${escapeQuizHtml(row.prompt)}</div>${row.choices.map((choice, index) => `<div class="option">(${String.fromCharCode(65 + index)}) ${escapeQuizHtml(choice)}</div>`).join("")}</article>`).join("")}
+      <main class="question-columns">${rows.map((row) => `<article class="question"><div class="prompt">${row.number}. ${escapeQuizHtml(row.prompt)}</div><div class="option-list">${row.choices.map((choice, index) => `<div class="option">(${String.fromCharCode(65 + index)}) ${escapeQuizHtml(choice)}</div>`).join("")}</div></article>`).join("")}</main>
     </section>
     ${includeAnswerSheet ? paperAnswerSheetHtml(quiz, variant, rows) : ""}
     ${includeAnswerKey ? paperAnswerKeyHtml(quiz, variant) : ""}`;
@@ -1768,29 +1771,31 @@ function printQuizPaper(quiz) {
   printWindow.document.write(`<!doctype html>
     <html><head><meta charset="utf-8"><title>${escapeQuizHtml(quiz.title)} - Paper Quiz</title>
     <style>
-      @page { size: A4; margin: 16mm; }
+      @page { size: legal; margin: 10mm; }
       * { box-sizing: border-box; }
-      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.45; }
-      header { padding-bottom: 12px; border-bottom: 2px solid #111; }
-      h1 { margin: 0 0 5px; font-size: 20pt; }
-      .meta { margin: 0; color: #333; }
-      .student-fields { display: grid; grid-template-columns: 1fr 150px; gap: 20px; margin: 20px 0 14px; }
-      .field { min-height: 28px; border-bottom: 1px solid #111; }
-      .instructions { margin: 0 0 18px; padding: 9px 11px; border: 1px solid #999; }
-      .question { margin: 0 0 18px; break-inside: avoid; page-break-inside: avoid; }
-      .prompt { margin-bottom: 8px; font-weight: 700; white-space: pre-wrap; }
-      .option { margin: 5px 0 5px 22px; }
-      .answer-line { height: 26px; margin: 5px 0 0 22px; border-bottom: 1px solid #777; }
-      .work-line { height: 24px; border-bottom: 1px solid #aaa; }
-      .matching { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-left: 22px; }
-      .matching p { margin: 5px 0; }
-      footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #999; text-align: center; font-size: 9pt; color: #555; }
+      body { margin: 0; color: #111; background: #fff; font-family: Arial, sans-serif; font-size: 8.5pt; line-height: 1.18; }
+      header { padding-bottom: 5px; border-bottom: 1.4px solid #111; }
+      h1 { margin: 0 0 2px; font-size: 13pt; }
+      .meta { margin: 0; color: #333; font-size: 7.5pt; }
+      .student-fields { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr 0.55fr; gap: 8px; margin: 7px 0; font-size: 8pt; }
+      .field { min-height: 16px; border-bottom: 1px solid #111; }
+      .instructions { margin: 0 0 7px; padding: 4px 6px; border: 1px solid #999; font-size: 8pt; }
+      .quiz-columns { columns: 2; column-gap: 9mm; column-rule: 0.5px solid #ccc; }
+      .question { margin: 0 0 5px; break-inside: avoid; page-break-inside: avoid; }
+      .prompt { margin-bottom: 2px; font-weight: 700; white-space: pre-wrap; }
+      .option-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 6px; margin-left: 9px; }
+      .option { margin: 0; }
+      .answer-line { height: 15px; margin: 2px 0 0 12px; border-bottom: 1px solid #777; }
+      .work-line { height: 14px; border-bottom: 1px solid #aaa; }
+      .matching { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-left: 10px; }
+      .matching p { margin: 1px 0; }
+      footer { margin-top: 8px; padding-top: 4px; border-top: 1px solid #999; text-align: center; font-size: 7.5pt; color: #555; }
       @media print { .no-print { display: none; } }
     </style></head><body>
       <header><h1>${escapeQuizHtml(quiz.title)}</h1><p class="meta">${escapeQuizHtml(quiz.subjectName)} · ${escapeQuizHtml(quiz.section)} · ${escapeQuizHtml(quiz.difficulty)} · ${quiz.questions?.length || 0} items</p></header>
-      <div class="student-fields"><div class="field">Name:</div><div class="field">Score:</div><div class="field">Section:</div><div class="field">Date:</div></div>
+      <div class="student-fields"><div class="field">Name:</div><div class="field">Section:</div><div class="field">Date:</div><div class="field">Score:</div></div>
       <p class="instructions"><strong>Instructions:</strong> Read each question carefully. Write or mark your answer clearly.</p>
-      <main>${questions}</main>
+      <main class="quiz-columns">${questions}</main>
       <footer>JCoins Arena · ${escapeQuizHtml(quiz.title)}</footer>
     </body></html>`);
   printWindow.document.close();
@@ -1862,10 +1867,10 @@ function printableAnswerKeyQuestion(question, index) {
 function printableQuestion(question, index) {
   const prompt = `<div class="prompt">${index + 1}. ${escapeQuizHtml(question.prompt)}</div>`;
   if (["multiple_choice", "true_false"].includes(question.type)) {
-    return `<section class="question">${prompt}${(question.options || []).map((option, optionIndex) => `<div class="option">○ ${String.fromCharCode(65 + optionIndex)}. ${escapeQuizHtml(option)}</div>`).join("")}</section>`;
+    return `<section class="question">${prompt}<div class="option-list">${(question.options || []).map((option, optionIndex) => `<div class="option">&#9675; ${String.fromCharCode(65 + optionIndex)}. ${escapeQuizHtml(option)}</div>`).join("")}</div></section>`;
   }
   if (question.type === "multiple_select") {
-    return `<section class="question">${prompt}${(question.options || []).map((option, optionIndex) => `<div class="option">□ ${String.fromCharCode(65 + optionIndex)}. ${escapeQuizHtml(option)}</div>`).join("")}</section>`;
+    return `<section class="question">${prompt}<div class="option-list">${(question.options || []).map((option, optionIndex) => `<div class="option">&#9633; ${String.fromCharCode(65 + optionIndex)}. ${escapeQuizHtml(option)}</div>`).join("")}</div></section>`;
   }
   if (question.type === "matching") {
     const pairs = question.matchingPairs || [];
