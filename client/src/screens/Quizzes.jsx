@@ -33,6 +33,7 @@ const answerVisibility = [
 const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
 const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
 const paperQuizVariants = ["A", "B", "C", "D"];
+const paperAnswerLetters = ["A", "B", "C", "D"];
 const paperScanMarkerBounds = { left: 46, top: 50, right: 954, bottom: 1405 };
 
 export default function Quizzes({ data, run, role }) {
@@ -780,6 +781,18 @@ function normalizePaperVariant(value) {
   return paperQuizVariants.includes(variant) ? variant : "A";
 }
 
+function normalizePaperChoices(rawChoices, correctText) {
+  const correct = String(correctText || "");
+  const cleaned = (rawChoices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
+  let choices = cleaned.slice(0, paperAnswerLetters.length);
+  if (correct && !choices.some((choice) => choice === correct)) {
+    const correctChoice = cleaned.find((choice) => choice === correct) || correct;
+    choices = [...choices.slice(0, paperAnswerLetters.length - 1), correctChoice];
+  }
+  while (choices.length < paperAnswerLetters.length) choices.push("Not used");
+  return choices.slice(0, paperAnswerLetters.length);
+}
+
 function paperQuizRows(quiz, variantInput = "A") {
   const variant = normalizePaperVariant(variantInput);
   const seedBase = `${quiz.id}:${quiz.currentVersionId || ""}:${variant}`;
@@ -816,7 +829,7 @@ function paperQuizRows(quiz, variantInput = "A") {
     });
   });
   return deterministicShuffle(rows, `${seedBase}:questions`).map((row, index) => {
-    const choices = (row.choices || []).slice(0, 26);
+    const choices = normalizePaperChoices(row.choices, row.correctText);
     const correctIndex = choices.findIndex((choice) => String(choice) === String(row.correctText));
     return {
       ...row,
@@ -855,13 +868,13 @@ function paperSheetLayout(rows) {
       const column = index >= rowsPerColumn ? 1 : 0;
       const rowIndex = column ? index - rowsPerColumn : index;
       const baseX = column ? 590 : 145;
-      const choiceGap = row.choices.length <= 4 ? 56 : clamp(230 / Math.max(1, row.choices.length - 1), 28, 44);
+      const choiceGap = 56;
       const y = answerStartY + rowIndex * answerGap;
       return {
         number: row.number,
         labelX: baseX - 25,
         y,
-        choices: row.choices.map((_, choiceIndex) => ({ x: baseX + choiceIndex * choiceGap, y, value: String.fromCharCode(65 + choiceIndex) }))
+        choices: paperAnswerLetters.map((value, choiceIndex) => ({ x: baseX + choiceIndex * choiceGap, y, value }))
       };
     })
   };

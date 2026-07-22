@@ -379,6 +379,7 @@ const quizQuestionTypes = ["multiple_choice", "true_false", "fill_blank", "match
 const quizTypes = ["mixed", ...quizQuestionTypes];
 const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
 const paperQuizVariants = ["A", "B", "C", "D"];
+const paperAnswerLetters = ["A", "B", "C", "D"];
 const STUDENT_ASSISTANT_DAILY_REWARD = 50;
 const STUDENT_ASSISTANT_REWARD_INTERVAL_MS = 15 * 60 * 1000;
 const defaultShopItems = [
@@ -3332,6 +3333,18 @@ function normalizePaperVariant(value) {
   return paperQuizVariants.includes(variant) ? variant : "A";
 }
 
+function normalizePaperChoices(rawChoices, correctText) {
+  const correct = String(correctText || "");
+  const cleaned = (rawChoices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
+  let choices = cleaned.slice(0, paperAnswerLetters.length);
+  if (correct && !choices.some((choice) => choice === correct)) {
+    const correctChoice = cleaned.find((choice) => choice === correct) || correct;
+    choices = [...choices.slice(0, paperAnswerLetters.length - 1), correctChoice];
+  }
+  while (choices.length < paperAnswerLetters.length) choices.push("Not used");
+  return choices.slice(0, paperAnswerLetters.length);
+}
+
 function paperQuizRows(quiz, variantInput = "A") {
   const variant = normalizePaperVariant(variantInput);
   const seedBase = `${quiz.id}:${quiz.currentVersionId || ""}:${variant}`;
@@ -3368,7 +3381,7 @@ function paperQuizRows(quiz, variantInput = "A") {
     });
   });
   return deterministicShuffle(rows, `${seedBase}:questions`).map((row, index) => {
-    const choices = (row.choices || []).slice(0, 26);
+    const choices = normalizePaperChoices(row.choices, row.correctText);
     const correctIndex = choices.findIndex((choice) => String(choice) === String(row.correctText));
     return {
       ...row,
