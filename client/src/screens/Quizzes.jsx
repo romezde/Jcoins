@@ -841,9 +841,9 @@ function clamp(value, min, max) {
 }
 
 function paperSheetLayout(rows) {
-  const codeX = [120, 230, 340, 450];
+  const codeX = [145, 255, 365, 475];
   const codeY = Array.from({ length: 10 }, (_, value) => 292 + value * 28);
-  const typeX = [140, 215, 290, 365];
+  const typeX = [165, 240, 315, 390];
   const answerStartY = 705;
   const answerEndY = 1315;
   const rowsPerColumn = Math.ceil(rows.length / 2);
@@ -854,7 +854,7 @@ function paperSheetLayout(rows) {
     answers: rows.map((row, index) => {
       const column = index >= rowsPerColumn ? 1 : 0;
       const rowIndex = column ? index - rowsPerColumn : index;
-      const baseX = column ? 570 : 120;
+      const baseX = column ? 590 : 145;
       const y = answerStartY + rowIndex * answerGap;
       return {
         number: row.number,
@@ -868,10 +868,10 @@ function paperSheetLayout(rows) {
 
 function paperScanZones() {
   return {
-    code: zoneMarkers(72, 262, 498, 602),
-    type: zoneMarkers(72, 616, 410, 672),
-    answersLeft: zoneMarkers(72, 682, 368, 1344),
-    answersRight: zoneMarkers(528, 682, 824, 1344)
+    code: zoneMarkers(30, 262, 530, 602),
+    type: zoneMarkers(30, 606, 440, 676),
+    answersLeft: zoneMarkers(30, 676, 430, 1344),
+    answersRight: zoneMarkers(540, 676, 850, 1344)
   };
 }
 
@@ -1483,7 +1483,7 @@ function printPaperQuizPack(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1527,7 +1527,7 @@ function printBlankPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1572,7 +1572,7 @@ function printDemoPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 2mm; height: 2mm; margin: -1mm 0 0 -1mm; border: 1mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1630,10 +1630,10 @@ function paperAnswerSheetHtml(quiz, variant, rows, filled = {}, options = {}) {
     ${paperZoneMarkersHtml(zones)}
     <div class="omr-title"><h2>Answer Sheet</h2><div class="meta">${escapeQuizHtml(quiz.title)} | ${escapeQuizHtml(quiz.subjectName)} | ${escapeQuizHtml(quiz.section)}</div></div>
     <div class="omr-type">${typeLabel}</div>
-    <div class="omr-text" style="left:6%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
-    <div class="omr-label" style="left:6%;top:17%;">Student Code: JCS____</div>
-    <div class="omr-label" style="left:6%;top:41%;">Paper Type</div>
-    <div class="omr-label" style="left:6%;top:47%;">Answers</div>
+    <div class="omr-text" style="left:8%;top:12%;">Name: ________________________________ Section: __________________ Date: __________ Score: ________</div>
+    <div class="omr-label" style="left:8%;top:16.5%;">Student Code: JCS____</div>
+    <div class="omr-label" style="left:8%;top:40%;">Paper Type</div>
+    <div class="omr-label" style="left:8%;top:45.5%;">Answers</div>
     ${bubbles}
     <div class="machine-data" style="position:absolute;left:6%;right:6%;bottom:3%;">JCOINS-PAPER quiz=${escapeQuizHtml(quiz.id)} type=${variant}</div>
   </section>`;
