@@ -45,7 +45,7 @@ export function StudentProfile({ data, run }) {
 function StudentGradeAdvice({ data }) {
   const rows = data.gradeSummaries || [];
   if (!rows.length) return <Panel title="Grade Advice" defaultOpen>
-    <p className="muted-line">No grade records yet. Submit requirements on time and review returned quizzes and activities.</p>
+    <p className="muted-line">Grades are not released yet. Submit requirements on time and review returned quizzes and activities.</p>
   </Panel>;
   return <Panel title="Grade Advice" wide defaultOpen>
     <Table columns={["Subject", "Section", "Current", "Status", "Missing", "Advice"]} rows={rows.map((row) => [

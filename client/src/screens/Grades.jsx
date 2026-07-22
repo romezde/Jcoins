@@ -34,6 +34,12 @@ export default function Grades({ data, run }) {
         <Field label="Search Students or Advice" value={search} onChange={setSearch} />
         <div className="filter-count">{summaries.length} student{summaries.length === 1 ? "" : "s"}</div>
       </div>
+      <div className="notice">
+        {setting?.releasedAt ? `Grades released to students on ${formatGradeDateTime(setting.releasedAt)}.` : "Initial grades are visible to teachers/admin only until you release this subject-section."}
+      </div>
+      <button type="button" className={setting?.releasedAt ? "soft" : ""} onClick={() => releaseGrades(activeClass, setting, run)}>
+        {setting?.releasedAt ? "Release Updated Grades" : "Release Grades to Students"}
+      </button>
       <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
       <Table columns={["Student", "Current", "Risk", "Priority", "Missing", "Advice", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
@@ -191,6 +197,17 @@ function settingsFormValues(setting = {}) {
     passingGrade: setting.passingGrade ?? 75,
     minimumGrade: setting.minimumGrade ?? 50
   };
+}
+
+function releaseGrades(activeClass, setting, run) {
+  const action = setting?.releasedAt ? "release updated grades again" : "release grades to students";
+  return confirm(`This will ${action} for ${activeClass.subjectName} - ${activeClass.sectionLabel}.`)
+    && run(() => post("/admin/grades/release", { subjectId: activeClass.subjectId, section: activeClass.section }), "Grades released");
+}
+
+function formatGradeDateTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value || "") : date.toLocaleString();
 }
 
 function writtenWorkFormValues(work) {

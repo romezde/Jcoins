@@ -3778,6 +3778,7 @@ function normalizeGradeSetting(setting, db) {
   setting.recitationBonusMax = Math.max(0, Math.min(20, Number(setting.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5)));
   setting.passingGrade = Math.max(1, Math.min(100, Number(setting.passingGrade || db.settings.grades?.passingGrade || 75)));
   setting.minimumGrade = Math.max(0, Math.min(100, Number(setting.minimumGrade ?? db.settings.grades?.minimumGrade ?? 50)));
+  setting.releasedAt = String(setting.releasedAt || "");
   return setting;
 }
 
@@ -3972,6 +3973,7 @@ function automaticGradeAdvice(summary) {
 
 function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const setting = gradeSettingFor(db, subjectId, section);
+  if (user.role === "student" && !setting.releasedAt) return null;
   const weights = setting.weights || {};
   const missingItems = [];
   const writtenPercents = [];
@@ -4025,6 +4027,8 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     currentGrade,
     passingGrade: setting.passingGrade,
     minimumGrade: setting.minimumGrade,
+    releasedAt: setting.releasedAt,
+    gradesReleased: !!setting.releasedAt,
     riskStatus,
     priority: note?.priority || (["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low"),
     recitationBonus,
@@ -4052,7 +4056,8 @@ function hydrateGradeSummaries(db, user) {
       sections.forEach((section) => {
         if (!studentIsInClass(db, student, subject.id, section)) return;
         if (user.role !== "student" && (!canUseSubject(user, subject.id) || !canUseSection(user, section))) return;
-        rows.push(gradeSummaryForStudent(db, student, subject.id, section, user));
+        const summary = gradeSummaryForStudent(db, student, subject.id, section, user);
+        if (summary) rows.push(summary);
       });
     });
   });
@@ -5815,6 +5820,21 @@ app.put("/api/admin/grades/settings", auth, requireRole("admin", "teacher"), asy
     db.gradeSettings ||= [];
     db.gradeSettings.push(normalizeGradeSetting({ id: gradeClassKey(input.subjectId, input.section), ...input, createdAt: updatedAt, createdBy: req.user.id, updatedAt }, db));
   }
+  await writeDb(db);
+  res.json({ gradeSettings: gradeSettingsForUser(db, req.user), gradeSummaries: hydrateGradeSummaries(db, req.user) });
+});
+
+app.post("/api/admin/grades/release", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const subjectId = String(req.body.subjectId || "").trim();
+  const section = String(req.body.section || "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
+  if (!section || !db.sections.includes(section) || !canUseSection(req.user, section)) return res.status(400).json({ error: "Choose an available section." });
+  const setting = gradeSettingFor(db, subjectId, section, true);
+  setting.releasedAt = now();
+  setting.releasedBy = req.user.id;
+  setting.updatedAt = setting.releasedAt;
+  setting.updatedBy = req.user.id;
   await writeDb(db);
   res.json({ gradeSettings: gradeSettingsForUser(db, req.user), gradeSummaries: hydrateGradeSummaries(db, req.user) });
 });
