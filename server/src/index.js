@@ -3983,6 +3983,13 @@ function attendancePercentForStudent(db, studentId, subjectId, section) {
   return { values, missing: values.filter((value) => value === 0).length };
 }
 
+function recitationGradeBonus(db, studentId, subjectId, setting) {
+  const recitationPoints = (db.recitations || [])
+    .filter((recitation) => recitation.studentId === studentId && recitation.subjectId === subjectId)
+    .reduce((sum, recitation) => sum + Number(recitation.amount || 1), 0);
+  return Math.min(Number(setting.recitationBonusMax || 0), recitationPoints / 100 * Number(setting.recitationBonusMax || 0));
+}
+
 function gradeRiskStatus(grade, passingGrade = 75) {
   if (grade >= Math.max(85, passingGrade + 10)) return "Safe";
   if (grade >= passingGrade) return "Watch";
@@ -4052,8 +4059,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     }
   });
   if (!majorExams.length && Number(weights.majorExams || 0) > 0) majorPercents.push(100);
-  const recitationCount = (db.recitations || []).filter((recitation) => recitation.studentId === student.id && recitation.subjectId === subjectId).length;
-  const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), recitationCount);
+  const recitationBonus = recitationGradeBonus(db, student.id, subjectId, setting);
   const categories = {
     writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length, setting.includeWrittenWorks !== false && !!writtenWorks.length),
     quizzes: categorySummary("Quizzes", weights.quizzes, quizPercents, missingItems.length, !!quizzes.length),

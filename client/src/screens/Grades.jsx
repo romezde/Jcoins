@@ -19,6 +19,13 @@ function attendanceGradeValue(status) {
   return 0;
 }
 
+function recitationGradeBonus(data, studentId, subjectId, setting) {
+  const recitationPoints = (data.recitations || [])
+    .filter((item) => item.studentId === studentId && item.subjectId === subjectId)
+    .reduce((sum, item) => sum + Number(item.amount || 1), 0);
+  return Math.min(Number(setting.recitationBonusMax || 0), recitationPoints / 100 * Number(setting.recitationBonusMax || 0));
+}
+
 export default function Grades({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [search, setSearch] = useState("");
@@ -181,7 +188,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   };
   const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
   const weightedPercent = activeWeight ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
-  const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), (data.recitations || []).filter((item) => item.studentId === student.id && item.subjectId === activeClass.subjectId).length);
+  const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId, setting);
   const currentGrade = Math.max(0, Math.min(100, Math.round(weightedPercent + recitationBonus)));
   const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
   return {
