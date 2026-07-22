@@ -101,7 +101,118 @@ function buildGradeClasses(data) {
 }
 
 function gradeSummariesForClass(data, activeClass) {
-  return (data.gradeSummaries || []).filter((row) => row.subjectId === activeClass.subjectId && String(row.section || "").trim() === activeClass.section);
+  const rows = (data.gradeSummaries || []).filter((row) => row.subjectId === activeClass.subjectId && String(row.section || "").trim() === activeClass.section);
+  return rows.length ? rows : computeLocalGradeSummaries(data, activeClass);
+}
+
+function computeLocalGradeSummaries(data, activeClass) {
+  const setting = gradeSettingForClass(data, activeClass);
+  const weights = setting.weights || {};
+  const students = (data.students || []).filter((student) => String(student.section || "").trim() === activeClass.section);
+  const writtenWorks = (data.writtenWorks || []).filter((work) => work.subjectId === activeClass.subjectId && String(work.section || "").trim() === activeClass.section);
+  const quizzes = (data.quizzes || []).filter((quiz) => quiz.subjectId === activeClass.subjectId && String(quiz.section || "").trim() === activeClass.section && quiz.status !== "draft");
+  const activities = (data.activities || []).filter((activity) => activity.subjectId === activeClass.subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === activeClass.section));
+  const attendanceWeeks = (data.attendanceWeeks || []).filter((week) => week.subjectId === activeClass.subjectId && (!String(week.section || "").trim() || String(week.section || "").trim() === activeClass.section));
+  const majorExams = (data.majorExams || []).filter((exam) => exam.subjectId === activeClass.subjectId && String(exam.section || "").trim() === activeClass.section);
+  return students.map((student) => localGradeSummaryForStudent(data, activeClass, setting, { writtenWorks, quizzes, activities, attendanceWeeks, majorExams }, student));
+}
+
+function localGradeSummaryForStudent(data, activeClass, setting, records, student) {
+  const weights = setting.weights || {};
+  const missingItems = [];
+  const writtenPercents = [];
+  if (setting.includeWrittenWorks !== false) records.writtenWorks.forEach((work) => {
+    const row = (work.rows || []).find((item) => item.studentId === student.id);
+    if (row?.recorded) writtenPercents.push(Number(row.percent || 0));
+    else {
+      writtenPercents.push(0);
+      missingItems.push(work.title);
+    }
+  });
+  const quizPercents = [];
+  records.quizzes.forEach((quiz) => {
+    const row = (quiz.rows || []).find((item) => item.studentId === student.id);
+    const total = quizQuestionTotal(quiz, row);
+    if (row?.attempts && total) quizPercents.push(Number(row.bestScore || 0) / total * 100);
+    else {
+      quizPercents.push(0);
+      missingItems.push(quiz.title);
+    }
+  });
+  const activityPercents = [];
+  records.activities.forEach((activity) => {
+    const row = (activity.rows || []).find((item) => item.studentId === student.id);
+    if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
+    else {
+      activityPercents.push(0);
+      missingItems.push(activity.title);
+    }
+  });
+  const attendanceValues = [];
+  records.attendanceWeeks.forEach((week) => {
+    const cancelled = new Set(week.cancelledDates || []);
+    (week.dates || []).filter((date) => !cancelled.has(date)).forEach((date) => {
+      const record = (data.attendanceRecords || []).find((item) => item.weekId === week.id && item.studentId === student.id && item.date === date);
+      attendanceValues.push(record?.status === "check" ? 100 : ["late", "excused"].includes(record?.status) ? 50 : 0);
+    });
+  });
+  const majorPercents = [];
+  records.majorExams.forEach((exam) => {
+    const row = (exam.rows || []).find((item) => item.studentId === student.id);
+    if (row?.recorded) majorPercents.push(Number(row.percent || 0));
+    else {
+      majorPercents.push(0);
+      missingItems.push(exam.title);
+    }
+  });
+  if (!records.majorExams.length) majorPercents.push(100);
+  const categories = {
+    writtenWorks: localCategory("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, setting.includeWrittenWorks !== false && records.writtenWorks.length),
+    quizzes: localCategory("Quizzes", weights.quizzes, quizPercents, records.quizzes.length),
+    activities: localCategory("Activities / PT", weights.activities, activityPercents, records.activities.length),
+    attendance: localCategory("Attendance", weights.attendance, attendanceValues, attendanceValues.length),
+    majorExams: localCategory("Major Exams", weights.majorExams, majorPercents, true)
+  };
+  const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
+  const weightedPercent = activeWeight ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
+  const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), (data.recitations || []).filter((item) => item.studentId === student.id && item.subjectId === activeClass.subjectId).length);
+  const currentGrade = Math.max(Number(setting.minimumGrade ?? 50), Math.min(100, Math.round(weightedPercent + recitationBonus)));
+  const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
+  return {
+    studentId: student.id,
+    studentName: student.name,
+    subjectId: activeClass.subjectId,
+    subjectName: activeClass.subjectName,
+    section: activeClass.section,
+    currentGrade,
+    passingGrade: setting.passingGrade,
+    minimumGrade: setting.minimumGrade,
+    riskStatus,
+    priority: ["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low",
+    recitationBonus,
+    categories,
+    missingItems: [...new Set(missingItems)].slice(0, 20),
+    visibleAdvice: "Local grade preview from loaded attendance, activities, quizzes, and exams.",
+    visibleToStudent: true
+  };
+}
+
+function localCategory(label, weight, values, active) {
+  const categoryWeight = active ? Number(weight || 0) : 0;
+  const percent = active && values.length ? Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length) : null;
+  return { label, weight: categoryWeight, configuredWeight: Number(weight || 0), percent, contribution: percent == null ? 0 : Math.round(percent * categoryWeight) / 100, active };
+}
+
+function quizQuestionTotal(quiz, row) {
+  const latestTotal = String(row?.latestScore || "").match(/\/(\d+)/)?.[1];
+  return Number(latestTotal || quiz.questions?.length || quiz.itemCount || 0);
+}
+
+function gradeRiskLabel(grade, passingGrade = 75) {
+  if (grade >= Math.max(85, Number(passingGrade || 75) + 10)) return "Safe";
+  if (grade >= Number(passingGrade || 75)) return "Watch";
+  if (grade >= Math.max(0, Number(passingGrade || 75) - 15)) return "At Risk";
+  return "Critical";
 }
 
 function GradeSettingsForm({ activeClass, setting, run }) {
