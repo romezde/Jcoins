@@ -1175,7 +1175,7 @@ function detectZonePage(basePage, zone, candidates) {
 }
 
 function findPaperMarkers(imageData, width, height) {
-  const candidates = findMarkerCandidates(imageData, width, height).filter((candidate) => candidate.side >= Math.max(14, Math.min(width, height) * 0.018));
+  const candidates = findMarkerCandidates(imageData, width, height).filter((candidate) => candidate.side >= Math.max(20, Math.min(width, height) * 0.026));
   if (candidates.length < 4) return null;
   const distinct = (picked) => {
     const minimumGap = Math.min(width, height) * 0.08;
@@ -1324,7 +1324,7 @@ function findMarkerInRegion(imageData, width, height, rx0, ry0, rx1, ry1, corner
       const boxHeight = maxY - minY + 1;
       const fill = count / Math.max(1, boxWidth * boxHeight);
       const ratio = boxWidth / Math.max(1, boxHeight);
-      const minSide = options.pageMarker ? Math.max(14, Math.min(width, height) * 0.018) : Math.max(8, Math.min(width, height) * 0.01);
+      const minSide = options.pageMarker ? Math.max(20, Math.min(width, height) * 0.026) : Math.max(8, Math.min(width, height) * 0.01);
       const maxSide = Math.max(minSide * 2, Math.min(regionWidth, regionHeight) * 0.45);
       if (count < 50 || boxWidth < minSide || boxHeight < minSide || boxWidth > maxSide || boxHeight > maxSide || fill < 0.2 || ratio < 0.45 || ratio > 2.2) continue;
       const cx = (minX + maxX) / 2;
@@ -1536,7 +1536,7 @@ function printPaperQuizPack(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1579,7 +1579,7 @@ function printBlankPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
@@ -1623,7 +1623,7 @@ function printDemoPaperSheet(quiz) {
       .scan-marker.tr { right: 2.5%; top: 1.5%; }
       .scan-marker.bl { left: 2.5%; bottom: 1.5%; }
       .scan-marker.br { right: 2.5%; bottom: 1.5%; }
-      .zone-marker { position: absolute; width: 1.6mm; height: 1.6mm; margin: -0.8mm 0 0 -0.8mm; border: 0.8mm solid #111; background: #111; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .zone-marker { position: absolute; width: 4mm; height: 4mm; margin: -2mm 0 0 -2mm; border: 0.8mm solid #111; background: transparent; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .omr-label { position: absolute; font-weight: 700; }
       .omr-text { position: absolute; }
       .omr-bubble { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 1.7px solid #111; border-radius: 50%; background: #fff; }
