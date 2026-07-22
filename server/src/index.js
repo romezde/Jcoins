@@ -6228,6 +6228,12 @@ app.post("/api/requests", auth, async (req, res) => {
     if (activeTrade) return res.status(409).json({ error: "One of these students already has an active trade request." });
     payload = { toStudentId, amount, requesterRole };
     status = "peer_pending";
+  } else if (type === "purchase") {
+    const itemId = String(payload.itemId || "").trim();
+    const priced = activeShopPrice(db, itemId);
+    if (!priced) return res.status(400).json({ error: "Choose a valid shop item." });
+    if (studentCoins(db, studentId) < Number(priced.activeCost || 0)) return res.status(400).json({ error: "Not enough JCoins." });
+    payload = { itemId };
   }
   const request = { id: randomUUID(), type, status, studentId, payload, remarks: req.body.remarks || "", createdAt: now(), createdBy: req.user.id };
   db.requests.push(request);
@@ -6459,6 +6465,33 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
       meta: { requestId: request.id, senderId, recipientId }
     });
   }
+  if (request.type === "purchase" && request.status === "approved") {
+    const payload = request.payload || {};
+    const priced = activeShopPrice(db, payload.itemId);
+    if (!priced) return res.status(400).json({ error: "Shop item no longer exists." });
+    const cost = Math.abs(Number(priced.activeCost || 0));
+    if (!Number.isFinite(cost)) return res.status(400).json({ error: "Shop item has an invalid cost." });
+    if (studentCoins(db, request.studentId) < cost) return res.status(400).json({ error: `${studentName(db, request.studentId)} does not have enough JCoins for this purchase.` });
+    const alreadyCharged = db.transactions.some((transaction) => transaction.meta?.kind === "shop-purchase-request" && transaction.meta?.requestId === request.id);
+    if (!alreadyCharged && cost > 0) {
+      db.transactions.push(tx(request.studentId, "shop", -cost, request.remarks || priced.name || "Shop purchase", request.resolvedAt, req.user.id, {
+        kind: "shop-purchase-request",
+        requestId: request.id,
+        itemId: priced.id,
+        itemName: priced.name,
+        originalCost: Number(priced.cost || 0),
+        discount: Number(priced.discount || 0)
+      }));
+    }
+    addAuditLog(db, req.user, "shop.purchase.approve", {
+      entityType: "request",
+      entityId: request.id,
+      targetStudentId: request.studentId,
+      amount: -cost,
+      summary: `Approved purchase: ${studentName(db, request.studentId)} bought ${priced.name} for ${cost} JCoins.`,
+      meta: { requestId: request.id, itemId: priced.id, cost }
+    });
+  }
   if (request.type === "registration" && request.status === "approved") {
     const payload = request.payload || {};
     if (db.users.some((user) => user.username.toLowerCase() === String(payload.username || "").toLowerCase()) || db.students.some((student) => student.name.toLowerCase() === String(payload.fullName || "").toLowerCase())) {
@@ -6473,7 +6506,7 @@ app.post("/api/admin/requests/:id/resolve", auth, requireRole("admin", "teacher"
     delete request.payload.passwordHash;
   }
   if (request.type === "registration" && request.status !== "approved") delete request.payload.passwordHash;
-  if (request.type !== "trade" || request.status !== "approved") {
+  if (!["trade", "purchase"].includes(request.type) || request.status !== "approved") {
     addAuditLog(db, req.user, "request.resolve", {
       entityType: "request",
       entityId: request.id,
