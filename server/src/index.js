@@ -3926,7 +3926,7 @@ function quizTotalForStudent(quiz, submission) {
 }
 
 function percentAverage(values) {
-  if (!values.length) return null;
+  if (!values.length) return 100;
   return Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length);
 }
 
@@ -3981,7 +3981,10 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     (db.writtenWorks || []).filter((work) => work.subjectId === subjectId && work.section === section).forEach((work) => {
       const recorded = Object.prototype.hasOwnProperty.call(work.scores || {}, student.id);
       if (recorded) writtenPercents.push(Number(work.scores[student.id] || 0) / Number(work.maxScore || 1) * 100);
-      else missingItems.push(work.title);
+      else {
+        writtenPercents.push(0);
+        missingItems.push(work.title);
+      }
     });
   }
   const quizPercents = [];
@@ -3989,21 +3992,30 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     const submission = (quiz.submissions || []).find((item) => item.studentId === student.id);
     const total = quizTotalForStudent(quiz, submission);
     if (submission?.attempts?.length && total) quizPercents.push(Number(submission.bestScore || 0) / total * 100);
-    else missingItems.push(quiz.title);
+    else {
+      quizPercents.push(0);
+      missingItems.push(quiz.title);
+    }
   });
   const activityPercents = [];
   hydrateActivities(db).filter((activity) => activity.subjectId === subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === section)).forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (user.role === "student" && row && !row.scoreReleased) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
-    else missingItems.push(activity.title);
+    else {
+      activityPercents.push(0);
+      missingItems.push(activity.title);
+    }
   });
   const attendance = attendancePercentForStudent(db, student.id, subjectId, section);
   const majorPercents = [];
   (db.majorExams || []).filter((exam) => exam.subjectId === subjectId && exam.section === section).forEach((exam) => {
     const recorded = Object.prototype.hasOwnProperty.call(exam.scores || {}, student.id);
     if (recorded) majorPercents.push(Number(exam.scores[student.id] || 0) / Number(exam.maxScore || 1) * 100);
-    else missingItems.push(exam.title);
+    else {
+      majorPercents.push(0);
+      missingItems.push(exam.title);
+    }
   });
   const recitationCount = (db.recitations || []).filter((recitation) => recitation.studentId === student.id && recitation.subjectId === subjectId).length;
   const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), recitationCount);
@@ -4043,22 +4055,52 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   return summary;
 }
 
+function gradeClassKeyParts(subjectId, section = "") {
+  return `${subjectId}::${String(section || "").trim()}`;
+}
+
+function gradeClassRecordPairs(db) {
+  const pairs = new Map();
+  const add = (subjectId, section = "") => {
+    const cleanSubjectId = String(subjectId || "").trim();
+    const cleanSection = String(section || "").trim();
+    if (cleanSubjectId && cleanSection) pairs.set(gradeClassKeyParts(cleanSubjectId, cleanSection), { subjectId: cleanSubjectId, section: cleanSection });
+  };
+  (db.gradeSettings || []).forEach((item) => add(item.subjectId, item.section));
+  (db.writtenWorks || []).forEach((item) => add(item.subjectId, item.section));
+  (db.quizzes || []).filter((item) => item.status !== "draft").forEach((item) => add(item.subjectId, item.section));
+  (db.activities || []).forEach((item) => add(item.subjectId, item.section));
+  (db.attendanceWeeks || []).forEach((item) => add(item.subjectId, item.section));
+  (db.majorExams || []).forEach((item) => add(item.subjectId, item.section));
+  return [...pairs.values()];
+}
+
+function gradeClassHasRecords(db, subjectId, section = "") {
+  const cleanSection = String(section || "").trim();
+  return gradeClassRecordPairs(db).some((item) => item.subjectId === subjectId && item.section === cleanSection);
+}
+
 function hydrateGradeSummaries(db, user) {
   const students = scopeStudents(db, user);
   const rows = [];
+  const classPairs = new Map();
   students.forEach((student) => {
-    (db.subjects || []).forEach((subject) => {
-      const sections = new Set();
-      if ((student.subjectIds || []).includes(subject.id)) sections.add(student.section || "");
-      (db.guildSystem?.classMemberships || [])
-        .filter((membership) => membership.studentId === student.id && membership.subjectId === subject.id)
-        .forEach((membership) => sections.add(String(membership.section || "").trim()));
-      sections.forEach((section) => {
-        if (!studentIsInClass(db, student, subject.id, section)) return;
-        if (user.role !== "student" && (!canUseSubject(user, subject.id) || !canUseSection(user, section))) return;
-        const summary = gradeSummaryForStudent(db, student, subject.id, section, user);
-        if (summary) rows.push(summary);
-      });
+    (student.subjectIds || []).forEach((subjectId) => classPairs.set(gradeClassKeyParts(subjectId, student.section || ""), { subjectId, section: String(student.section || "").trim() }));
+    (db.guildSystem?.classMemberships || [])
+      .filter((membership) => membership.studentId === student.id)
+      .forEach((membership) => classPairs.set(gradeClassKeyParts(membership.subjectId, membership.section), { subjectId: membership.subjectId, section: String(membership.section || "").trim() }));
+  });
+  gradeClassRecordPairs(db).forEach((pair) => classPairs.set(gradeClassKeyParts(pair.subjectId, pair.section), pair));
+  classPairs.forEach(({ subjectId, section }) => {
+    if (!db.subjects.some((subject) => subject.id === subjectId)) return;
+    if (user.role !== "student" && (!canUseSubject(user, subjectId) || !canUseSection(user, section))) return;
+    const strictStudents = students.filter((student) => studentIsInClass(db, student, subjectId, section));
+    const classStudents = strictStudents.length ? strictStudents : gradeClassHasRecords(db, subjectId, section)
+      ? students.filter((student) => String(student.section || "").trim() === section)
+      : [];
+    classStudents.forEach((student) => {
+      const summary = gradeSummaryForStudent(db, student, subjectId, section, user);
+      if (summary) rows.push(summary);
     });
   });
   return rows.sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.section.localeCompare(b.section, undefined, { numeric: true }) || a.studentName.localeCompare(b.studentName));

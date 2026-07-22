@@ -3,19 +3,30 @@ import { BookOpenCheck, Users } from "lucide-react";
 import { Field } from "./ui.jsx";
 
 export function buildSubjectSectionClasses(data, itemCount = () => 0) {
-  return (data.subjects || []).flatMap((subject) => {
-    const students = (data.students || []).filter((student) => (student.subjectIds || []).includes(subject.id));
-    const sections = [...new Set(students.map((student) => String(student.section || "")))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return sections.map((section) => ({
+  const classPairs = new Map();
+  const add = (subjectId, section = "") => {
+    const cleanSubjectId = String(subjectId || "").trim();
+    const cleanSection = String(section || "").trim();
+    if (cleanSubjectId) classPairs.set(`${cleanSubjectId}::${cleanSection || "__none"}`, { subjectId: cleanSubjectId, section: cleanSection });
+  };
+  (data.students || []).forEach((student) => (student.subjectIds || []).forEach((subjectId) => add(subjectId, student.section)));
+  ["activities", "quizzes", "attendanceWeeks", "writtenWorks", "majorExams", "gradeSettings", "gradeSummaries"].forEach((key) => {
+    (data[key] || []).forEach((item) => add(item.subjectId, item.section));
+  });
+  return [...classPairs.values()].map(({ subjectId, section }) => {
+    const subject = (data.subjects || []).find((item) => item.id === subjectId);
+    const enrolledStudents = (data.students || []).filter((student) => (student.subjectIds || []).includes(subjectId) && String(student.section || "") === section);
+    const sectionStudents = (data.students || []).filter((student) => String(student.section || "") === section);
+    return subject ? {
       key: `${subject.id}::${section || "__none"}`,
       subjectId: subject.id,
       subjectName: subject.name,
       section,
       sectionLabel: section ? `Section ${section}` : "No section",
-      studentCount: students.filter((student) => String(student.section || "") === section).length,
+      studentCount: enrolledStudents.length || sectionStudents.length,
       itemCount: itemCount(subject.id, section)
-    }));
-  }).sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
+    } : null;
+  }).filter(Boolean).sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.sectionLabel.localeCompare(b.sectionLabel, undefined, { numeric: true }));
 }
 
 export default function SubjectSectionPicker({ classes, selectedKey, onSelect, title, itemLabel }) {
