@@ -1112,7 +1112,7 @@ function detectPaperPage(imageData, width, height) {
 }
 
 function pageFromPaperMarkers(markers, logicalBounds = paperScanMarkerBounds, options = {}) {
-  if (!markers || !Object.values(markers).every(Boolean)) return null;
+  if (!markers || !["tl", "tr", "bl", "br"].every((corner) => markers[corner])) return null;
   const { tl, tr, bl, br } = markers;
   const topWidth = Math.hypot(tr.x - tl.x, tr.y - tl.y);
   const bottomWidth = Math.hypot(br.x - bl.x, br.y - bl.y);
