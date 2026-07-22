@@ -974,8 +974,7 @@ function defaults() {
         weights: { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
         includeWrittenWorks: true,
         recitationBonusMax: 5,
-        passingGrade: 75,
-        minimumGrade: 50
+        passingGrade: 75
       },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
@@ -1309,7 +1308,6 @@ async function readDb() {
   db.settings.grades.includeWrittenWorks = db.settings.grades.includeWrittenWorks !== false;
   db.settings.grades.recitationBonusMax = Math.max(0, Math.min(20, Number(db.settings.grades.recitationBonusMax ?? d.settings.grades.recitationBonusMax)));
   db.settings.grades.passingGrade = Math.max(1, Math.min(100, Number(db.settings.grades.passingGrade || d.settings.grades.passingGrade)));
-  db.settings.grades.minimumGrade = Math.max(0, Math.min(100, Number(db.settings.grades.minimumGrade ?? d.settings.grades.minimumGrade)));
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.registration = { ...d.settings.registration, ...(db.settings.registration || {}) };
@@ -3777,7 +3775,6 @@ function normalizeGradeSetting(setting, db) {
   setting.includeWrittenWorks = setting.includeWrittenWorks !== false;
   setting.recitationBonusMax = Math.max(0, Math.min(20, Number(setting.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5)));
   setting.passingGrade = Math.max(1, Math.min(100, Number(setting.passingGrade || db.settings.grades?.passingGrade || 75)));
-  setting.minimumGrade = Math.max(0, Math.min(100, Number(setting.minimumGrade ?? db.settings.grades?.minimumGrade ?? 50)));
   setting.releasedAt = String(setting.releasedAt || "");
   return setting;
 }
@@ -3794,7 +3791,6 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
       includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
       recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
       passingGrade: db.settings.grades?.passingGrade ?? 75,
-      minimumGrade: db.settings.grades?.minimumGrade ?? 50,
       createdAt: now()
     }, db);
     db.gradeSettings.push(setting);
@@ -3806,8 +3802,7 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
     weights: db.settings.grades?.weights,
     includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
     recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
-    passingGrade: db.settings.grades?.passingGrade ?? 75,
-    minimumGrade: db.settings.grades?.minimumGrade ?? 50
+    passingGrade: db.settings.grades?.passingGrade ?? 75
   }, db);
 }
 
@@ -3823,8 +3818,7 @@ function gradeSettingInput(db, body, user) {
     weights,
     includeWrittenWorks: body.includeWrittenWorks !== false,
     recitationBonusMax: Math.max(0, Math.min(20, Number(body.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5))),
-    passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75))),
-    minimumGrade: Math.max(0, Math.min(100, Number(body.minimumGrade ?? db.settings.grades?.minimumGrade ?? 50)))
+    passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75)))
   };
 }
 
@@ -4043,7 +4037,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100
     : 100;
   const rawGrade = weightedPercent + recitationBonus;
-  const currentGrade = Math.max(Number(setting.minimumGrade ?? 50), Math.min(100, Math.round(rawGrade)));
+  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade)));
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
   const summary = {
@@ -4054,7 +4048,6 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     section,
     currentGrade,
     passingGrade: setting.passingGrade,
-    minimumGrade: setting.minimumGrade,
     releasedAt: setting.releasedAt,
     gradesReleased: !!setting.releasedAt,
     riskStatus,
