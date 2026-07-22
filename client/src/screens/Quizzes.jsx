@@ -33,6 +33,7 @@ const answerVisibility = [
 const aiReferenceLimits = { count: 10, perFileBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 };
 const paperQuizTypes = ["multiple_choice", "true_false", "matching"];
 const paperQuizVariants = ["A", "B", "C", "D"];
+const paperScanMarkerBounds = { left: 44, top: 40, right: 956, bottom: 1374 };
 
 export default function Quizzes({ data, run, role }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
@@ -837,10 +838,10 @@ function detectPaperPage(imageData, width, height) {
     br: findMarkerInRegion(imageData, width, height, width * 0.78, height * 0.82, width, height, "br")
   };
   if (Object.values(markers).every(Boolean)) {
-    const markerLeft = 60;
-    const markerTop = 56;
-    const markerRight = 940;
-    const markerBottom = 1358;
+    const markerLeft = paperScanMarkerBounds.left;
+    const markerTop = paperScanMarkerBounds.top;
+    const markerRight = paperScanMarkerBounds.right;
+    const markerBottom = paperScanMarkerBounds.bottom;
     const topWidth = Math.hypot(markers.tr.x - markers.tl.x, markers.tr.y - markers.tl.y);
     const bottomWidth = Math.hypot(markers.br.x - markers.bl.x, markers.br.y - markers.bl.y);
     const leftHeight = Math.hypot(markers.bl.x - markers.tl.x, markers.bl.y - markers.tl.y);
@@ -939,9 +940,20 @@ function readBubbleGroup(imageData, width, height, page, bubbles) {
 
 function bubbleDarkness(imageData, width, height, page, bubble) {
   const point = mapPaperPoint(page, bubble.x, bubble.y);
-  const cx = Math.round(point.x);
-  const cy = Math.round(point.y);
-  const radius = Math.max(5, Math.round((page.unitScale || Math.min(page.scaleX, page.scaleY)) * 11));
+  const unitScale = page.unitScale || Math.min(page.scaleX, page.scaleY);
+  const radius = Math.max(3, Math.round(unitScale * 7));
+  const search = Math.max(2, Math.round(unitScale * 9));
+  const step = Math.max(2, Math.round(unitScale * 3));
+  let bestRatio = 0;
+  for (let dy = -search; dy <= search; dy += step) {
+    for (let dx = -search; dx <= search; dx += step) {
+      bestRatio = Math.max(bestRatio, bubbleDarknessAt(imageData, width, height, Math.round(point.x + dx), Math.round(point.y + dy), radius));
+    }
+  }
+  return bestRatio;
+}
+
+function bubbleDarknessAt(imageData, width, height, cx, cy, radius) {
   const data = imageData.data;
   let dark = 0;
   let total = 0;
@@ -950,7 +962,7 @@ function bubbleDarkness(imageData, width, height, page, bubble) {
       if (x < 0 || x >= width || y < 0 || y >= height || Math.hypot(x - cx, y - cy) > radius) continue;
       const offset = (y * width + x) * 4;
       const lum = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
-      if (lum < 155) dark += 1;
+      if (lum < 135) dark += 1;
       total += 1;
     }
   }
