@@ -52,6 +52,9 @@ const ACTIVITY_ROW_PREFIX = "activity:";
 const GROUP_ACTIVITY_ROW_PREFIX = "group-activity:";
 const QUIZ_ROW_PREFIX = "quiz:";
 const MAJOR_EXAM_ROW_PREFIX = "major-exam:";
+const WRITTEN_WORK_ROW_PREFIX = "written-work:";
+const GRADE_SETTING_ROW_PREFIX = "grade-setting:";
+const GRADE_NOTE_ROW_PREFIX = "grade-note:";
 const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
 const SCHEDULE_ROW_PREFIX = "schedule:";
@@ -81,6 +84,9 @@ const STORAGE_ROW_TYPES = [
   { key: "groupActivities", label: "Guild group activities", prefix: GROUP_ACTIVITY_ROW_PREFIX },
   { key: "quizzes", label: "Quizzes", prefix: QUIZ_ROW_PREFIX },
   { key: "majorExams", label: "Major exams", prefix: MAJOR_EXAM_ROW_PREFIX },
+  { key: "writtenWorks", label: "Written works", prefix: WRITTEN_WORK_ROW_PREFIX },
+  { key: "gradeSettings", label: "Grade settings", prefix: GRADE_SETTING_ROW_PREFIX },
+  { key: "gradeNotes", label: "Grade notes and advice", prefix: GRADE_NOTE_ROW_PREFIX },
   { key: "requests", label: "Requests", prefix: REQUEST_ROW_PREFIX },
   { key: "feedback", label: "Feedback", prefix: FEEDBACK_ROW_PREFIX },
   { key: "schedules", label: "Schedules", prefix: SCHEDULE_ROW_PREFIX },
@@ -265,6 +271,9 @@ const persistedActivityHashes = new Map();
 const persistedGroupActivityHashes = new Map();
 const persistedQuizHashes = new Map();
 const persistedMajorExamHashes = new Map();
+const persistedWrittenWorkHashes = new Map();
+const persistedGradeSettingHashes = new Map();
+const persistedGradeNoteHashes = new Map();
 const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
 const persistedScheduleHashes = new Map();
@@ -960,6 +969,12 @@ function defaults() {
           { name: "Advanced", points: 50 }
         ]
       },
+      grades: {
+        weights: { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
+        includeWrittenWorks: true,
+        recitationBonusMax: 5,
+        passingGrade: 75
+      },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
       registration: { enabled: false, code: "" },
@@ -995,6 +1010,9 @@ async function createInitialDb() {
     groupActivities: [],
     quizzes: [],
     majorExams: [],
+    writtenWorks: [],
+    gradeSettings: [],
+    gradeNotes: [],
     shopItems: defaultShopItems,
     sales: [],
     requests: [],
@@ -1284,6 +1302,11 @@ async function readDb() {
   db.settings.recitation = { ...d.settings.recitation, ...(db.settings.recitation || {}) };
   db.settings.activities = { ...d.settings.activities, ...(db.settings.activities || {}) };
   db.settings.quizzes = { ...d.settings.quizzes, ...(db.settings.quizzes || {}) };
+  db.settings.grades = { ...d.settings.grades, ...(db.settings.grades || {}) };
+  db.settings.grades.weights = normalizeGradeWeights(db.settings.grades.weights || d.settings.grades.weights);
+  db.settings.grades.includeWrittenWorks = db.settings.grades.includeWrittenWorks !== false;
+  db.settings.grades.recitationBonusMax = Math.max(0, Math.min(20, Number(db.settings.grades.recitationBonusMax ?? d.settings.grades.recitationBonusMax)));
+  db.settings.grades.passingGrade = Math.max(1, Math.min(100, Number(db.settings.grades.passingGrade || d.settings.grades.passingGrade)));
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.registration = { ...d.settings.registration, ...(db.settings.registration || {}) };
@@ -1328,6 +1351,12 @@ async function readDb() {
   db.quizzes.forEach((quiz) => normalizeQuiz(quiz, db));
   db.majorExams ||= [];
   db.majorExams.forEach((exam) => normalizeMajorExam(exam, db));
+  db.writtenWorks ||= [];
+  db.writtenWorks.forEach((work) => normalizeWrittenWork(work, db));
+  db.gradeSettings ||= [];
+  db.gradeSettings.forEach((setting) => normalizeGradeSetting(setting, db));
+  db.gradeNotes ||= [];
+  db.gradeNotes.forEach((note) => normalizeGradeNote(note, db));
   db.shopItems ||= [];
   defaultShopItems.forEach((item) => {
     if (!db.shopItems.some((existing) => existing.id === item.id)) {
@@ -1426,6 +1455,9 @@ async function persistDb(db) {
     const groupActivities = extractEntityRows(dbToStore, "groupActivities", GROUP_ACTIVITY_ROW_PREFIX);
     const quizzes = extractEntityRows(dbToStore, "quizzes", QUIZ_ROW_PREFIX);
     const majorExams = extractEntityRows(dbToStore, "majorExams", MAJOR_EXAM_ROW_PREFIX);
+    const writtenWorks = extractEntityRows(dbToStore, "writtenWorks", WRITTEN_WORK_ROW_PREFIX);
+    const gradeSettings = extractEntityRows(dbToStore, "gradeSettings", GRADE_SETTING_ROW_PREFIX);
+    const gradeNotes = extractEntityRows(dbToStore, "gradeNotes", GRADE_NOTE_ROW_PREFIX);
     const requests = extractEntityRows(dbToStore, "requests", REQUEST_ROW_PREFIX);
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
     const schedules = extractEntityRows(dbToStore, "schedules", SCHEDULE_ROW_PREFIX);
@@ -1453,6 +1485,9 @@ async function persistDb(db) {
       syncEntityRows(groupActivities.items, groupActivities.rowIds, GROUP_ACTIVITY_ROW_PREFIX, persistedGroupActivityHashes),
       syncEntityRows(quizzes.items, quizzes.rowIds, QUIZ_ROW_PREFIX, persistedQuizHashes),
       syncEntityRows(majorExams.items, majorExams.rowIds, MAJOR_EXAM_ROW_PREFIX, persistedMajorExamHashes),
+      syncEntityRows(writtenWorks.items, writtenWorks.rowIds, WRITTEN_WORK_ROW_PREFIX, persistedWrittenWorkHashes),
+      syncEntityRows(gradeSettings.items, gradeSettings.rowIds, GRADE_SETTING_ROW_PREFIX, persistedGradeSettingHashes),
+      syncEntityRows(gradeNotes.items, gradeNotes.rowIds, GRADE_NOTE_ROW_PREFIX, persistedGradeNoteHashes),
       syncEntityRows(requests.items, requests.rowIds, REQUEST_ROW_PREFIX, persistedRequestHashes),
       syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes),
       syncEntityRows(schedules.items, schedules.rowIds, SCHEDULE_ROW_PREFIX, persistedScheduleHashes),
@@ -1504,6 +1539,9 @@ async function readSupabaseDb() {
     db.groupActivities,
     db.quizzes,
     db.majorExams,
+    db.writtenWorks,
+    db.gradeSettings,
+    db.gradeNotes,
     db.requests,
     db.feedback,
     db.schedules,
@@ -1530,6 +1568,9 @@ async function readSupabaseDb() {
     readEntityRows(GROUP_ACTIVITY_ROW_PREFIX, db.groupActivities || [], persistedGroupActivityHashes),
     readEntityRows(QUIZ_ROW_PREFIX, db.quizzes || [], persistedQuizHashes),
     readEntityRows(MAJOR_EXAM_ROW_PREFIX, db.majorExams || [], persistedMajorExamHashes),
+    readEntityRows(WRITTEN_WORK_ROW_PREFIX, db.writtenWorks || [], persistedWrittenWorkHashes),
+    readEntityRows(GRADE_SETTING_ROW_PREFIX, db.gradeSettings || [], persistedGradeSettingHashes),
+    readEntityRows(GRADE_NOTE_ROW_PREFIX, db.gradeNotes || [], persistedGradeNoteHashes),
     readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes),
     readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes),
     readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes),
@@ -2230,6 +2271,10 @@ function purgeStudentData(db, studentId) {
   (db.majorExams || []).forEach((exam) => {
     if (exam.scores && typeof exam.scores === "object") delete exam.scores[studentId];
   });
+  (db.writtenWorks || []).forEach((work) => {
+    if (work.scores && typeof work.scores === "object") delete work.scores[studentId];
+  });
+  db.gradeNotes = (db.gradeNotes || []).filter((note) => note.studentId !== studentId);
   reconcileGroupActivities(db);
 }
 
@@ -3674,6 +3719,323 @@ function hydrateMajorExams(db, user) {
     .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
 }
 
+const gradeCategories = ["writtenWorks", "quizzes", "activities", "attendance", "majorExams"];
+
+function normalizeGradeWeights(weights = {}) {
+  const fallback = defaults().settings.grades.weights;
+  return Object.fromEntries(gradeCategories.map((key) => {
+    const value = Number(weights[key] ?? fallback[key] ?? 0);
+    return [key, Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 0];
+  }));
+}
+
+function gradeClassKey(subjectId, section = "") {
+  return `${subjectId}::${String(section || "").trim()}`;
+}
+
+function normalizeGradeSetting(setting, db) {
+  setting.id ||= gradeClassKey(setting.subjectId || db.subjects[0]?.id || "", setting.section || "");
+  setting.subjectId = String(setting.subjectId || "").trim();
+  setting.section = String(setting.section || "").trim();
+  setting.weights = normalizeGradeWeights(setting.weights || db.settings.grades?.weights);
+  setting.includeWrittenWorks = setting.includeWrittenWorks !== false;
+  setting.recitationBonusMax = Math.max(0, Math.min(20, Number(setting.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5)));
+  setting.passingGrade = Math.max(1, Math.min(100, Number(setting.passingGrade || db.settings.grades?.passingGrade || 75)));
+  return setting;
+}
+
+function gradeSettingFor(db, subjectId, section = "", create = false) {
+  const normalizedSection = String(section || "").trim();
+  let setting = (db.gradeSettings || []).find((item) => item.subjectId === subjectId && String(item.section || "").trim() === normalizedSection);
+  if (!setting && create) {
+    setting = normalizeGradeSetting({
+      id: gradeClassKey(subjectId, normalizedSection),
+      subjectId,
+      section: normalizedSection,
+      weights: db.settings.grades?.weights,
+      includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
+      recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
+      passingGrade: db.settings.grades?.passingGrade ?? 75,
+      createdAt: now()
+    }, db);
+    db.gradeSettings.push(setting);
+  }
+  return normalizeGradeSetting(setting || {
+    id: gradeClassKey(subjectId, normalizedSection),
+    subjectId,
+    section: normalizedSection,
+    weights: db.settings.grades?.weights,
+    includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
+    recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
+    passingGrade: db.settings.grades?.passingGrade ?? 75
+  }, db);
+}
+
+function gradeSettingInput(db, body, user) {
+  const subjectId = String(body.subjectId || "").trim();
+  const section = String(body.section || "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(user, subjectId)) throw new Error("Choose an available subject.");
+  if (!section || !db.sections.includes(section) || !canUseSection(user, section)) throw new Error("Choose an available section.");
+  const weights = normalizeGradeWeights(body.weights || {});
+  return {
+    subjectId,
+    section,
+    weights,
+    includeWrittenWorks: body.includeWrittenWorks !== false,
+    recitationBonusMax: Math.max(0, Math.min(20, Number(body.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5))),
+    passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75)))
+  };
+}
+
+function normalizeWrittenWork(work, db) {
+  work.title = String(work.title || "Written Work").trim().slice(0, 140) || "Written Work";
+  work.subjectId = String(work.subjectId || "");
+  work.section = String(work.section || "").trim();
+  work.date = String(work.date || today()).slice(0, 10);
+  const rawMaxScore = Number(work.maxScore || 100);
+  work.maxScore = Number.isFinite(rawMaxScore) ? Math.max(1, Math.min(1000, rawMaxScore)) : 100;
+  work.remarks = String(work.remarks || "").trim().slice(0, 500);
+  work.scores = work.scores && typeof work.scores === "object" && !Array.isArray(work.scores) ? work.scores : {};
+  const studentIds = new Set(studentsForClass(db, work.subjectId, work.section).map((student) => student.id));
+  work.scores = Object.fromEntries(Object.entries(work.scores)
+    .filter(([studentId]) => studentIds.has(studentId))
+    .map(([studentId, score]) => [studentId, Math.max(0, Math.min(Number(work.maxScore), Number(score || 0)))]));
+  return work;
+}
+
+function canUseWrittenWork(user, work) {
+  return canUseSubject(user, work.subjectId) && canUseSection(user, work.section);
+}
+
+function writtenWorkInput(db, body, user, existing = {}) {
+  const subjectId = String(body.subjectId ?? existing.subjectId ?? "");
+  const section = String(body.section ?? existing.section ?? "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(user, subjectId)) throw new Error("Choose an available subject.");
+  if (!section || !db.sections.includes(section) || !canUseSection(user, section)) throw new Error("Choose an available section.");
+  const rawMaxScore = Number(body.maxScore ?? existing.maxScore ?? 100);
+  if (!Number.isFinite(rawMaxScore)) throw new Error("Maximum score must be a number.");
+  return {
+    title: String(body.title ?? existing.title ?? "Written Work").trim().slice(0, 140) || "Written Work",
+    subjectId,
+    section,
+    date: String(body.date ?? existing.date ?? today()).slice(0, 10),
+    maxScore: Math.max(1, Math.min(1000, rawMaxScore)),
+    remarks: String(body.remarks ?? existing.remarks ?? "").trim().slice(0, 500)
+  };
+}
+
+function publicWrittenWork(db, work) {
+  normalizeWrittenWork(work, db);
+  const students = studentsForClass(db, work.subjectId, work.section);
+  const rows = students.map((student) => {
+    const recorded = Object.prototype.hasOwnProperty.call(work.scores || {}, student.id);
+    const score = recorded ? work.scores[student.id] : "";
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      section: student.section || "",
+      score,
+      percent: recorded ? Math.round(Number(score || 0) / Number(work.maxScore || 1) * 100) : "",
+      recorded
+    };
+  });
+  return {
+    ...work,
+    subjectName: subjectName(db, work.subjectId),
+    tracker: `${rows.filter((row) => row.recorded).length}/${rows.length}`,
+    studentCount: rows.length,
+    rows
+  };
+}
+
+function hydrateWrittenWorks(db, user) {
+  return (db.writtenWorks || [])
+    .map((work) => normalizeWrittenWork(work, db))
+    .filter((work) => canUseWrittenWork(user, work))
+    .map((work) => publicWrittenWork(db, work))
+    .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
+function normalizeGradeNote(note, db) {
+  note.id ||= randomUUID();
+  note.studentId = String(note.studentId || "");
+  note.subjectId = String(note.subjectId || "");
+  note.section = String(note.section || "").trim();
+  note.privateNote = String(note.privateNote || "").trim().slice(0, 2000);
+  note.visibleAdvice = String(note.visibleAdvice || "").trim().slice(0, 2000);
+  note.visibleToStudent = note.visibleToStudent !== false;
+  note.priority = ["Low", "Medium", "Urgent"].includes(note.priority) ? note.priority : "Medium";
+  note.riskStatus = ["Safe", "Watch", "At Risk", "Critical"].includes(note.riskStatus) ? note.riskStatus : "";
+  note.missingItems = Array.isArray(note.missingItems) ? note.missingItems.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 30) : [];
+  return note;
+}
+
+function gradeNoteFor(db, studentId, subjectId, section = "") {
+  return (db.gradeNotes || []).find((note) =>
+    note.studentId === studentId
+    && note.subjectId === subjectId
+    && String(note.section || "").trim() === String(section || "").trim()
+  ) || null;
+}
+
+function quizTotalForStudent(quiz, submission) {
+  const attempts = submission?.attempts || [];
+  const bestAttempt = attempts.reduce((best, attempt) => Number(attempt.correct || 0) > Number(best?.correct || -1) ? attempt : best, null);
+  return Number(bestAttempt?.total || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 0);
+}
+
+function percentAverage(values) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length);
+}
+
+function categorySummary(label, weight, percents, missing) {
+  const percent = percentAverage(percents);
+  return {
+    label,
+    weight,
+    percent,
+    contribution: percent == null ? 0 : Math.round(percent * Number(weight || 0)) / 100,
+    missing
+  };
+}
+
+function attendancePercentForStudent(db, studentId, subjectId, section) {
+  const weeks = (db.attendanceWeeks || []).filter((week) => week.subjectId === subjectId && String(week.section || "").trim() === String(section || "").trim());
+  const values = [];
+  weeks.forEach((week) => {
+    activeAttendanceDates(week).forEach((date) => {
+      const status = (db.attendanceRecords || []).find((record) => record.weekId === week.id && record.studentId === studentId && record.date === date)?.status || "";
+      values.push(status === "check" ? 100 : ["late", "excused"].includes(status) ? 50 : 0);
+    });
+  });
+  return { values, missing: values.filter((value) => value === 0).length };
+}
+
+function gradeRiskStatus(grade, passingGrade = 75) {
+  if (grade >= Math.max(85, passingGrade + 10)) return "Safe";
+  if (grade >= passingGrade) return "Watch";
+  if (grade >= Math.max(0, passingGrade - 15)) return "At Risk";
+  return "Critical";
+}
+
+function automaticGradeAdvice(summary) {
+  const pieces = [];
+  if (summary.missingItems.length) pieces.push(`Complete ${summary.missingItems.slice(0, 3).join(", ")}${summary.missingItems.length > 3 ? ", and other missing work" : ""}.`);
+  const weak = Object.entries(summary.categories || {})
+    .filter(([, category]) => category.percent != null && category.percent < 75 && Number(category.weight || 0) > 0)
+    .map(([, category]) => category.label);
+  if (weak.length) pieces.push(`Focus review on ${weak.slice(0, 3).join(", ")}.`);
+  if (!pieces.length) pieces.push(summary.currentGrade >= 85 ? "Keep the current pace and submit all new work on time." : "Keep submitting requirements and review low quiz or activity scores.");
+  return pieces.join(" ");
+}
+
+function gradeSummaryForStudent(db, student, subjectId, section, user) {
+  const setting = gradeSettingFor(db, subjectId, section);
+  const weights = setting.weights || {};
+  const missingItems = [];
+  const writtenPercents = [];
+  if (setting.includeWrittenWorks !== false && Number(weights.writtenWorks || 0) > 0) {
+    (db.writtenWorks || []).filter((work) => work.subjectId === subjectId && work.section === section).forEach((work) => {
+      const recorded = Object.prototype.hasOwnProperty.call(work.scores || {}, student.id);
+      if (recorded) writtenPercents.push(Number(work.scores[student.id] || 0) / Number(work.maxScore || 1) * 100);
+      else missingItems.push(work.title);
+    });
+  }
+  const quizPercents = [];
+  (db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section && quiz.status !== "draft").forEach((quiz) => {
+    const submission = (quiz.submissions || []).find((item) => item.studentId === student.id);
+    const total = quizTotalForStudent(quiz, submission);
+    if (submission?.attempts?.length && total) quizPercents.push(Number(submission.bestScore || 0) / total * 100);
+    else missingItems.push(quiz.title);
+  });
+  const activityPercents = [];
+  hydrateActivities(db).filter((activity) => activity.subjectId === subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === section)).forEach((activity) => {
+    const row = (activity.rows || []).find((item) => item.studentId === student.id);
+    if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
+    else missingItems.push(activity.title);
+  });
+  const attendance = attendancePercentForStudent(db, student.id, subjectId, section);
+  const majorPercents = [];
+  (db.majorExams || []).filter((exam) => exam.subjectId === subjectId && exam.section === section).forEach((exam) => {
+    const recorded = Object.prototype.hasOwnProperty.call(exam.scores || {}, student.id);
+    if (recorded) majorPercents.push(Number(exam.scores[student.id] || 0) / Number(exam.maxScore || 1) * 100);
+    else missingItems.push(exam.title);
+  });
+  const recitationCount = (db.recitations || []).filter((recitation) => recitation.studentId === student.id && recitation.subjectId === subjectId).length;
+  const recitationBonus = Math.min(Number(setting.recitationBonusMax || 0), recitationCount);
+  const categories = {
+    writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length),
+    quizzes: categorySummary("Quizzes", weights.quizzes, quizPercents, missingItems.length),
+    activities: categorySummary("Activities / PT", weights.activities, activityPercents, missingItems.length),
+    attendance: categorySummary("Attendance", weights.attendance, attendance.values, attendance.missing),
+    majorExams: categorySummary("Major Exams", weights.majorExams, majorPercents, missingItems.length)
+  };
+  const rawGrade = Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) + recitationBonus;
+  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade)));
+  const note = gradeNoteFor(db, student.id, subjectId, section);
+  const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
+  const summary = {
+    studentId: student.id,
+    studentName: student.name,
+    subjectId,
+    subjectName: subjectName(db, subjectId),
+    section,
+    currentGrade,
+    passingGrade: setting.passingGrade,
+    riskStatus,
+    priority: note?.priority || (["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low"),
+    recitationBonus,
+    categories,
+    missingItems: [...new Set([...(note?.missingItems || []), ...missingItems])].slice(0, 20),
+    privateNote: user.role === "student" ? "" : note?.privateNote || "",
+    visibleAdvice: note?.visibleToStudent === false && user.role === "student" ? "" : note?.visibleAdvice || "",
+    visibleToStudent: note?.visibleToStudent !== false,
+    lastAdvisedAt: note?.updatedAt || note?.createdAt || ""
+  };
+  if (!summary.visibleAdvice) summary.visibleAdvice = automaticGradeAdvice(summary);
+  return summary;
+}
+
+function hydrateGradeSummaries(db, user) {
+  const students = scopeStudents(db, user);
+  const rows = [];
+  students.forEach((student) => {
+    (db.subjects || []).forEach((subject) => {
+      const sections = new Set();
+      if ((student.subjectIds || []).includes(subject.id)) sections.add(student.section || "");
+      (db.guildSystem?.classMemberships || [])
+        .filter((membership) => membership.studentId === student.id && membership.subjectId === subject.id)
+        .forEach((membership) => sections.add(String(membership.section || "").trim()));
+      sections.forEach((section) => {
+        if (!studentIsInClass(db, student, subject.id, section)) return;
+        if (user.role !== "student" && (!canUseSubject(user, subject.id) || !canUseSection(user, section))) return;
+        rows.push(gradeSummaryForStudent(db, student, subject.id, section, user));
+      });
+    });
+  });
+  return rows.sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { numeric: true }) || a.section.localeCompare(b.section, undefined, { numeric: true }) || a.studentName.localeCompare(b.studentName));
+}
+
+function gradeSettingsForUser(db, user) {
+  const classes = new Map();
+  scopeStudents(db, user).forEach((student) => {
+    (db.subjects || []).forEach((subject) => {
+      const sections = new Set();
+      if ((student.subjectIds || []).includes(subject.id)) sections.add(student.section || "");
+      (db.guildSystem?.classMemberships || []).filter((membership) => membership.studentId === student.id && membership.subjectId === subject.id).forEach((membership) => sections.add(String(membership.section || "").trim()));
+      sections.forEach((section) => {
+        if (canUseSubject(user, subject.id) && canUseSection(user, section)) classes.set(gradeClassKey(subject.id, section), { subjectId: subject.id, section });
+      });
+    });
+  });
+  return [...classes.values()].map(({ subjectId, section }) => ({
+    ...gradeSettingFor(db, subjectId, section),
+    subjectName: subjectName(db, subjectId),
+    weightTotal: Object.values(gradeSettingFor(db, subjectId, section).weights || {}).reduce((sum, value) => sum + Number(value || 0), 0)
+  }));
+}
+
 function activitySubmissionFiles(sub = {}) {
   return Array.isArray(sub.files) && sub.files.length ? sub.files : sub.file ? [sub.file] : [];
 }
@@ -3988,6 +4350,7 @@ function filteredOverview(db, user, modules = null) {
   const includeActivities = wantsModule(modules, "activities");
   const includeQuizzes = wantsModule(modules, "quizzes");
   const includeMajorExams = wantsModule(modules, "majorExams");
+  const includeGrades = wantsModule(modules, "grades") || (user.role === "student" && wantsModule(modules, "profile"));
   const includeTransactions = wantsModule(modules, "transactions");
   const includeAttendance = wantsModule(modules, "attendance");
   const includeRecitations = wantsModule(modules, "recitations");
@@ -4029,6 +4392,9 @@ function filteredOverview(db, user, modules = null) {
     activities: includeActivities ? fullActivities : activitySummaries,
     quizzes: includeQuizzes ? hydrateQuizzes(db, user) : [],
     majorExams: includeMajorExams ? hydrateMajorExams(db, user) : [],
+    writtenWorks: includeGrades ? hydrateWrittenWorks(db, user) : [],
+    gradeSettings: includeGrades && user.role !== "student" ? gradeSettingsForUser(db, user) : [],
+    gradeSummaries: includeGrades ? hydrateGradeSummaries(db, user) : [],
     shopItems: includeShop ? db.shopItems.map((item) => activeShopPrice(db, item.id)) : [],
     sales: includeShop ? db.sales : [],
     appearanceItems: includeAppearance ? db.appearanceItems : [],
@@ -4705,6 +5071,9 @@ app.delete("/api/admin/subjects/:id", auth, requireRole("admin"), async (req, re
   const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.subjectId === subjectId).map((activity) => activity.id));
   const removedQuizIds = new Set((db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId).map((quiz) => quiz.id));
   db.majorExams = (db.majorExams || []).filter((exam) => exam.subjectId !== subjectId);
+  db.writtenWorks = (db.writtenWorks || []).filter((work) => work.subjectId !== subjectId);
+  db.gradeSettings = (db.gradeSettings || []).filter((setting) => setting.subjectId !== subjectId);
+  db.gradeNotes = (db.gradeNotes || []).filter((note) => note.subjectId !== subjectId);
   db.subjects = db.subjects.filter((s) => s.id !== subjectId);
   db.students.forEach((student) => { student.subjectIds = (student.subjectIds || []).filter((id) => id !== subjectId); });
   db.users.forEach((user) => { user.subjectIds = (user.subjectIds || []).filter((id) => id !== subjectId); });
@@ -4747,6 +5116,9 @@ app.delete("/api/admin/sections/:name", auth, requireRole("admin", "teacher"), a
   db.sections = db.sections.filter((section) => section !== name);
   db.schedules = (db.schedules || []).filter((schedule) => schedule.section !== name);
   db.majorExams = (db.majorExams || []).filter((exam) => exam.section !== name);
+  db.writtenWorks = (db.writtenWorks || []).filter((work) => work.section !== name);
+  db.gradeSettings = (db.gradeSettings || []).filter((setting) => setting.section !== name);
+  db.gradeNotes = (db.gradeNotes || []).filter((note) => note.section !== name);
   const removedGroupActivityIds = new Set((db.groupActivities || []).filter((activity) => activity.section === name).map((activity) => activity.id));
   db.groupActivities = (db.groupActivities || []).filter((activity) => activity.section !== name);
   db.transactions = db.transactions.filter((transaction) => !removedGroupActivityIds.has(transaction.meta?.groupActivityId));
@@ -5373,6 +5745,131 @@ app.put("/api/admin/major-exams/:id/scores", auth, requireRole("admin", "teacher
   exam.updatedBy = req.user.id;
   await writeDb(db);
   res.json({ exam: publicMajorExam(db, exam) });
+});
+
+app.put("/api/admin/grades/settings", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = gradeSettingInput(db, req.body, req.user);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const existing = (db.gradeSettings || []).find((setting) => setting.subjectId === input.subjectId && setting.section === input.section);
+  const updatedAt = now();
+  if (existing) {
+    Object.assign(existing, input, { updatedAt, updatedBy: req.user.id });
+    normalizeGradeSetting(existing, db);
+  } else {
+    db.gradeSettings ||= [];
+    db.gradeSettings.push(normalizeGradeSetting({ id: gradeClassKey(input.subjectId, input.section), ...input, createdAt: updatedAt, createdBy: req.user.id, updatedAt }, db));
+  }
+  await writeDb(db);
+  res.json({ gradeSettings: gradeSettingsForUser(db, req.user), gradeSummaries: hydrateGradeSummaries(db, req.user) });
+});
+
+app.post("/api/admin/written-works", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  let input;
+  try {
+    input = writtenWorkInput(db, req.body, req.user);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const work = normalizeWrittenWork({ id: randomUUID(), ...input, scores: {}, createdAt: now(), createdBy: req.user.id, updatedAt: now() }, db);
+  db.writtenWorks ||= [];
+  db.writtenWorks.push(work);
+  await writeDb(db);
+  res.status(201).json({ writtenWork: publicWrittenWork(db, work) });
+});
+
+app.put("/api/admin/written-works/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const work = (db.writtenWorks || []).find((item) => item.id === req.params.id);
+  if (!work) return res.status(404).json({ error: "Written work not found." });
+  if (!canUseWrittenWork(req.user, work)) return res.status(403).json({ error: "This written work is outside your assigned class scope." });
+  let input;
+  try {
+    input = writtenWorkInput(db, req.body, req.user, work);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const hasScores = Object.keys(work.scores || {}).length > 0;
+  if (hasScores && (input.subjectId !== work.subjectId || input.section !== work.section)) {
+    return res.status(409).json({ error: "Subject and section are locked after scores are recorded." });
+  }
+  Object.assign(work, input, { updatedAt: now(), updatedBy: req.user.id });
+  normalizeWrittenWork(work, db);
+  await writeDb(db);
+  res.json({ writtenWork: publicWrittenWork(db, work) });
+});
+
+app.delete("/api/admin/written-works/:id", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const work = (db.writtenWorks || []).find((item) => item.id === req.params.id);
+  if (!work) return res.status(404).json({ error: "Written work not found." });
+  if (!canUseWrittenWork(req.user, work)) return res.status(403).json({ error: "This written work is outside your assigned class scope." });
+  db.writtenWorks = (db.writtenWorks || []).filter((item) => item.id !== work.id);
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/written-works/:id/scores", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const work = (db.writtenWorks || []).find((item) => item.id === req.params.id);
+  if (!work) return res.status(404).json({ error: "Written work not found." });
+  if (!canUseWrittenWork(req.user, work)) return res.status(403).json({ error: "This written work is outside your assigned class scope." });
+  normalizeWrittenWork(work, db);
+  const studentId = String(req.body.studentId || "");
+  const student = db.students.find((item) => item.id === studentId);
+  if (!scopedStudentIds(db, req.user).has(studentId) || !studentIsInClass(db, student, work.subjectId, work.section)) {
+    return res.status(403).json({ error: "This student is outside the written work class scope." });
+  }
+  work.scores ||= {};
+  if (req.body.score === "" || req.body.score == null) {
+    delete work.scores[studentId];
+  } else {
+    const score = Number(req.body.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(work.maxScore)) return res.status(400).json({ error: `Score must be from 0 to ${work.maxScore}.` });
+    work.scores[studentId] = score;
+  }
+  work.updatedAt = now();
+  work.updatedBy = req.user.id;
+  await writeDb(db);
+  res.json({ writtenWork: publicWrittenWork(db, work) });
+});
+
+app.put("/api/admin/grades/notes", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const studentId = String(req.body.studentId || "");
+  const subjectId = String(req.body.subjectId || "");
+  const section = String(req.body.section || "").trim();
+  const student = db.students.find((item) => item.id === studentId);
+  if (!student || !scopedStudentIds(db, req.user).has(studentId)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  if (!studentIsInClass(db, student, subjectId, section) || !canUseSubject(req.user, subjectId) || !canUseSection(req.user, section)) return res.status(403).json({ error: "This grade note is outside your assigned class scope." });
+  db.gradeNotes ||= [];
+  let note = gradeNoteFor(db, studentId, subjectId, section);
+  const payload = normalizeGradeNote({
+    ...(note || {}),
+    studentId,
+    subjectId,
+    section,
+    privateNote: req.body.privateNote,
+    visibleAdvice: req.body.visibleAdvice,
+    visibleToStudent: req.body.visibleToStudent,
+    priority: req.body.priority,
+    riskStatus: req.body.riskStatus,
+    missingItems: req.body.missingItems,
+    updatedAt: now(),
+    updatedBy: req.user.id
+  }, db);
+  if (note) Object.assign(note, payload);
+  else {
+    note = { ...payload, id: randomUUID(), createdAt: now(), createdBy: req.user.id };
+    db.gradeNotes.push(note);
+  }
+  await writeDb(db);
+  res.json({ note, gradeSummaries: hydrateGradeSummaries(db, req.user) });
 });
 
 app.put("/api/admin/activities/:id/extensions", auth, requireRole("admin", "teacher"), async (req, res) => {

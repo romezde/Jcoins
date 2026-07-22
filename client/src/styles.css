@@ -3058,6 +3058,40 @@ td button {
   gap: 8px;
   min-width: 160px;
 }
+.grade-settings-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.grade-score,
+.grade-risk {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 900;
+}
+.grade-score.risk-safe,
+.grade-risk.risk-safe {
+  color: #8dffc0;
+  background: rgba(68, 255, 157, 0.12);
+  border: 1px solid rgba(68, 255, 157, 0.28);
+}
+.grade-score.risk-watch,
+.grade-risk.risk-watch {
+  color: #ffd768;
+  background: rgba(255, 205, 63, 0.12);
+  border: 1px solid rgba(255, 205, 63, 0.28);
+}
+.grade-score.risk-at-risk,
+.grade-risk.risk-at-risk,
+.grade-score.risk-critical,
+.grade-risk.risk-critical {
+  color: #ff9aa7;
+  background: rgba(255, 98, 125, 0.13);
+  border: 1px solid rgba(255, 98, 125, 0.3);
+}
 .activity-submission-control .muted-line {
   margin: 0;
   font-size: 12px;

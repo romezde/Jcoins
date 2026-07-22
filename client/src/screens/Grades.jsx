@@ -1,0 +1,253 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
+import { del, post, put, today } from "../api.js";
+import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
+import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
+import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
+
+const gradeCategoryLabels = {
+  writtenWorks: "Written Works",
+  quizzes: "Quizzes",
+  activities: "Activities / PT",
+  attendance: "Attendance",
+  majorExams: "Major Exams"
+};
+
+export default function Grades({ data, run }) {
+  const [selectedClassKey, setSelectedClassKey] = useState("");
+  const [search, setSearch] = useState("");
+  const classes = useMemo(() => buildSubjectSectionClasses(data, (subjectId, section) => (data.gradeSummaries || []).filter((row) => row.subjectId === subjectId && row.section === section).length), [data.subjects, data.students, data.gradeSummaries]);
+  const activeClass = classes.find((item) => item.key === selectedClassKey) || null;
+  const summaries = (data.gradeSummaries || []).filter((row) => {
+    if (!activeClass || row.subjectId !== activeClass.subjectId || row.section !== activeClass.section) return false;
+    const q = search.trim().toLowerCase();
+    return !q || [row.studentName, row.currentGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
+  });
+  const writtenWorks = (data.writtenWorks || []).filter((work) => activeClass && work.subjectId === activeClass.subjectId && work.section === activeClass.section);
+  const setting = activeClass ? gradeSettingForClass(data, activeClass) : null;
+
+  return <div className="dashboard-grid">
+    <WrittenWorkForm data={data} run={run} />
+    <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Grade Classes" itemLabel="students" />
+    {activeClass && <Panel title={`${activeClass.subjectName} - ${activeClass.sectionLabel}`} wide defaultOpen>
+      <div className="filter-bar">
+        <Field label="Search Students or Advice" value={search} onChange={setSearch} />
+        <div className="filter-count">{summaries.length} student{summaries.length === 1 ? "" : "s"}</div>
+      </div>
+      <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
+      <Table columns={["Student", "Current", "Risk", "Priority", "Missing", "Advice", "Actions"]} rows={summaries.map((row) => [
+        row.studentName,
+        <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{row.currentGrade}%</strong>,
+        <span className={`grade-risk ${riskClass(row.riskStatus)}`}>{row.riskStatus}</span>,
+        row.priority,
+        row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
+        row.visibleAdvice,
+        <div className="inline"><GradeAdviceModal summary={row} run={run} /></div>
+      ])} pageSize={25} />
+      <button type="button" className="soft" onClick={() => exportGrades(activeClass, summaries)}>Export Grade Summary</button>
+    </Panel>}
+    {activeClass && <Panel title="Written Works" wide defaultOpen={false} actions={<WrittenWorkForm data={data} run={run} presetClass={activeClass} buttonLabel="Add Written Work for This Class" />}>
+      <Table columns={["Written Work", "Date", "Max Score", "Recorded", "Remarks", "Action"]} rows={writtenWorks.map((work) => [
+        work.title,
+        work.date,
+        work.maxScore,
+        work.tracker,
+        work.remarks,
+        <div className="inline"><WrittenWorkForm data={data} run={run} work={work} /><button type="button" className="soft" onClick={() => exportWrittenWork(work)}>Export</button><button type="button" className="danger" onClick={() => deleteWrittenWork(work, run)}>Delete</button></div>
+      ])} />
+    </Panel>}
+    {activeClass && writtenWorks.map((work) => <WrittenWorkCard key={work.id} work={work} run={run} />)}
+    {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view grades.</section>}
+  </div>;
+}
+
+function GradeSettingsForm({ activeClass, setting, run }) {
+  const [form, setForm] = useState(() => settingsFormValues(setting));
+  useEffect(() => setForm(settingsFormValues(setting)), [setting?.id, JSON.stringify(setting?.weights || {})]);
+  const total = Object.values(form.weights || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const setWeight = (key, value) => setForm({ ...form, weights: { ...form.weights, [key]: value } });
+  function submit(event) {
+    event.preventDefault();
+    run(() => put("/admin/grades/settings", { ...form, subjectId: activeClass.subjectId, section: activeClass.section }), "Grade settings saved");
+  }
+  return <form className="grade-settings-form" onSubmit={submit}>
+    <div className="form-grid two">
+      {Object.entries(gradeCategoryLabels).map(([key, label]) => <Field key={key} label={`${label} Weight`} type="number" min="0" max="100" value={form.weights[key]} onChange={(value) => setWeight(key, value)} />)}
+      <Field label="Passing Grade" type="number" min="1" max="100" value={form.passingGrade} onChange={(passingGrade) => setForm({ ...form, passingGrade })} />
+      <Field label="Recitation Bonus Max" type="number" min="0" max="20" value={form.recitationBonusMax} onChange={(recitationBonusMax) => setForm({ ...form, recitationBonusMax })} />
+    </div>
+    <label className="check"><input type="checkbox" checked={form.includeWrittenWorks} onChange={(event) => setForm({ ...form, includeWrittenWorks: event.target.checked })} /> Include written works</label>
+    <div className={total === 100 ? "notice" : "error"}>Weight total: {total}%{total === 100 ? "" : " (best if this is 100%)"}</div>
+    <button>Save Grade Settings</button>
+  </form>;
+}
+
+function WrittenWorkForm({ data, run, work = null, presetClass = null, buttonLabel = null }) {
+  const [form, setForm] = useState(() => work ? writtenWorkFormValues(work) : newWrittenWorkForm(data, presetClass));
+  const hasScores = !!work?.rows?.some((row) => row.recorded);
+  useEffect(() => {
+    if (work) setForm(writtenWorkFormValues(work));
+    else setForm(newWrittenWorkForm(data, presetClass));
+  }, [work?.id, work?.updatedAt, presetClass?.key]);
+  function submit(event) {
+    event.preventDefault();
+    run(() => work ? put(`/admin/written-works/${work.id}`, form) : post("/admin/written-works", form), work ? "Written work updated" : "Written work added");
+  }
+  return <ActionModal title={work ? `Edit ${work.title}` : "Add Written Work"} buttonLabel={buttonLabel || (work ? "Edit" : "Add Written Work")} icon={work ? Pencil : undefined}>
+    <form onSubmit={submit}>
+      <Field label="Title" value={form.title} onChange={(title) => setForm({ ...form, title })} />
+      <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId })} options={hasScores ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
+      <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section })} options={hasScores ? [{ value: form.section, label: form.section }] : (data.sections || []).map((section) => ({ value: section, label: section }))} />
+      {hasScores && <p className="muted-line">Subject and section are locked after scores are recorded.</p>}
+      <Field label="Date" type="date" value={form.date} onChange={(date) => setForm({ ...form, date })} />
+      <Field label="Maximum Score" type="number" min="1" max="1000" step="0.01" value={form.maxScore} onChange={(maxScore) => setForm({ ...form, maxScore })} />
+      <Field label="Remarks" value={form.remarks} onChange={(remarks) => setForm({ ...form, remarks })} />
+      <button>{work ? "Save Written Work" : "Add Written Work"}</button>
+    </form>
+  </ActionModal>;
+}
+
+function WrittenWorkCard({ work, run }) {
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const rows = (work.rows || []).filter((row) => !q || [row.studentName, row.score, row.percent].some((value) => String(value || "").toLowerCase().includes(q)));
+  return <Panel title={`${work.title} Scores`} wide defaultOpen={false} actions={<div className="inline"><strong>{work.tracker} recorded</strong><button type="button" className="soft" onClick={() => exportWrittenWork(work)}>Export Scores</button></div>}>
+    <p className="muted-line">{work.subjectName} | {work.section} | {work.date} | maximum score {work.maxScore}</p>
+    <div className="filter-bar">
+      <Field label="Search Students" value={search} onChange={setSearch} />
+      <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
+    </div>
+    <Table columns={["Student", "Score", "Percent"]} rows={rows.map((row) => [
+      row.studentName,
+      <WrittenWorkScoreInput work={work} row={row} run={run} />,
+      row.percent === "" ? "-" : `${row.percent}%`
+    ])} pageSize={30} />
+  </Panel>;
+}
+
+function WrittenWorkScoreInput({ work, row, run }) {
+  const [score, setScore] = useState(row.score ?? "");
+  useEffect(() => setScore(row.score ?? ""), [row.score, work.id]);
+  const changed = String(score ?? "") !== String(row.score ?? "");
+  return <div className="major-exam-score-cell">
+    <input className="score-input" type="number" min="0" max={work.maxScore} step="0.01" value={score} onChange={(event) => setScore(event.target.value)} />
+    <button type="button" className="soft" disabled={!changed} onClick={() => run(() => put(`/admin/written-works/${work.id}/scores`, { studentId: row.studentId, score }), "Written work score saved")}>Save</button>
+  </div>;
+}
+
+function GradeAdviceModal({ summary, run }) {
+  const [form, setForm] = useState(() => adviceFormValues(summary));
+  useEffect(() => setForm(adviceFormValues(summary)), [summary.studentId, summary.subjectId, summary.section, summary.lastAdvisedAt]);
+  function submit(event) {
+    event.preventDefault();
+    run(() => put("/admin/grades/notes", {
+      studentId: summary.studentId,
+      subjectId: summary.subjectId,
+      section: summary.section,
+      ...form,
+      missingItems: splitMissingItems(form.missingItems)
+    }), "Advice saved");
+  }
+  return <ActionModal title={`Advice for ${summary.studentName}`} buttonLabel="Advice" icon={Pencil}>
+    <form onSubmit={submit}>
+      <div className="account-grid">
+        <div className="account-item"><span>Current Grade</span><strong>{summary.currentGrade}%</strong></div>
+        <div className="account-item"><span>Class</span><strong>{summary.subjectName} - {summary.section}</strong></div>
+      </div>
+      <Select label="Risk Status" value={form.riskStatus} onChange={(riskStatus) => setForm({ ...form, riskStatus })} options={["", "Safe", "Watch", "At Risk", "Critical"].map((value) => ({ value, label: value || "Auto" }))} />
+      <Select label="Priority" value={form.priority} onChange={(priority) => setForm({ ...form, priority })} options={["Low", "Medium", "Urgent"]} />
+      <label>Student Advice<textarea value={form.visibleAdvice} onChange={(event) => setForm({ ...form, visibleAdvice: event.target.value })} /></label>
+      <label>Private Teacher Note<textarea value={form.privateNote} onChange={(event) => setForm({ ...form, privateNote: event.target.value })} /></label>
+      <Field label="Missing / Lacking Items" value={form.missingItems} onChange={(missingItems) => setForm({ ...form, missingItems })} />
+      <label className="check"><input type="checkbox" checked={form.visibleToStudent} onChange={(event) => setForm({ ...form, visibleToStudent: event.target.checked })} /> Show advice to student</label>
+      <button>Save Advice</button>
+    </form>
+  </ActionModal>;
+}
+
+function gradeSettingForClass(data, activeClass) {
+  return (data.gradeSettings || []).find((setting) => setting.subjectId === activeClass.subjectId && setting.section === activeClass.section) || {
+    id: `${activeClass.subjectId}::${activeClass.section}`,
+    weights: data.settings?.grades?.weights || { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
+    includeWrittenWorks: data.settings?.grades?.includeWrittenWorks !== false,
+    recitationBonusMax: data.settings?.grades?.recitationBonusMax ?? 5,
+    passingGrade: data.settings?.grades?.passingGrade ?? 75
+  };
+}
+
+function settingsFormValues(setting = {}) {
+  return {
+    weights: {
+      writtenWorks: setting.weights?.writtenWorks ?? 20,
+      quizzes: setting.weights?.quizzes ?? 20,
+      activities: setting.weights?.activities ?? 30,
+      attendance: setting.weights?.attendance ?? 10,
+      majorExams: setting.weights?.majorExams ?? 20
+    },
+    includeWrittenWorks: setting.includeWrittenWorks !== false,
+    recitationBonusMax: setting.recitationBonusMax ?? 5,
+    passingGrade: setting.passingGrade ?? 75
+  };
+}
+
+function writtenWorkFormValues(work) {
+  return {
+    title: work.title,
+    subjectId: work.subjectId,
+    section: work.section || "",
+    date: work.date || today(),
+    maxScore: work.maxScore ?? 100,
+    remarks: work.remarks || ""
+  };
+}
+
+function newWrittenWorkForm(data, presetClass = null) {
+  return {
+    title: "Written Work",
+    subjectId: presetClass?.subjectId || data.subjects?.[0]?.id || "",
+    section: presetClass?.section || data.sections?.[0] || "",
+    date: today(),
+    maxScore: 100,
+    remarks: ""
+  };
+}
+
+function adviceFormValues(summary) {
+  return {
+    riskStatus: summary.riskStatus || "",
+    priority: summary.priority || "Medium",
+    visibleAdvice: summary.visibleAdvice || "",
+    privateNote: summary.privateNote || "",
+    visibleToStudent: summary.visibleToStudent !== false,
+    missingItems: (summary.missingItems || []).join(", ")
+  };
+}
+
+function splitMissingItems(value) {
+  return String(value || "").split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function riskClass(status = "") {
+  return `risk-${status.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "watch"}`;
+}
+
+function deleteWrittenWork(work, run) {
+  return confirm(`Delete ${work.title}? This removes all recorded written work scores.`)
+    && run(() => del(`/admin/written-works/${work.id}`), "Written work deleted");
+}
+
+function exportWrittenWork(work) {
+  exportSpreadsheet(`written-work-${safeFilePart(work.title)}-${safeFilePart(work.subjectName)}.xls`, [
+    "Student", "Written Work", "Subject", "Section", "Date", "Max Score", "Score", "Percent", "Remarks"
+  ], [...(work.rows || [])].sort((a, b) => String(a.studentName).localeCompare(String(b.studentName))).map((row) => [
+    row.studentName, work.title, work.subjectName, work.section, work.date, work.maxScore, row.score ?? "", row.percent === "" ? "" : `${row.percent}%`, work.remarks || ""
+  ]), work.title);
+}
+
+function exportGrades(activeClass, rows) {
+  exportSpreadsheet(`grades-${safeFilePart(activeClass.subjectName)}-${safeFilePart(activeClass.sectionLabel)}.xls`, [
+    "Student", "Subject", "Section", "Current Grade", "Risk", "Priority", "Missing", "Advice"
+  ], rows.map((row) => [
+    row.studentName, row.subjectName, row.section, `${row.currentGrade}%`, row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
+  ]), "Grades");
+}

@@ -3,8 +3,8 @@ const retiredRenderApi = "https://jcoins.onrender.com/api";
 const localServerApi = "https://deguzman.tail6a3597.ts.net/api";
 export const API = configuredApi === retiredRenderApi ? localServerApi : configuredApi || (import.meta.env.PROD ? localServerApi : "/api");
 
-export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "Guild Affinity", "Students", "Teachers", "Student Assistants", "Sections", "Subjects", "Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Transactions", "Shop", "Appearance Shop", "Approvals", "History", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
-export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "Guild Affinity", "Students", "Student Assistants", "Sections", "Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Transactions", "Approvals", "Feedback", "Reports", "History", "Name Wheel", "Profile", "Account"];
+export const adminTabs = ["Dashboard", "Schedule", "Leaderboard", "Guild Affinity", "Students", "Teachers", "Student Assistants", "Sections", "Subjects", "Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Grades", "Transactions", "Shop", "Appearance Shop", "Approvals", "History", "Feedback", "Settings", "Name Wheel", "Profile", "Account"];
+export const teacherTabs = ["Schedule", "Dashboard", "Leaderboard", "Guild Affinity", "Students", "Student Assistants", "Sections", "Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Grades", "Transactions", "Approvals", "Feedback", "Reports", "History", "Name Wheel", "Profile", "Account"];
 export const studentTabs = ["Leaderboard", "Schedule", "Profile", "Activities", "Quizzes", "Shop", "Trade Requests", "Appearance Shop", "Feedback", "History", "Account"];
 export const studentAssistantTabs = ["Attendance", "Recitation", "Transactions"];
 

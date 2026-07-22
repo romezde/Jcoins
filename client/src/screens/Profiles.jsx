@@ -36,9 +36,27 @@ export function StudentProfile({ data, run }) {
         {data.student.profilePhoto && <button type="button" className="soft" onClick={removePhoto}>Remove Picture</button>}
       </div>
     </section>
+    <StudentGradeAdvice data={data} />
     <DataTable title="Attendance / Recitation Weekly Bonuses" defaultOpen columns={["Week", "Subject", "Attendance Bonus", "Recitation Bonus"]} rows={data.weeks.map((w) => [w.title, w.subjectName, w.attendanceBonus ? "Earned" : "Not yet", w.recitationBonus ? "Earned" : "Not yet"])} />
     <DataTable title="Recent JCoins History" columns={["Date", "Type", "Amount", "Remarks"]} rows={data.transactions.map((t) => [new Date(t.createdAt).toLocaleString(), t.type, t.amount, t.note])} />
   </div>;
+}
+
+function StudentGradeAdvice({ data }) {
+  const rows = data.gradeSummaries || [];
+  if (!rows.length) return <Panel title="Grade Advice" defaultOpen>
+    <p className="muted-line">No grade records yet. Submit requirements on time and review returned quizzes and activities.</p>
+  </Panel>;
+  return <Panel title="Grade Advice" wide defaultOpen>
+    <Table columns={["Subject", "Section", "Current", "Status", "Missing", "Advice"]} rows={rows.map((row) => [
+      row.subjectName,
+      row.section || "-",
+      `${row.currentGrade}%`,
+      row.riskStatus,
+      row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
+      row.visibleAdvice || "Keep submitting requirements and ask your teacher which topic to review next."
+    ])} />
+  </Panel>;
 }
 
 export function StudentActivities({ data, run }) {
