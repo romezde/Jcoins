@@ -356,9 +356,9 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
   }
   async function scanCroppedSheet() {
     if (!source.file) return;
+    setShowCropper(false);
     const croppedFile = await cropImageFile(source.file, crop);
     await scanSheet(croppedFile);
-    setShowCropper(false);
   }
   function startCropDrag(handle, event) {
     event.preventDefault();
