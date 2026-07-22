@@ -313,8 +313,6 @@ function QuizActions({ quiz, data, run }) {
     <button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button>
     <button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button>
     <button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button>
-    <PaperCheckModal quiz={quiz} run={run} />
-    <PaperCheckModal quiz={quiz} run={run} scanner="v2" />
     <PaperCheckModal quiz={quiz} run={run} scanner="v3" />
     {quiz.status === "draft" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/publish`, {}), "Quiz published")}>Publish</button>}
     {quiz.status === "published" && <button type="button" className="soft" onClick={() => run(() => post(`/admin/quizzes/${quiz.id}/close`, {}), "Quiz closed")}>Close</button>}
@@ -406,7 +404,7 @@ function PaperCheckModal({ quiz, run, scanner = "v1" }) {
       setScan((current) => ({ ...current, loading: false, message: err.message, result: null }));
     }
   }
-  const scannerLabel = isV3 ? "Check Paper V3" : isV2 ? "Check Paper V2" : "Check Paper";
+  const scannerLabel = "Check Paper";
   return <ActionModal title={`${scannerLabel} - ${quiz.title}`} buttonLabel={scannerLabel} icon={FileCheck2}>
     <form onSubmit={submit}>
       <div className="notice">Take a photo or upload an image, crop to the answer sheet, scan, then review before saving.</div>
@@ -464,7 +462,7 @@ function PaperScanReview({ result }) {
 }
 
 function QuizCard({ quiz, data, run }) {
-  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} /><PaperCheckModal quiz={quiz} run={run} scanner="v2" /><PaperCheckModal quiz={quiz} run={run} scanner="v3" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
+  return <Panel title={`${quiz.title} Results`} wide defaultOpen={false} actions={<div className="inline"><QuizFormModal data={data} run={run} quiz={quiz} /><button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button><button type="button" className="soft" onClick={() => printPaperQuizPack(quiz)}><Printer size={16} />Paper Types</button><button type="button" className="soft" onClick={() => printBlankPaperSheet(quiz)}><Printer size={16} />Answer Sheet</button><button type="button" className="soft" onClick={() => printDemoPaperSheet(quiz)}><Printer size={16} />Demo Sheet</button><button type="button" className="soft" onClick={() => printQuizAnswerKey(quiz)}><FileCheck2 size={16} />Answer Key PDF</button><PaperCheckModal quiz={quiz} run={run} scanner="v3" /><button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete Quiz</button></div>}>
     <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quizTypesLabel(quiz)} | {quiz.timeLimitMinutes} minutes | passing {quiz.passingScore}/{quiz.questions.length} | reward {quiz.rewardValue} JC | reveal {revealLabel(quiz)}</p>
     <Table columns={["Student", "Code", "Attempts", "Latest", "Best Correct", "Best JCoins", "Submitted"]} rows={(quiz.rows || []).map((row) => [row.studentName, row.studentCode || "-", row.attempts, row.latestScore || "-", row.bestScore || "-", row.bestAwarded, row.submittedAt ? new Date(row.submittedAt).toLocaleString() : "-"])} />
   </Panel>;
