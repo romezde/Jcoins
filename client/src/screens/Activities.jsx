@@ -78,14 +78,11 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
     </div>
-    <Table columns={["Student", "Status", "Submitted At", "Individual Deadline", "Late", "Max Score", "Actual Score", "File", "Earned", "Remarks"]} rows={rows.map((r) => [
+    <Table columns={["Student", "Submission", "Individual Deadline", "Score", "File", "Earned", "Remarks"]} rows={rows.map((r) => [
       r.studentName,
       <ActivitySubmissionControl activity={activity} row={r} run={run} />,
-      r.submittedAt ? formatActivityDateTime(r.submittedAt) : "-",
       <ActivityExtensionControl activity={activity} row={r} run={run} />,
-      r.daysLate,
-      r.maxScoreAllowed,
-      <ActivityScoreInput activity={activity} row={r} run={run} />,
+      <ActivityScoreCell activity={activity} row={r} run={run} />,
       <ActivitySubmissionFileCell activity={activity} row={r} run={run} />,
       r.earned,
       <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: activityActualScore(r), remarks: e.target.value }), "Remarks saved")} />
@@ -96,6 +93,13 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
 function activityActualScore(row) {
   if (row.score !== "" && row.score != null) return row.score;
   return row.submitted ? row.maxScoreAllowed ?? 100 : "";
+}
+
+function ActivityScoreCell({ activity, row, run }) {
+  return <div className="activity-score-cell">
+    <ActivityScoreInput activity={activity} row={row} run={run} />
+    <span className="muted-line">Max {row.maxScoreAllowed} | Late {row.daysLate}</span>
+  </div>;
 }
 
 function ActivityScoreInput({ activity, row, run }) {
@@ -139,9 +143,21 @@ function ActivitySubmissionFileCell({ activity, row, run }) {
       setProgress(null);
     }
   }
+  function removeSubmission() {
+    const reason = prompt(`Why are you removing ${row.studentName}'s submission for ${activity.title}?`);
+    if (!reason?.trim()) {
+      alert("A reason is required before removing a submitted activity.");
+      return;
+    }
+    if (!confirm(`Remove ${row.studentName}'s submitted activity? This clears their file, score, submitted status, and activity JCoins.`)) return;
+    run(() => del(`/admin/activities/${activity.id}/submissions/${row.studentId}`, { reason }), "Student submission removed");
+  }
   return <div className="activity-upload-box">
     <ActivityFileViewer activityId={activity.id} studentId={row.studentId} files={files} />
-    <label className="soft file-button table-file-button">{files.length ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple disabled={progress != null} onChange={(event) => { uploadForStudent(event.target.files); event.target.value = ""; }} /></label>
+    <div className="activity-file-actions">
+      <label className="soft file-button table-file-button">{files.length ? "Replace File" : "Upload File"}<input type="file" accept={activityFileAccept} multiple disabled={progress != null} onChange={(event) => { uploadForStudent(event.target.files); event.target.value = ""; }} /></label>
+      {row.submitted && <button type="button" className="danger" disabled={progress != null} onClick={removeSubmission}>Remove</button>}
+    </div>
     {progress != null && <div className="activity-upload-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
       <span style={{ width: `${progress}%` }} />
       <strong>{progress}%</strong>
@@ -202,6 +218,7 @@ function ActivitySubmissionControl({ activity, row, run }) {
       Submitted
     </label>
     <span className="muted-line">{row.status || (row.submitted ? "Submitted" : "Missing")}</span>
+    <span className="muted-line">{row.submittedAt ? formatActivityDateTime(row.submittedAt) : "-"}</span>
   </div>;
 }
 

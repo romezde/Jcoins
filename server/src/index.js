@@ -6197,6 +6197,56 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   res.json({ submission: sub });
 });
 
+app.delete("/api/admin/activities/:id/submissions/:studentId", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const activity = db.activities.find((a) => a.id === req.params.id);
+  if (!activity) return res.status(404).json({ error: "Activity not found." });
+  if (!canUseActivity(req.user, activity) || !scopedStudentIds(db, req.user).has(req.params.studentId)) return res.status(403).json({ error: "This activity submission is outside your assigned class scope." });
+  const student = db.students.find((item) => item.id === req.params.studentId);
+  if (!studentIsInClass(db, student, activity.subjectId, activity.section)) return res.status(400).json({ error: "This student is not enrolled in the activity class." });
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (!reason) return res.status(400).json({ error: "A reason is required before removing a submitted activity." });
+  activity.submissions ||= [];
+  const sub = activity.submissions.find((item) => item.studentId === student.id);
+  if (!sub || !sub.submitted) return res.status(404).json({ error: "Submitted activity was not found for this student." });
+  const previousFileCount = activitySubmissionFiles(sub).length;
+  const removedTransaction = db.transactions.find((transaction) => transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id && transaction.studentId === student.id);
+  await removeObsoleteActivityFileRows(activity.id, student.id, 0, previousFileCount);
+  db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id && transaction.studentId === student.id));
+  delete sub.files;
+  delete sub.file;
+  delete sub.submittedAt;
+  delete sub.dateSubmitted;
+  delete sub.score;
+  delete sub.scoreMode;
+  delete sub.snapshot;
+  delete sub.submissionMethod;
+  sub.submitted = false;
+  sub.remarks = sub.extendedDeadline ? String(sub.remarks || "") : "";
+  if (!sub.extendedDeadline && !sub.remarks) {
+    activity.submissions = activity.submissions.filter((item) => item.studentId !== student.id);
+  }
+  activity.updatedAt = now();
+  addAuditLog(db, req.user, "activity.submission.delete", {
+    entityType: "activity-submission",
+    entityId: `${activity.id}:${student.id}`,
+    summary: `Removed ${student.name}'s submission for "${activity.title}" because: ${reason}`,
+    meta: {
+      reason,
+      activityId: activity.id,
+      activityTitle: activity.title,
+      studentId: student.id,
+      studentName: student.name,
+      subjectId: activity.subjectId,
+      section: activity.section || "",
+      removedFileCount: previousFileCount,
+      removedJCoins: removedTransaction?.amount || 0
+    }
+  });
+  await writeDb(db);
+  res.json({ ok: true });
+});
+
 app.post("/api/admin/activities/:id/submissions/:studentId/files", auth, requireRole("admin", "teacher"), activitySubmissionUpload, async (req, res, next) => {
   const temporaryFiles = Array.isArray(req.files) ? req.files : [];
   try {
