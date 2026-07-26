@@ -19,11 +19,12 @@ function attendanceGradeValue(status) {
   return 0;
 }
 
-function recitationGradeBonus(data, studentId, subjectId, setting) {
+function recitationGradeBonus(data, studentId, subjectId) {
   const recitationPoints = (data.recitations || [])
     .filter((item) => item.studentId === studentId && item.subjectId === subjectId)
     .reduce((sum, item) => sum + Number(item.amount || 1), 0);
-  return Math.min(Number(setting.recitationBonusMax || 0), recitationPoints / 100 * Number(setting.recitationBonusMax || 0));
+  const maximum = Number(data.settings?.grades?.recitationBonusMax || 0);
+  return Math.min(maximum, recitationPoints / 100 * maximum);
 }
 
 function localGroupActivityPercent(activity, studentId) {
@@ -55,6 +56,7 @@ export default function Grades({ data, run }) {
   const setting = activeClass ? gradeSettingForClass(data, activeClass) : null;
 
   return <div className="dashboard-grid">
+    <GlobalRecitationBonusSetting data={data} run={run} />
     <WrittenWorkForm data={data} run={run} />
     <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Grade Classes" itemLabel="students" />
     {activeClass && <Panel title={`${activeClass.subjectName} - ${activeClass.sectionLabel}`} wide defaultOpen>
@@ -221,7 +223,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   };
   const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
   const weightedPercent = activeWeight ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
-  const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId, setting);
+  const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId);
   const currentGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
   const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
   return {
@@ -263,7 +265,7 @@ function gradeRiskLabel(grade, passingGrade = 75) {
 
 function GradeSettingsForm({ activeClass, setting, run }) {
   const [form, setForm] = useState(() => settingsFormValues(setting));
-  useEffect(() => setForm(settingsFormValues(setting)), [setting?.id, JSON.stringify(setting?.weights || {}), setting?.passingGrade, setting?.recitationBonusMax, setting?.includeWrittenWorks]);
+  useEffect(() => setForm(settingsFormValues(setting)), [setting?.id, JSON.stringify(setting?.weights || {}), setting?.passingGrade, setting?.includeWrittenWorks]);
   const total = Object.values(form.weights || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const setWeight = (key, value) => setForm({ ...form, weights: { ...form.weights, [key]: value } });
   function submit(event) {
@@ -274,12 +276,33 @@ function GradeSettingsForm({ activeClass, setting, run }) {
     <div className="form-grid two">
       {Object.entries(gradeCategoryLabels).map(([key, label]) => <Field key={key} label={`${label} Weight`} type="number" min="0" max="100" value={form.weights[key]} onChange={(value) => setWeight(key, value)} />)}
       <Field label="Passing Grade" type="number" min="1" max="100" value={form.passingGrade} onChange={(passingGrade) => setForm({ ...form, passingGrade })} />
-      <Field label="Recitation Bonus Max" type="number" min="0" max="20" value={form.recitationBonusMax} onChange={(recitationBonusMax) => setForm({ ...form, recitationBonusMax })} />
     </div>
     <label className="check"><input type="checkbox" checked={form.includeWrittenWorks} onChange={(event) => setForm({ ...form, includeWrittenWorks: event.target.checked })} /> Include written works</label>
     <div className={total === 100 ? "notice" : "error"}>Weight total: {total}%{total === 100 ? "" : " (best if this is 100%)"}</div>
     <button>Save Grade Settings</button>
   </form>;
+}
+
+function GlobalRecitationBonusSetting({ data, run }) {
+  const savedValue = data.settings?.grades?.recitationBonusMax ?? 5;
+  const [value, setValue] = useState(savedValue);
+  useEffect(() => setValue(savedValue), [savedValue]);
+  const canEdit = data.user?.role === "admin";
+  function submit(event) {
+    event.preventDefault();
+    run(() => put("/admin/grades/global-settings", { recitationBonusMax: value }), "Global recitation bonus saved");
+  }
+  return <Panel title="Global Grade Setting" wide defaultOpen>
+    <p className="muted-line">This one Recitation Bonus Max applies to every subject and section. All other grade settings remain individual per class.</p>
+    {canEdit
+      ? <form className="grade-settings-form" onSubmit={submit}>
+        <div className="form-grid two">
+          <Field label="Recitation Bonus Max (All Subjects)" type="number" min="0" max="20" step="0.01" value={value} onChange={setValue} />
+        </div>
+        <button>Save Global Recitation Bonus</button>
+      </form>
+      : <div className="notice">Current global maximum: {Number(savedValue || 0).toFixed(2)} grade points. Only an admin can change it.</div>}
+  </Panel>;
 }
 
 function WrittenWorkForm({ data, run, work = null, presetClass = null, buttonLabel = null }) {
@@ -370,7 +393,6 @@ function gradeSettingForClass(data, activeClass) {
     id: `${activeClass.subjectId}::${activeClass.section}`,
     weights: data.settings?.grades?.weights || { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
     includeWrittenWorks: data.settings?.grades?.includeWrittenWorks !== false,
-    recitationBonusMax: data.settings?.grades?.recitationBonusMax ?? 5,
     passingGrade: data.settings?.grades?.passingGrade ?? 75
   };
 }
@@ -385,7 +407,6 @@ function settingsFormValues(setting = {}) {
       majorExams: setting.weights?.majorExams ?? 20
     },
     includeWrittenWorks: setting.includeWrittenWorks !== false,
-    recitationBonusMax: setting.recitationBonusMax ?? 5,
     passingGrade: setting.passingGrade ?? 75
   };
 }

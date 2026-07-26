@@ -979,6 +979,7 @@ function defaults() {
         weights: { writtenWorks: 20, quizzes: 20, activities: 30, attendance: 10, majorExams: 20 },
         includeWrittenWorks: true,
         recitationBonusMax: 5,
+        recitationBonusGlobalized: true,
         passingGrade: 75
       },
       wheel: { spinSeconds: 3.3 },
@@ -1303,6 +1304,7 @@ async function readDb() {
   const db = await readRawDb();
   let changed = false;
   const d = defaults();
+  const recitationBonusWasGlobalized = db.settings?.grades?.recitationBonusGlobalized === true;
   db.settings = { ...d.settings, ...(db.settings || {}) };
   db.settings.attendance = { ...d.settings.attendance, ...(db.settings.attendance || {}) };
   db.settings.recitation = { ...d.settings.recitation, ...(db.settings.recitation || {}) };
@@ -1361,7 +1363,19 @@ async function readDb() {
   db.writtenWorks ||= [];
   db.writtenWorks.forEach((work) => normalizeWrittenWork(work, db));
   db.gradeSettings ||= [];
-  db.gradeSettings.forEach((setting) => normalizeGradeSetting(setting, db));
+  if (!recitationBonusWasGlobalized) {
+    const legacyRecitationBonusValues = [...new Set(db.gradeSettings
+      .filter((setting) => Object.prototype.hasOwnProperty.call(setting, "recitationBonusMax"))
+      .map((setting) => Math.max(0, Math.min(20, Number(setting.recitationBonusMax))))
+      .filter(Number.isFinite))];
+    if (legacyRecitationBonusValues.length === 1) db.settings.grades.recitationBonusMax = legacyRecitationBonusValues[0];
+    db.settings.grades.recitationBonusGlobalized = true;
+    changed = true;
+  }
+  db.gradeSettings.forEach((setting) => {
+    if (Object.prototype.hasOwnProperty.call(setting, "recitationBonusMax")) changed = true;
+    normalizeGradeSetting(setting, db);
+  });
   db.gradeNotes ||= [];
   db.gradeNotes.forEach((note) => normalizeGradeNote(note, db));
   db.shopItems ||= [];
@@ -3801,7 +3815,7 @@ function normalizeGradeSetting(setting, db) {
   setting.section = String(setting.section || "").trim();
   setting.weights = normalizeGradeWeights(setting.weights || db.settings.grades?.weights);
   setting.includeWrittenWorks = setting.includeWrittenWorks !== false;
-  setting.recitationBonusMax = Math.max(0, Math.min(20, Number(setting.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5)));
+  delete setting.recitationBonusMax;
   setting.passingGrade = Math.max(1, Math.min(100, Number(setting.passingGrade || db.settings.grades?.passingGrade || 75)));
   setting.releasedAt = String(setting.releasedAt || "");
   return setting;
@@ -3817,7 +3831,6 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
       section: normalizedSection,
       weights: db.settings.grades?.weights,
       includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
-      recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
       passingGrade: db.settings.grades?.passingGrade ?? 75,
       createdAt: now()
     }, db);
@@ -3829,7 +3842,6 @@ function gradeSettingFor(db, subjectId, section = "", create = false) {
     section: normalizedSection,
     weights: db.settings.grades?.weights,
     includeWrittenWorks: db.settings.grades?.includeWrittenWorks !== false,
-    recitationBonusMax: db.settings.grades?.recitationBonusMax ?? 5,
     passingGrade: db.settings.grades?.passingGrade ?? 75
   }, db);
 }
@@ -3845,7 +3857,6 @@ function gradeSettingInput(db, body, user) {
     section,
     weights,
     includeWrittenWorks: body.includeWrittenWorks !== false,
-    recitationBonusMax: Math.max(0, Math.min(20, Number(body.recitationBonusMax ?? db.settings.grades?.recitationBonusMax ?? 5))),
     passingGrade: Math.max(1, Math.min(100, Number(body.passingGrade || db.settings.grades?.passingGrade || 75)))
   };
 }
@@ -3993,11 +4004,12 @@ function attendancePercentForStudent(db, studentId, subjectId, section) {
   return { values, missing: values.filter((value) => value === 0).length };
 }
 
-function recitationGradeBonus(db, studentId, subjectId, setting) {
+function recitationGradeBonus(db, studentId, subjectId) {
   const recitationPoints = (db.recitations || [])
     .filter((recitation) => recitation.studentId === studentId && recitation.subjectId === subjectId)
     .reduce((sum, recitation) => sum + Number(recitation.amount || 1), 0);
-  return Math.min(Number(setting.recitationBonusMax || 0), recitationPoints / 100 * Number(setting.recitationBonusMax || 0));
+  const maximum = Number(db.settings.grades?.recitationBonusMax || 0);
+  return Math.min(maximum, recitationPoints / 100 * maximum);
 }
 
 function groupActivityPercentForStudent(db, activity, student) {
@@ -4098,7 +4110,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     }
   });
   if (!majorExams.length && Number(weights.majorExams || 0) > 0) majorPercents.push(100);
-  const recitationBonus = recitationGradeBonus(db, student.id, subjectId, setting);
+  const recitationBonus = recitationGradeBonus(db, student.id, subjectId);
   const hasCountedActivities = activityPercents.length > 0;
   const categories = {
     writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length, setting.includeWrittenWorks !== false && !!writtenWorks.length),
@@ -5972,6 +5984,29 @@ app.put("/api/admin/major-exams/:id/scores", auth, requireRole("admin", "teacher
   exam.updatedBy = req.user.id;
   await writeDb(db);
   res.json({ exam: publicMajorExam(db, exam) });
+});
+
+app.put("/api/admin/grades/global-settings", auth, requireRole("admin"), async (req, res) => {
+  const db = await readDb();
+  const recitationBonusMax = Number(req.body.recitationBonusMax);
+  if (!Number.isFinite(recitationBonusMax) || recitationBonusMax < 0 || recitationBonusMax > 20) {
+    return res.status(400).json({ error: "Recitation Bonus Max must be from 0 to 20." });
+  }
+  db.settings.grades.recitationBonusMax = Math.round(recitationBonusMax * 100) / 100;
+  db.settings.grades.recitationBonusGlobalized = true;
+  addAuditLog(db, req.user, "settings.update", {
+    entityType: "settings",
+    entityId: "grades.recitationBonusMax",
+    summary: `Set the global grade recitation bonus maximum to ${db.settings.grades.recitationBonusMax}.`,
+    meta: { recitationBonusMax: db.settings.grades.recitationBonusMax }
+  });
+  req.auditRecorded = true;
+  await writeDb(db);
+  res.json({
+    settings: db.settings,
+    gradeSettings: gradeSettingsForUser(db, req.user),
+    gradeSummaries: hydrateGradeSummaries(db, req.user)
+  });
 });
 
 app.put("/api/admin/grades/settings", auth, requireRole("admin", "teacher"), async (req, res) => {
