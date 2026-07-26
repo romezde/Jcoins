@@ -71,7 +71,7 @@ export default function Grades({ data, run }) {
       <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
       <Table columns={["Student", "Current", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
-        <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{row.currentGrade}%</strong>,
+        <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>,
         categoryPercent(row, "activities"),
         categoryPercent(row, "attendance"),
         categoryPercent(row, "quizzes"),
@@ -222,7 +222,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
   const weightedPercent = activeWeight ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
   const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId, setting);
-  const currentGrade = Math.max(0, Math.min(100, Math.round(weightedPercent + recitationBonus)));
+  const currentGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
   const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
   return {
     studentId: student.id,
@@ -351,7 +351,7 @@ function GradeAdviceModal({ summary, run }) {
   return <ActionModal title={`Advice for ${summary.studentName}`} buttonLabel="Advice" icon={Pencil}>
     <form onSubmit={submit}>
       <div className="account-grid">
-        <div className="account-item"><span>Current Grade</span><strong>{summary.currentGrade}%</strong></div>
+        <div className="account-item"><span>Current Grade</span><strong>{formatCurrentGrade(summary.currentGrade)}</strong></div>
         <div className="account-item"><span>Class</span><strong>{summary.subjectName} - {summary.section}</strong></div>
       </div>
       <Select label="Risk Status" value={form.riskStatus} onChange={(riskStatus) => setForm({ ...form, riskStatus })} options={["", "Outstanding", "Safe", "Watch", "At Risk", "Critical"].map((value) => ({ value, label: value || "Auto" }))} />
@@ -447,6 +447,10 @@ function categoryPercent(row, key) {
   return value == null ? "-" : `${Math.round(Number(value || 0))}%`;
 }
 
+function formatCurrentGrade(value) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
 function deleteWrittenWork(work, run) {
   return confirm(`Delete ${work.title}? This removes all recorded written work scores.`)
     && run(() => del(`/admin/written-works/${work.id}`), "Written work deleted");
@@ -464,6 +468,6 @@ function exportGrades(activeClass, rows) {
   exportSpreadsheet(`grades-${safeFilePart(activeClass.subjectName)}-${safeFilePart(activeClass.sectionLabel)}.xls`, [
     "Student", "Subject", "Section", "Current Grade", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Priority", "Missing", "Advice"
   ], rows.map((row) => [
-    row.studentName, row.subjectName, row.section, `${row.currentGrade}%`, categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
+    row.studentName, row.subjectName, row.section, formatCurrentGrade(row.currentGrade), categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
   ]), "Grades");
 }

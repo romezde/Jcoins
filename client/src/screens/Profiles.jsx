@@ -51,7 +51,7 @@ function StudentGradeAdvice({ data }) {
     <Table columns={["Subject", "Section", "Current", "Status", "Missing", "Advice"]} rows={rows.map((row) => [
       row.subjectName,
       row.section || "-",
-      `${row.currentGrade}%`,
+      `${Number(row.currentGrade || 0).toFixed(2)}%`,
       row.riskStatus,
       row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
       row.visibleAdvice || "Keep submitting requirements and ask your teacher which topic to review next."

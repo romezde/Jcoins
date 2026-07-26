@@ -4112,7 +4112,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100
     : 100;
   const rawGrade = weightedPercent + recitationBonus;
-  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade)));
+  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade * 100) / 100));
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
   const summary = {
