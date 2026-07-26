@@ -1999,6 +1999,53 @@ input::placeholder {
   min-height: 240px;
   margin-top: 14px;
 }
+.recitation-student-link {
+  display: inline;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #67e8f9;
+  font: inherit;
+  font-weight: 900;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(103, 232, 249, .45);
+  text-underline-offset: 3px;
+}
+.recitation-student-link:hover {
+  color: #cffafe;
+  background: transparent;
+}
+.recitation-profile-modal {
+  width: min(1040px, 100%);
+  max-height: calc(100vh - 36px);
+}
+.recitation-profile-metrics {
+  margin: 16px 0;
+}
+.recitation-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.recitation-chart-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(15, 23, 42, .64);
+}
+.recitation-chart-card h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+.recitation-profile-history {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
 .dashboard-top-three {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3995,6 +4042,9 @@ td button {
   }
   .attendance-grid-table td select {
     min-width: 128px;
+  }
+  .recitation-chart-grid {
+    grid-template-columns: 1fr;
   }
 }
 
