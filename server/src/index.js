@@ -3947,6 +3947,11 @@ function quizTotalForStudent(quiz, submission) {
   return Number(bestAttempt?.total || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 0);
 }
 
+function quizCountsInGrades(quiz) {
+  return quiz.status !== "draft"
+    || (quiz.submissions || []).some((submission) => (submission.attempts || []).length > 0);
+}
+
 function percentAverage(values) {
   if (!values.length) return null;
   return Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length);
@@ -4049,7 +4054,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     });
   }
   const quizPercents = [];
-  const quizzes = (db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section && quiz.status !== "draft");
+  const quizzes = (db.quizzes || []).filter((quiz) => quiz.subjectId === subjectId && quiz.section === section && quizCountsInGrades(quiz));
   quizzes.forEach((quiz) => {
     const submission = (quiz.submissions || []).find((item) => item.studentId === student.id);
     const total = quizTotalForStudent(quiz, submission);

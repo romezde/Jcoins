@@ -137,12 +137,19 @@ function computeLocalGradeSummaries(data, activeClass) {
   const weights = setting.weights || {};
   const students = (data.students || []).filter((student) => String(student.section || "").trim() === activeClass.section);
   const writtenWorks = (data.writtenWorks || []).filter((work) => work.subjectId === activeClass.subjectId && String(work.section || "").trim() === activeClass.section);
-  const quizzes = (data.quizzes || []).filter((quiz) => quiz.subjectId === activeClass.subjectId && String(quiz.section || "").trim() === activeClass.section && quiz.status !== "draft");
+  const quizzes = (data.quizzes || []).filter((quiz) => quiz.subjectId === activeClass.subjectId && String(quiz.section || "").trim() === activeClass.section && quizCountsInGrades(quiz));
   const activities = (data.activities || []).filter((activity) => activity.subjectId === activeClass.subjectId && (!String(activity.section || "").trim() || String(activity.section || "").trim() === activeClass.section));
   const groupActivities = (data.groupActivities || []).filter((activity) => activity.subjectId === activeClass.subjectId && String(activity.section || "").trim() === activeClass.section);
   const attendanceWeeks = (data.attendanceWeeks || []).filter((week) => week.subjectId === activeClass.subjectId && (!String(week.section || "").trim() || String(week.section || "").trim() === activeClass.section));
   const majorExams = (data.majorExams || []).filter((exam) => exam.subjectId === activeClass.subjectId && String(exam.section || "").trim() === activeClass.section);
   return students.map((student) => localGradeSummaryForStudent(data, activeClass, setting, { writtenWorks, quizzes, activities, groupActivities, attendanceWeeks, majorExams }, student));
+}
+
+function quizCountsInGrades(quiz) {
+  return quiz.status !== "draft"
+    || Number(quiz.submittedCount || 0) > 0
+    || (quiz.rows || []).some((row) => Number(row.attempts || 0) > 0)
+    || (quiz.submissions || []).some((submission) => (submission.attempts || []).length > 0);
 }
 
 function localGradeSummaryForStudent(data, activeClass, setting, records, student) {
