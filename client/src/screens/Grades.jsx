@@ -35,6 +35,11 @@ function localGroupActivityPercent(activity, studentId) {
   return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
 }
 
+function activityDeadlinePassed(value) {
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.getTime() <= Date.now();
+}
+
 export default function Grades({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [search, setSearch] = useState("");
@@ -165,6 +170,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const activityPercents = [];
   records.activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
+    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
       activityPercents.push(0);
@@ -172,6 +178,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     }
   });
   (records.groupActivities || []).forEach((activity) => {
+    if (!activityDeadlinePassed(activity.deadline)) return;
     const percent = localGroupActivityPercent(activity, student.id);
     if (percent != null) activityPercents.push(percent);
     else {
@@ -197,10 +204,11 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     }
   });
   if (!records.majorExams.length) majorPercents.push(100);
+  const hasCountedActivities = activityPercents.length > 0;
   const categories = {
     writtenWorks: localCategory("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, setting.includeWrittenWorks !== false && records.writtenWorks.length),
     quizzes: localCategory("Quizzes", weights.quizzes, quizPercents, records.quizzes.length),
-    activities: localCategory("Activities / PT", weights.activities, activityPercents, records.activities.length || records.groupActivities?.length),
+    activities: localCategory("Activities / PT", weights.activities, activityPercents, hasCountedActivities),
     attendance: localCategory("Attendance", weights.attendance, attendanceValues, attendanceValues.length),
     majorExams: localCategory("Major Exams", weights.majorExams, majorPercents, true)
   };

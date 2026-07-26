@@ -4007,6 +4007,11 @@ function groupActivityPercentForStudent(db, activity, student) {
   return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
 }
 
+function activityDeadlinePassed(deadline) {
+  const date = parseActivityDateTime(deadline, true);
+  return !!date && date.getTime() <= Date.now();
+}
+
 function gradeRiskStatus(grade, passingGrade = 75) {
   if (grade >= 96) return "Outstanding";
   if (grade >= Math.max(85, passingGrade + 10)) return "Safe";
@@ -4059,6 +4064,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (user.role === "student" && row && !row.scoreReleased) return;
+    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
       activityPercents.push(0);
@@ -4067,6 +4073,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   });
   const groupActivities = (db.groupActivities || []).filter((activity) => activity.subjectId === subjectId && String(activity.section || "").trim() === section);
   groupActivities.forEach((activity) => {
+    if (!activityDeadlinePassed(activity.deadline)) return;
     const percent = groupActivityPercentForStudent(db, activity, student);
     if (percent != null) activityPercents.push(percent);
     else {
@@ -4087,10 +4094,11 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   });
   if (!majorExams.length && Number(weights.majorExams || 0) > 0) majorPercents.push(100);
   const recitationBonus = recitationGradeBonus(db, student.id, subjectId, setting);
+  const hasCountedActivities = activityPercents.length > 0;
   const categories = {
     writtenWorks: categorySummary("Written Works", setting.includeWrittenWorks === false ? 0 : weights.writtenWorks, writtenPercents, missingItems.length, setting.includeWrittenWorks !== false && !!writtenWorks.length),
     quizzes: categorySummary("Quizzes", weights.quizzes, quizPercents, missingItems.length, !!quizzes.length),
-    activities: categorySummary("Activities / PT", weights.activities, activityPercents, missingItems.length, !!(activities.length || groupActivities.length)),
+    activities: categorySummary("Activities / PT", weights.activities, activityPercents, missingItems.length, hasCountedActivities),
     attendance: categorySummary("Attendance", weights.attendance, attendance.values, attendance.missing, !!attendance.values.length),
     majorExams: categorySummary("Major Exams", weights.majorExams, majorPercents, missingItems.length, true)
   };
