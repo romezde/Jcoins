@@ -1059,6 +1059,47 @@ input::placeholder {
 .modal-card-wide {
   width: min(680px, 100%);
 }
+.missing-work-modal {
+  display: grid;
+  gap: 14px;
+}
+.missing-work-modal .section-head {
+  align-items: start;
+}
+.missing-work-group {
+  display: grid;
+  gap: 8px;
+}
+.missing-work-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, .56);
+  color: var(--text);
+  text-align: left;
+}
+.missing-work-item:hover {
+  border-color: rgba(34, 211, 238, .45);
+  background: rgba(34, 211, 238, .09);
+}
+.missing-work-item span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.missing-work-item small {
+  color: var(--muted);
+}
+.missing-work-item b {
+  color: #a5f3fc;
+  font-size: 12px;
+  text-transform: uppercase;
+}
 .success-modal {
   display: grid;
   justify-items: center;

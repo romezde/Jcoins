@@ -198,6 +198,7 @@ function RoleApp({ session, logout }) {
   const [saveState, setSaveState] = useState({ status: "idle", pending: 0, label: "" });
   const [navOpen, setNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState(() => readNavGroups(session.user.role));
+  const [missingWorkDismissed, setMissingWorkDismissed] = useState(() => localStorage.getItem(missingWorkSeenKey(session.user)) === "1");
   const actionQueueRef = useRef(Promise.resolve());
   const pendingActionsRef = useRef(0);
   const actionRefreshTimerRef = useRef(null);
@@ -209,6 +210,7 @@ function RoleApp({ session, logout }) {
   const loadedModulesRef = useRef(new Set(initialCacheRef.current?.modules || []));
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
+  const missingWork = session.user.role === "student" && normalized ? studentMissingWork(normalized) : [];
 
   async function load(modules = []) {
     if (loadInFlightRef.current) {
@@ -245,6 +247,11 @@ function RoleApp({ session, logout }) {
   }
 
   useEffect(() => { load(requiredModulesForTab(active, session.user.role)); }, []);
+  useEffect(() => {
+    if (session.user.role !== "student") return;
+    const needed = ["activities", "quizzes", "grades"];
+    if (needed.some((module) => !loadedModulesRef.current.has(module))) load(needed);
+  }, [session.user.id, session.user.role]);
   useEffect(() => {
     const needed = requiredModulesForTab(active, session.user.role);
     if (needed.some((module) => !loadedModulesRef.current.has(module))) load(needed);
@@ -434,8 +441,106 @@ function RoleApp({ session, logout }) {
       </main>
     </div>
     <SaveQueueStatus state={saveState} />
+    {session.user.role === "student" && !!missingWork.length && !missingWorkDismissed && <StudentMissingWorkModal
+      items={missingWork}
+      navigate={navigate}
+      onClose={() => {
+        localStorage.setItem(missingWorkSeenKey(session.user), "1");
+        setMissingWorkDismissed(true);
+      }}
+    />}
     {(session.user.role === "admin" || session.user.role === "teacher") && <FloatingAssistant />}
   </div>;
+}
+
+function missingWorkSeenKey(user) {
+  return `jcoins_missing_work_seen_${user?.id || "student"}_${new Date().toISOString().slice(0, 10)}`;
+}
+
+function studentMissingWork(data) {
+  const studentId = data.student?.id;
+  const items = [];
+  (data.activities || []).forEach((activity) => {
+    const row = (activity.rows || []).find((item) => item.studentId === studentId);
+    if (row && !row.submitted) {
+      items.push({
+        type: "Activity",
+        title: activity.title,
+        subject: activity.subjectName,
+        detail: row.effectiveDeadline || activity.deadline ? `Due ${formatShortDateTime(row.effectiveDeadline || activity.deadline)}` : "Not submitted",
+        tab: "Activities"
+      });
+    }
+  });
+  (data.quizzes || []).forEach((quiz) => {
+    if (quiz.status === "draft") return;
+    const latest = quiz.submission?.latest;
+    const total = Number(latest?.total || quiz.questions?.length || 0);
+    const passed = latest && Number(latest.correct || 0) >= Number(quiz.passingScore || total || 0);
+    if (!latest || !passed) {
+      items.push({
+        type: "Quiz",
+        title: quiz.title,
+        subject: quiz.subjectName,
+        detail: latest ? `Latest ${latest.correct}/${latest.total}; passing ${quiz.passingScore}/${total || quiz.questions?.length || "?"}` : "Not answered yet",
+        tab: "Quizzes"
+      });
+    }
+  });
+  (data.gradeSummaries || []).forEach((summary) => {
+    (summary.missingItems || []).forEach((item) => {
+      items.push({
+        type: "Grade",
+        title: item,
+        subject: summary.subjectName,
+        detail: summary.section ? `Needed for ${summary.section}` : "Needed for grades",
+        tab: "Profile"
+      });
+    });
+  });
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = `${item.type}|${item.subject}|${item.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 20);
+}
+
+function StudentMissingWorkModal({ items, navigate, onClose }) {
+  const byType = items.reduce((map, item) => {
+    map[item.type] ||= [];
+    map[item.type].push(item);
+    return map;
+  }, {});
+  const goTo = (tab) => {
+    onClose();
+    navigate(tab);
+  };
+  return <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <section className="modal-card modal-card-wide missing-work-modal">
+      <div className="section-head">
+        <div>
+          <div className="section-title">Things To Pass</div>
+          <p className="muted-line">These are the activities, quizzes, and released grade requirements that still need attention.</p>
+        </div>
+        <button type="button" className="soft" onClick={onClose}>Close</button>
+      </div>
+      {Object.entries(byType).map(([type, rows]) => <section key={type} className="missing-work-group">
+        <div className="section-title">{type}</div>
+        {rows.map((item) => <button type="button" key={`${type}-${item.subject}-${item.title}`} className="missing-work-item" onClick={() => goTo(item.tab)}>
+          <span><strong>{item.title}</strong><small>{item.subject || "Class"} | {item.detail}</small></span>
+          <b>{item.tab}</b>
+        </button>)}
+      </section>)}
+      <button type="button" onClick={onClose}>OK, I'll check it</button>
+    </section>
+  </div>;
+}
+
+function formatShortDateTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value || "") : date.toLocaleString();
 }
 
 function SaveQueueStatus({ state }) {
