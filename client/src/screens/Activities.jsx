@@ -226,8 +226,18 @@ function ActivityExtensionControl({ activity, row, run }) {
 }
 
 function deleteActivity(activity, run) {
-  return confirm(`Delete ${activity.title}? This removes submissions and JCoins earned from this activity.`)
-    && run(() => del(`/admin/activities/${activity.id}`), "Activity deleted");
+  const submittedCount = (activity.rows || []).filter((row) => row.submitted).length;
+  if (!submittedCount) {
+    return confirm(`Delete ${activity.title}? This removes this activity.`)
+      && run(() => del(`/admin/activities/${activity.id}`), "Activity deleted");
+  }
+  const reason = prompt(`Why are you deleting ${activity.title}? This has ${submittedCount} submitted work record${submittedCount === 1 ? "" : "s"}.`);
+  if (!reason?.trim()) {
+    alert("A reason is required before deleting an activity with submissions.");
+    return false;
+  }
+  return confirm(`Delete ${activity.title}? This removes submissions, activity files, and JCoins earned from this activity.`)
+    && run(() => del(`/admin/activities/${activity.id}`, { reason }), "Activity deleted");
 }
 
 function activityFormValues(activity) {

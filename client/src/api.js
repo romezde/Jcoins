@@ -45,7 +45,7 @@ export function request(path, options = {}) {
 
 export const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
 export const put = (path, body) => request(path, { method: "PUT", body: JSON.stringify(body) });
-export const del = (path) => request(path, { method: "DELETE" });
+export const del = (path, body) => request(path, { method: "DELETE", ...(body ? { body: JSON.stringify(body) } : {}) });
 export const today = () => new Date().toISOString().slice(0, 10);
 
 export function eventUrl(token) {

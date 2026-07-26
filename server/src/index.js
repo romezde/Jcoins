@@ -5830,6 +5830,22 @@ app.delete("/api/admin/activities/:id", auth, requireRole("admin", "teacher"), a
   const activity = db.activities.find((a) => a.id === req.params.id);
   if (!activity) return res.status(404).json({ error: "Activity not found." });
   if (!canUseActivity(req.user, activity)) return res.status(403).json({ error: "This activity is outside your assigned class scope." });
+  const submittedCount = (activity.submissions || []).filter((submission) => submission.submitted).length;
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (submittedCount && !reason) return res.status(400).json({ error: "A deletion reason is required because this activity has submitted work." });
+  if (submittedCount) addAuditLog(db, req.user, "activity.delete", {
+    entityType: "activity",
+    entityId: activity.id,
+    summary: `Deleted submitted activity "${activity.title}" because: ${reason}`,
+    meta: {
+      reason,
+      title: activity.title,
+      subjectId: activity.subjectId,
+      section: activity.section || "",
+      submittedCount,
+      removedTransactionCount: db.transactions.filter((transaction) => transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id).length
+    }
+  });
   db.activities = db.activities.filter((a) => a.id !== activity.id);
   db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "activity" && transaction.meta.activityId === activity.id));
   await writeDb(db);
