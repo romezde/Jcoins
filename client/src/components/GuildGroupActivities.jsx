@@ -103,7 +103,9 @@ function StaffGuildGrade({ activity, guild, run }) {
   const gradeRows = guild.members.map((member) => [
     member.studentName,
     member.studentId === guild.leaderId ? "Leader" : "Member",
-    guild.memberGrades?.[member.studentId] ?? "Waiting"
+    guild.memberGrades?.[member.studentId] == null
+      ? "Waiting"
+      : `${guild.memberGrades[member.studentId]}${(guild.carriedGradeStudentIds || []).includes(member.studentId) ? " (carried from previous guild)" : ""}`
   ]);
   const leaderOptions = guild.members.map((member) => ({ value: member.studentId, label: member.studentName }));
   return <section className="guild-group-card">
@@ -128,7 +130,7 @@ function StaffGuildGrade({ activity, guild, run }) {
       <button type="button" disabled={score === "" || !guild.leaderId && !guild.proposedLeaderId} onClick={() => run(() => put(`/admin/guild/group-activities/${activity.id}/grade`, { guildId: guild.guildId, score }), guild.leaderId ? "Teacher grade updated" : "Leader finalized and graded")}>{guild.leaderId ? "Update Grade" : "Finalize Leader & Grade"}</button>
     </div>
     {guild.teacherScore != null && <>
-      <p className="muted-line">The leader automatically receives {guild.teacherScore}. Other grades are assigned by the leader, up to {guild.teacherScore}.</p>
+      <p className="muted-line">The leader automatically receives {guild.teacherScore}. Member grades can be from 0 to 100, and grades earned before a guild transfer remain unchanged.</p>
       <Table columns={["Member", "Role", "Grade"]} rows={gradeRows} pageSize={20} />
     </>}
   </section>;
@@ -163,10 +165,11 @@ function StudentGroupActivity({ activity, run }) {
         ? <button type="button" disabled={!candidateId} onClick={() => run(() => post(`/student/guild/group-activities/${activity.id}/vote`, { candidateId }), "Leader vote saved")}>{activity.myVote ? "Update Vote" : "Submit Vote"}</button>
         : <p className="muted-line">Leader voting is closed.</p>}
     </section>}
-    {activity.teacherScore != null && <div className="guild-grade-result">
-      <span>Teacher's highest grade <strong>{activity.teacherScore}</strong></span>
+    {(activity.teacherScore != null || activity.myGrade != null) && <div className="guild-grade-result">
+      <span>Current guild's teacher grade <strong>{activity.teacherScore ?? "Not graded"}</strong></span>
       <span>Your grade <strong>{activity.myGrade ?? "Waiting for leader"}</strong></span>
     </div>}
+    {activity.gradeCarriedFromPreviousGuild && <div className="notice">Your grade for this activity was carried from your previous guild and is not limited by your current guild's grade.</div>}
     {activity.canDistribute && <LeaderGradeDistribution activity={activity} run={run} />}
   </Panel>;
 }
@@ -179,9 +182,9 @@ function LeaderGradeDistribution({ activity, run }) {
   }, [activity.id, activity.teacherScore, JSON.stringify(activity.memberGrades || {})]);
   return <section className="guild-grade-distribution">
     <div className="section-title"><Crown size={18} /> Distribute Member Grades</div>
-    <p className="muted-line">Your grade is fixed at {activity.teacherScore}. Every member grade must be from 0 to {activity.teacherScore}.</p>
+    <p className="muted-line">Your grade is fixed at {activity.teacherScore}. Every member grade may be from 0 to 100; transferred grades are preserved even when they are above this guild's grade.</p>
     <div className="guild-member-grade-grid">
-      {nonLeaders.map((member) => <Field key={member.studentId} label={member.studentName} type="number" min="0" max={activity.teacherScore} value={grades[member.studentId]} onChange={(grade) => setGrades({ ...grades, [member.studentId]: grade })} />)}
+      {nonLeaders.map((member) => <Field key={member.studentId} label={member.studentName} type="number" min="0" max="100" value={grades[member.studentId]} onChange={(grade) => setGrades({ ...grades, [member.studentId]: grade })} />)}
     </div>
     <button type="button" disabled={nonLeaders.some((member) => grades[member.studentId] === "")} onClick={() => run(() => put(`/student/guild/group-activities/${activity.id}/distribute`, { grades }), "Member grades saved")}>Save Member Grades</button>
   </section>;

@@ -739,6 +739,25 @@ function groupActivityResult(activity, guildId, create = false) {
   return result || null;
 }
 
+function groupActivityGradeRecord(activity, studentId, preferredGuildId = "") {
+  const results = activity.guildResults || [];
+  const preferred = preferredGuildId ? results.find((result) => result.guildId === preferredGuildId) : null;
+  if (preferred && Object.prototype.hasOwnProperty.call(preferred.memberGrades || {}, studentId)) {
+    return { guildId: preferred.guildId, grade: Number(preferred.memberGrades[studentId]) };
+  }
+  const historical = results.find((result) => Object.prototype.hasOwnProperty.call(result.memberGrades || {}, studentId));
+  return historical ? { guildId: historical.guildId, grade: Number(historical.memberGrades[studentId]) } : null;
+}
+
+function setGroupActivityStudentGrade(activity, guildId, studentId, grade) {
+  (activity.guildResults || []).forEach((result) => {
+    if (result.guildId !== guildId && result.memberGrades) delete result.memberGrades[studentId];
+  });
+  const result = groupActivityResult(activity, guildId, true);
+  result.memberGrades ||= {};
+  result.memberGrades[studentId] = Math.max(0, Math.min(100, Number(grade || 0)));
+}
+
 function groupVoteSummary(db, activity, guildId, members = groupActivityMembers(db, activity, guildId)) {
   const memberIds = new Set(members.map((member) => member.id));
   const counts = Object.fromEntries(members.map((member) => [member.id, 0]));
@@ -758,20 +777,23 @@ function groupActivityDeadlineOpen(activity) {
 
 function syncGroupActivityRewards(db, activity, result, createdBy) {
   const members = groupActivityMembers(db, activity, result.guildId);
-  const memberIds = new Set(members.map((member) => member.id));
+  const studentsById = new Map((db.students || []).map((student) => [student.id, student]));
   db.transactions = db.transactions.filter((transaction) => !(
     transaction.meta?.groupActivityId === activity.id
     && transaction.meta?.guildId === result.guildId
     && ["group-activity", "group-activity-leader"].includes(transaction.meta?.kind)
   ));
-  if (result.teacherScore == null || !result.leaderId || !memberIds.has(result.leaderId)) return;
-  const grades = { ...(result.memberGrades || {}), [result.leaderId]: Number(result.teacherScore) };
+  if (result.teacherScore == null || !result.leaderId || !studentsById.has(result.leaderId)) return;
+  const grades = { ...(result.memberGrades || {}) };
+  grades[result.leaderId] = Number(result.teacherScore);
   result.memberGrades = grades;
-  members.forEach((member) => {
-    const grade = grades[member.id];
+  const eligibleStudentIds = new Set([...members.map((member) => member.id), ...Object.keys(grades)]);
+  eligibleStudentIds.forEach((studentId) => {
+    if (!studentsById.has(studentId)) return;
+    const grade = grades[studentId];
     if (grade == null || grade === "") return;
     const reward = Math.round(Number(activity.rewardValue || 0) * Math.max(0, Math.min(100, Number(grade))) / 100);
-    if (reward) db.transactions.push(tx(member.id, "group_activity", reward, `${activity.title} - group activity`, now(), createdBy, {
+    if (reward) db.transactions.push(tx(studentId, "group_activity", reward, `${activity.title} - group activity`, now(), createdBy, {
       kind: "group-activity",
       groupActivityId: activity.id,
       guildId: result.guildId,
@@ -790,6 +812,10 @@ function syncGroupActivityRewards(db, activity, result, createdBy) {
   }));
 }
 
+function syncAllGroupActivityRewards(db, activity, createdBy) {
+  (activity.guildResults || []).forEach((result) => syncGroupActivityRewards(db, activity, result, createdBy));
+}
+
 function reconcileGroupActivities(db, createdBy = "system") {
   (db.groupActivities || []).forEach((activity) => {
     normalizeGroupActivity(activity, db);
@@ -799,20 +825,11 @@ function reconcileGroupActivities(db, createdBy = "system") {
       return memberIds.has(vote.studentId) && memberIds.has(vote.candidateId);
     });
     (activity.guildResults || []).forEach((result) => {
-      const memberIds = new Set(groupActivityMembers(db, activity, result.guildId).map((member) => member.id));
-      if (result.leaderId && !memberIds.has(result.leaderId)) {
-        result.leaderId = "";
-        result.leaderFinalizedAt = "";
-        result.teacherScore = null;
-        result.teacherGradedAt = "";
-        result.teacherGradedBy = "";
-        result.memberGrades = {};
-        result.distributedAt = "";
-      } else {
-        result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {}).filter(([studentId]) => memberIds.has(studentId)));
-      }
-      syncGroupActivityRewards(db, activity, result, createdBy);
+      result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {})
+        .filter(([studentId]) => (db.students || []).some((student) => student.id === studentId))
+        .map(([studentId, grade]) => [studentId, Math.max(0, Math.min(100, Number(grade || 0)))]));
     });
+    syncAllGroupActivityRewards(db, activity, createdBy);
   });
 }
 
@@ -838,9 +855,15 @@ function publicGroupActivity(db, activity, user) {
     const members = groupActivityMembers(db, activity, guildId);
     if (!members.some((member) => member.id === user.studentId)) return null;
     const result = groupActivityResult(activity, guildId);
+    const gradeRecord = groupActivityGradeRecord(activity, user.studentId, guildId);
     const myVote = (activity.votes || []).find((vote) => vote.studentId === user.studentId)?.candidateId || "";
     const isLeader = result?.leaderId === user.studentId;
-    const visibleGrades = isLeader ? result?.memberGrades || {} : result?.teacherScore != null ? { [user.studentId]: result.memberGrades?.[user.studentId] } : {};
+    const visibleGrades = isLeader
+      ? Object.fromEntries(members.flatMap((member) => {
+        const memberGrade = groupActivityGradeRecord(activity, member.id, guildId);
+        return memberGrade ? [[member.id, memberGrade.grade]] : [];
+      }))
+      : gradeRecord ? { [user.studentId]: gradeRecord.grade } : {};
     return {
       ...base,
       guildId,
@@ -852,7 +875,8 @@ function publicGroupActivity(db, activity, user) {
       leaderName: result?.leaderId ? studentName(db, result.leaderId) : "",
       teacherScore: result?.teacherScore,
       memberGrades: visibleGrades,
-      myGrade: result?.memberGrades?.[user.studentId] ?? null,
+      myGrade: gradeRecord?.grade ?? null,
+      gradeCarriedFromPreviousGuild: !!gradeRecord && gradeRecord.guildId !== guildId,
       canDistribute: isLeader && result?.teacherScore != null
     };
   }
@@ -861,6 +885,8 @@ function publicGroupActivity(db, activity, user) {
     if (!members.length) return null;
     const result = groupActivityResult(activity, guild.id);
     const summary = groupVoteSummary(db, activity, guild.id, members);
+    const activeLeaderId = members.some((member) => member.id === result?.leaderId) ? result.leaderId : "";
+    const gradeRecords = members.map((member) => [member.id, groupActivityGradeRecord(activity, member.id, guild.id)]);
     return {
       guildId: guild.id,
       guildName: guild.name,
@@ -868,10 +894,11 @@ function publicGroupActivity(db, activity, user) {
       voteRanking: summary.ranking,
       proposedLeaderId: summary.winner?.studentId || "",
       proposedLeaderName: summary.winner?.studentName || "",
-      leaderId: result?.leaderId || "",
-      leaderName: result?.leaderId ? studentName(db, result.leaderId) : "",
+      leaderId: activeLeaderId,
+      leaderName: activeLeaderId ? studentName(db, activeLeaderId) : "",
       teacherScore: result?.teacherScore,
-      memberGrades: result?.memberGrades || {},
+      memberGrades: Object.fromEntries(gradeRecords.flatMap(([studentId, gradeRecord]) => gradeRecord ? [[studentId, gradeRecord.grade]] : [])),
+      carriedGradeStudentIds: gradeRecords.filter(([, gradeRecord]) => gradeRecord && gradeRecord.guildId !== guild.id).map(([studentId]) => studentId),
       distributedAt: result?.distributedAt || ""
     };
   }).filter(Boolean);
@@ -4016,11 +4043,9 @@ function groupActivityPercentForStudent(db, activity, student) {
   normalizeGroupActivity(activity, db);
   const guildId = studentClassGuildId(db, student.id, activity.subjectId, activity.section);
   if (!guildId) return null;
-  const result = groupActivityResult(activity, guildId);
-  if (!result || result.teacherScore == null) return null;
-  const grade = result.memberGrades?.[student.id];
-  if (grade == null || grade === "") return null;
-  const percent = Number(grade);
+  const gradeRecord = groupActivityGradeRecord(activity, student.id, guildId);
+  if (!gradeRecord || gradeRecord.grade == null || gradeRecord.grade === "") return null;
+  const percent = Number(gradeRecord.grade);
   return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
 }
 
@@ -5135,9 +5160,7 @@ app.put("/api/admin/guild/group-activities/:id", auth, requireRole("admin", "tea
   const hasProgress = !!((activity.votes || []).length || (activity.guildResults || []).some((result) => result.teacherScore != null));
   if (hasProgress && (input.subjectId !== activity.subjectId || input.section !== activity.section)) return res.status(409).json({ error: "Subject and section are locked after voting or grading starts." });
   Object.assign(activity, input, { updatedAt: now() });
-  (activity.guildResults || []).forEach((result) => {
-    if (result.teacherScore != null) syncGroupActivityRewards(db, activity, result, req.user.id);
-  });
+  syncAllGroupActivityRewards(db, activity, req.user.id);
   await writeDb(db);
   res.json({ activity: publicGroupActivity(db, activity, req.user) });
 });
@@ -5190,11 +5213,8 @@ app.put("/api/admin/guild/group-activities/:id/leader", auth, requireRole("admin
   result.leaderFinalizedAt = now();
   if (leaderChanged) result.distributedAt = "";
   if (result.teacherScore != null) {
-    result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {})
-      .filter(([studentId]) => members.some((member) => member.id === studentId))
-      .map(([studentId, grade]) => [studentId, Math.min(result.teacherScore, Math.max(0, Number(grade || 0)))]));
-    result.memberGrades[leaderId] = result.teacherScore;
-    syncGroupActivityRewards(db, activity, result, req.user.id);
+    setGroupActivityStudentGrade(activity, guildId, leaderId, result.teacherScore);
+    syncAllGroupActivityRewards(db, activity, req.user.id);
   }
   activity.updatedAt = now();
   await writeDb(db);
@@ -5221,11 +5241,8 @@ app.put("/api/admin/guild/group-activities/:id/grade", auth, requireRole("admin"
   result.teacherScore = Math.round(score);
   result.teacherGradedAt = now();
   result.teacherGradedBy = req.user.id;
-  result.memberGrades = Object.fromEntries(Object.entries(result.memberGrades || {})
-    .filter(([studentId]) => members.some((member) => member.id === studentId))
-    .map(([studentId, grade]) => [studentId, Math.min(result.teacherScore, Math.max(0, Number(grade || 0)))]));
-  result.memberGrades[result.leaderId] = result.teacherScore;
-  syncGroupActivityRewards(db, activity, result, req.user.id);
+  setGroupActivityStudentGrade(activity, guildId, result.leaderId, result.teacherScore);
+  syncAllGroupActivityRewards(db, activity, req.user.id);
   activity.updatedAt = now();
   await writeDb(db);
   res.json({ activity: publicGroupActivity(db, activity, req.user) });
@@ -5240,17 +5257,19 @@ app.put("/api/student/guild/group-activities/:id/distribute", auth, requireRole(
   if (!result || result.leaderId !== req.user.studentId || result.teacherScore == null) return res.status(403).json({ error: "Only the finalized leader can distribute member grades." });
   const members = groupActivityMembers(db, activity, guildId);
   const incoming = req.body.grades && typeof req.body.grades === "object" && !Array.isArray(req.body.grades) ? req.body.grades : {};
-  const memberGrades = { [result.leaderId]: Number(result.teacherScore) };
+  setGroupActivityStudentGrade(activity, guildId, result.leaderId, result.teacherScore);
   for (const member of members) {
     if (member.id === result.leaderId) continue;
     if (!Object.prototype.hasOwnProperty.call(incoming, member.id)) return res.status(400).json({ error: `Give a grade to ${member.name}.` });
     const grade = Number(incoming[member.id]);
-    if (!Number.isFinite(grade) || grade < 0 || grade > Number(result.teacherScore)) return res.status(400).json({ error: `Grades must be from 0 to ${result.teacherScore}.` });
-    memberGrades[member.id] = Math.round(grade);
+    if (!Number.isFinite(grade) || grade < 0 || grade > 100) return res.status(400).json({ error: "Member grades must be from 0 to 100." });
+    const existingGrade = groupActivityGradeRecord(activity, member.id, guildId);
+    if (!existingGrade || existingGrade.guildId === guildId || Number(existingGrade.grade) !== Math.round(grade)) {
+      setGroupActivityStudentGrade(activity, guildId, member.id, Math.round(grade));
+    }
   }
-  result.memberGrades = memberGrades;
   result.distributedAt = now();
-  syncGroupActivityRewards(db, activity, result, req.user.id);
+  syncAllGroupActivityRewards(db, activity, req.user.id);
   activity.updatedAt = now();
   await writeDb(db);
   res.json({ activity: publicGroupActivity(db, activity, req.user) });
