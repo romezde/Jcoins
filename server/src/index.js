@@ -299,6 +299,7 @@ let cachedDbAt = 0;
 let cachedAuthUsers = new Map();
 let cachedAuthUsernames = new Map();
 const hydratedStudentsCache = new WeakMap();
+const hydratedActivitiesCache = new WeakMap();
 let dbLoadPromise = null;
 let ensureDbPromise = null;
 let dbWriteQueue = Promise.resolve();
@@ -4272,7 +4273,9 @@ function publicActivityFile(file, index) {
 }
 
 function hydrateActivities(db) {
-  return db.activities.map((a) => {
+  const cached = hydratedActivitiesCache.get(db);
+  if (cached) return cached;
+  const hydrated = db.activities.map((a) => {
     a.section = String(a.section || "").trim();
     a.deadline = normalizeActivityDeadline(a.deadline);
     a.maxScore = 100;
@@ -4321,6 +4324,8 @@ function hydrateActivities(db) {
     });
     return { ...a, subjectName: subjectName(db, a.subjectId), basePoints: base, tracker: `${rows.filter((r) => r.submitted).length}/${rows.length}`, rows };
   });
+  hydratedActivitiesCache.set(db, hydrated);
+  return hydrated;
 }
 
 function syncActivityRewards(db, activity, createdBy) {
