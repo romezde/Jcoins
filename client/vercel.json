@@ -16,6 +16,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/:path*", "destination": "https://deguzman.tail6a3597.ts.net/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
