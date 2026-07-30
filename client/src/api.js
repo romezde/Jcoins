@@ -50,7 +50,7 @@ export const del = (path, body) => request(path, { method: "DELETE", ...(body ? 
 export const today = () => new Date().toISOString().slice(0, 10);
 
 export function eventUrl(token) {
-  return `${API}/events?token=${encodeURIComponent(token)}`;
+  return `${JSON_API}/events?token=${encodeURIComponent(token)}`;
 }
 
 export function postForm(path, formData, timeoutMs = 90000) {
