@@ -3340,17 +3340,24 @@ function normalizeQuiz(quiz, db) {
   quiz.title = String(quiz.title || "Quiz").trim() || "Quiz";
   quiz.subjectId ||= db.subjects[0]?.id || "";
   quiz.section = String(quiz.section || "").trim();
+  quiz.scoreOnly = quiz.scoreOnly === true || quiz.source === "score_only";
   quiz.difficulty = quizDifficulties.includes(quiz.difficulty) ? quiz.difficulty : "Easy";
   quiz.rewardValue = Number.isFinite(Number(quiz.rewardValue)) ? Number(quiz.rewardValue) : quizRewardValue(db, quiz.difficulty);
   quiz.deadline ||= today();
-  quiz.timeLimitMinutes = Math.max(0, Math.min(240, Number(quiz.timeLimitMinutes || 0)));
+  quiz.timeLimitMinutes = quiz.scoreOnly ? 0 : Math.max(0, Math.min(240, Number(quiz.timeLimitMinutes || 0)));
   quiz.status = ["draft", "published", "closed"].includes(quiz.status) ? quiz.status : "draft";
-  quiz.questions = (Array.isArray(quiz.questions) ? quiz.questions : []).map(cleanQuizQuestion);
+  if (quiz.scoreOnly && quiz.status === "draft") quiz.status = "closed";
+  quiz.questions = quiz.scoreOnly ? [] : (Array.isArray(quiz.questions) ? quiz.questions : []).map(cleanQuizQuestion);
+  const rawTotalItems = Number(quiz.totalItems || quiz.questions.length || 1);
+  quiz.totalItems = quiz.scoreOnly
+    ? Math.max(1, Math.min(500, Number.isFinite(rawTotalItems) ? Math.round(rawTotalItems) : 1))
+    : quiz.questions.length;
   const storedQuizTypes = Array.isArray(quiz.quizTypes) ? quiz.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
   const inferredQuizTypes = quizQuestionTypes.includes(quiz.quizType) ? [quiz.quizType] : [...new Set(quiz.questions.map((question) => question.type))];
-  quiz.quizTypes = [...new Set(storedQuizTypes.length ? storedQuizTypes : inferredQuizTypes.length ? inferredQuizTypes : ["multiple_choice"] )];
-  quiz.quizType = quiz.quizTypes.length === 1 ? quiz.quizTypes[0] : "mixed";
-  quiz.passingScore = Math.max(1, Math.min(Number(quiz.passingScore || Math.ceil(quiz.questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100) || 1), Math.max(1, quiz.questions.length)));
+  quiz.quizTypes = quiz.scoreOnly ? [] : [...new Set(storedQuizTypes.length ? storedQuizTypes : inferredQuizTypes.length ? inferredQuizTypes : ["multiple_choice"] )];
+  quiz.quizType = quiz.scoreOnly ? "score_only" : quiz.quizTypes.length === 1 ? quiz.quizTypes[0] : "mixed";
+  const passingTotal = Math.max(1, quiz.totalItems || quiz.questions.length);
+  quiz.passingScore = Math.max(1, Math.min(Number(quiz.passingScore || Math.ceil(passingTotal * (db.settings.quizzes.defaultPassingPercent || 75) / 100) || 1), passingTotal));
   quiz.retakeMode = ["none", "all", "selected"].includes(quiz.retakeMode) ? quiz.retakeMode : "none";
   quiz.retakeStudentIds = Array.isArray(quiz.retakeStudentIds) ? quiz.retakeStudentIds : [];
   quiz.answerVisibility = answerVisibilityOptions.includes(quiz.answerVisibility) ? quiz.answerVisibility : db.settings.quizzes.defaultAnswerVisibility;
@@ -3364,7 +3371,7 @@ function normalizeQuiz(quiz, db) {
     submission.bestScore = Number(submission.bestScore || 0);
     submission.activeAttempt = submission.activeAttempt && typeof submission.activeAttempt === "object" ? submission.activeAttempt : null;
   });
-  quiz.source = quiz.source || "manual";
+  quiz.source = quiz.scoreOnly ? "score_only" : quiz.source || "manual";
   quiz.createdAt ||= now();
   ensureQuizVersion(quiz);
   return quiz;
@@ -3406,6 +3413,8 @@ function quizQuestionSnapshot(questions = []) {
 function quizVersionSignature(quiz) {
   return JSON.stringify({
     questions: quiz.questions || [],
+    scoreOnly: !!quiz.scoreOnly,
+    totalItems: Number(quiz.totalItems || 0),
     passingScore: Number(quiz.passingScore || 1),
     difficulty: quiz.difficulty,
     rewardValue: Number(quiz.rewardValue || 0)
@@ -3542,7 +3551,7 @@ function paperQuizRows(quiz, variantInput = "A") {
 }
 
 function paperQuizPassingScore(quiz, total) {
-  const questionCount = Math.max(1, (quiz.questions || []).length);
+  const questionCount = Math.max(1, quiz.scoreOnly ? Number(quiz.totalItems || total || 1) : (quiz.questions || []).length);
   const ratio = Number(quiz.passingScore || questionCount) / questionCount;
   return Math.max(1, Math.min(total, Math.round(total * ratio)));
 }
@@ -3564,7 +3573,7 @@ function scorePaperQuiz(quiz, variant, answers = {}) {
 }
 
 function scoreManualQuiz(quiz, scoreInput, totalInput) {
-  const defaultTotal = Math.max(1, paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 1);
+  const defaultTotal = Math.max(1, Number(quiz.totalItems || 0) || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 1);
   const total = Math.max(1, Math.min(500, Math.round(Number(totalInput || defaultTotal))));
   const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0))));
   const passingScore = paperQuizPassingScore(quiz, total);
@@ -3701,6 +3710,7 @@ function publicQuiz(quiz, db, user) {
       attempts: submission?.attempts?.length || 0,
       latestScore: latest ? `${latest.correct}/${latest.total}` : "",
       bestScore: submission?.bestScore ?? "",
+      recordedScore: latest?.correct ?? "",
       bestAwarded: submission?.bestAwarded ?? 0,
       submittedAt: latest?.submittedAt || "",
       canRetake: canRetakeQuiz(quiz, student.id, submission)
@@ -3736,7 +3746,7 @@ function publicQuiz(quiz, db, user) {
         reviewQuestions: showAnswers && latestQuiz ? publicStudentQuizQuestions(latestQuiz, { showAnswers: true, shuffle: false }) : [],
         activeAttempt: publicActiveQuizAttempt(submission.activeAttempt)
       } : null,
-      canSubmit: quiz.status === "published" && isQuizDeadlineOpen(quiz) && canRetakeQuiz(quiz, user.studentId, submission)
+      canSubmit: !quiz.scoreOnly && quiz.status === "published" && isQuizDeadlineOpen(quiz) && canRetakeQuiz(quiz, user.studentId, submission)
     };
   }
   return base;
@@ -3983,7 +3993,7 @@ function gradeNoteFor(db, studentId, subjectId, section = "") {
 function quizTotalForStudent(quiz, submission) {
   const attempts = submission?.attempts || [];
   const bestAttempt = attempts.reduce((best, attempt) => Number(attempt.correct || 0) > Number(best?.correct || -1) ? attempt : best, null);
-  return Number(bestAttempt?.total || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 0);
+  return Number(bestAttempt?.total || quiz.totalItems || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 0);
 }
 
 function quizCountsInGrades(quiz) {
@@ -6475,37 +6485,43 @@ function quizFromBody(db, body, user, existing = {}) {
   if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId)) throw new Error("Valid subject is required.");
   if (!section) throw new Error("Section is required.");
   if (!canUseSubject(user, subjectId) || !canUseSection(user, section)) throw new Error("This quiz is outside your assigned class scope.");
-  const questions = (Array.isArray(body.questions) ? body.questions : existing.questions || []).map(cleanQuizQuestion);
-  if (!questions.length) throw new Error("Add at least one question.");
+  const scoreOnly = existing.scoreOnly === true || body.scoreOnly === true;
+  const questions = scoreOnly ? [] : (Array.isArray(body.questions) ? body.questions : existing.questions || []).map(cleanQuizQuestion);
+  if (!scoreOnly && !questions.length) throw new Error("Add at least one question.");
   const requestedQuizTypes = Array.isArray(body.quizTypes) ? body.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
   const existingQuizTypes = Array.isArray(existing.quizTypes) ? existing.quizTypes.filter((type) => quizQuestionTypes.includes(type)) : [];
   const legacyQuizType = body.quizType ?? existing.quizType;
   const quizTypesFromQuestions = [...new Set(questions.map((question) => question.type))];
-  const selectedQuizTypes = [...new Set(requestedQuizTypes.length
+  const selectedQuizTypes = scoreOnly ? [] : [...new Set(requestedQuizTypes.length
     ? requestedQuizTypes
     : existingQuizTypes.length
       ? existingQuizTypes
       : quizQuestionTypes.includes(legacyQuizType)
         ? [legacyQuizType]
         : quizTypesFromQuestions)];
-  if (!selectedQuizTypes.length) throw new Error("Choose at least one quiz type.");
-  if (questions.some((question) => !selectedQuizTypes.includes(question.type))) throw new Error("Every question must use one of the checked quiz types.");
+  if (!scoreOnly && !selectedQuizTypes.length) throw new Error("Choose at least one quiz type.");
+  if (!scoreOnly && questions.some((question) => !selectedQuizTypes.includes(question.type))) throw new Error("Every question must use one of the checked quiz types.");
   const difficulty = quizDifficulties.includes(body.difficulty || existing.difficulty) ? body.difficulty || existing.difficulty : "Easy";
-  const passingScore = Math.max(1, Math.min(Number(body.passingScore || existing.passingScore || Math.ceil(questions.length * (db.settings.quizzes.defaultPassingPercent || 75) / 100)), questions.length));
-  const requestedTimeLimit = Number(body.timeLimitMinutes ?? existing.timeLimitMinutes ?? 30);
-  if (!Number.isFinite(requestedTimeLimit) || requestedTimeLimit < 1 || requestedTimeLimit > 240) throw new Error("Time limit must be between 1 and 240 minutes.");
-  const timeLimitMinutes = Math.round(requestedTimeLimit);
-  const retakeMode = ["none", "all", "selected"].includes(body.retakeMode ?? existing.retakeMode) ? body.retakeMode ?? existing.retakeMode : "none";
+  const requestedTotalItems = Number(body.totalItems ?? existing.totalItems ?? questions.length);
+  if (scoreOnly && (!Number.isFinite(requestedTotalItems) || requestedTotalItems < 1 || requestedTotalItems > 500)) throw new Error("Total items must be between 1 and 500.");
+  const totalItems = scoreOnly ? Math.round(requestedTotalItems) : questions.length;
+  const passingScore = Math.max(1, Math.min(Number(body.passingScore || existing.passingScore || Math.ceil(totalItems * (db.settings.quizzes.defaultPassingPercent || 75) / 100)), totalItems));
+  const requestedTimeLimit = scoreOnly ? 0 : Number(body.timeLimitMinutes ?? existing.timeLimitMinutes ?? 30);
+  if (!scoreOnly && (!Number.isFinite(requestedTimeLimit) || requestedTimeLimit < 1 || requestedTimeLimit > 240)) throw new Error("Time limit must be between 1 and 240 minutes.");
+  const timeLimitMinutes = scoreOnly ? 0 : Math.round(requestedTimeLimit);
+  const retakeMode = scoreOnly ? "none" : ["none", "all", "selected"].includes(body.retakeMode ?? existing.retakeMode) ? body.retakeMode ?? existing.retakeMode : "none";
   const eligibleStudentIds = new Set(studentsForClass(db, subjectId, section).map((student) => student.id));
   if (!eligibleStudentIds.size) throw new Error("No students are enrolled in this subject and section.");
   const requestedRetakeStudentIds = Array.isArray(body.retakeStudentIds ?? existing.retakeStudentIds) ? body.retakeStudentIds ?? existing.retakeStudentIds : [];
-  const retakeStudentIds = retakeMode === "selected" ? [...new Set(requestedRetakeStudentIds)].filter((studentId) => eligibleStudentIds.has(studentId)) : [];
+  const retakeStudentIds = !scoreOnly && retakeMode === "selected" ? [...new Set(requestedRetakeStudentIds)].filter((studentId) => eligibleStudentIds.has(studentId)) : [];
   return {
     title: String(body.title ?? existing.title ?? "Quiz").trim().slice(0, 120) || "Quiz",
     subjectId,
     section,
     difficulty,
-    quizType: selectedQuizTypes.length === 1 ? selectedQuizTypes[0] : "mixed",
+    scoreOnly,
+    totalItems,
+    quizType: scoreOnly ? "score_only" : selectedQuizTypes.length === 1 ? selectedQuizTypes[0] : "mixed",
     quizTypes: selectedQuizTypes,
     rewardValue: Number(existing.rewardValue ?? quizRewardValue(db, difficulty)),
     deadline: String(body.deadline ?? existing.deadline ?? today()).slice(0, 10),
@@ -6518,7 +6534,7 @@ function quizFromBody(db, body, user, existing = {}) {
     answerRevealAt: String(body.answerRevealAt ?? existing.answerRevealAt ?? ""),
     shuffleQuestions: !!(body.shuffleQuestions ?? existing.shuffleQuestions),
     shuffleOptions: !!(body.shuffleOptions ?? existing.shuffleOptions),
-    source: body.source || existing.source || "manual"
+    source: scoreOnly ? "score_only" : body.source || existing.source || "manual"
   };
 }
 
@@ -6530,7 +6546,7 @@ app.post("/api/admin/quizzes", auth, requireRole("admin", "teacher"), async (req
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
-  const quiz = normalizeQuiz({ id: randomUUID(), ...input, status: "draft", submissions: [], createdAt: now(), createdBy: req.user.id }, db);
+  const quiz = normalizeQuiz({ id: randomUUID(), ...input, status: input.scoreOnly ? "closed" : "draft", submissions: [], createdAt: now(), createdBy: req.user.id }, db);
   db.quizzes.push(quiz);
   await writeDb(db);
   res.status(201).json({ quiz: publicQuiz(quiz, db, req.user) });
@@ -6551,6 +6567,9 @@ app.put("/api/admin/quizzes/:id", auth, requireRole("admin", "teacher"), async (
   if (hasAttempts && (input.subjectId !== quiz.subjectId || input.section !== quiz.section)) {
     return res.status(400).json({ error: "Subject and section cannot be changed after a student has started the quiz." });
   }
+  if (quiz.scoreOnly && hasAttempts && Number(input.totalItems) !== Number(quiz.totalItems)) {
+    return res.status(400).json({ error: "Total items cannot be changed after scores are recorded." });
+  }
   Object.assign(quiz, input, { rewardValue: quizRewardValue(db, input.difficulty), updatedAt: now() });
   normalizeQuiz(quiz, db);
   await writeDb(db);
@@ -6563,6 +6582,7 @@ app.post("/api/admin/quizzes/:id/publish", auth, requireRole("admin", "teacher")
   if (!quiz) return res.status(404).json({ error: "Quiz not found." });
   if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
   normalizeQuiz(quiz, db);
+  if (quiz.scoreOnly) return res.status(400).json({ error: "Score-only quizzes do not need publishing." });
   if (quiz.status === "published") return res.json({ quiz: publicQuiz(quiz, db, req.user), alreadyPublished: true });
   if (!quiz.questions.length) return res.status(400).json({ error: "Add at least one question before publishing." });
   quiz.status = "published";
@@ -6736,6 +6756,98 @@ app.post("/api/admin/quizzes/:id/manual-scores", auth, requireRole("admin", "tea
   });
 });
 
+app.put("/api/admin/quizzes/:id/score-only-scores", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const quiz = db.quizzes.find((item) => item.id === req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  normalizeQuiz(quiz, db);
+  if (!quiz.scoreOnly) return res.status(400).json({ error: "This endpoint is only for score-only quizzes." });
+  if (!canUseQuiz(req.user, quiz)) return res.status(403).json({ error: "This quiz is outside your assigned class scope." });
+  const student = db.students.find((item) => item.id === req.body.studentId);
+  if (!student || !studentIsInClass(db, student, quiz.subjectId, quiz.section)) return res.status(404).json({ error: "No enrolled student matches this quiz." });
+  if (!scopedStudentIds(db, req.user).has(student.id)) return res.status(403).json({ error: "This student is outside your assigned class scope." });
+  if (!Object.prototype.hasOwnProperty.call(req.body, "score")) return res.status(400).json({ error: "Enter a score." });
+
+  const previousSubmission = quiz.submissions.find((item) => item.studentId === student.id);
+  const previousAwarded = Number(previousSubmission?.bestAwarded || 0);
+  const clearScore = req.body.score === "" || req.body.score == null;
+  if (clearScore) {
+    quiz.submissions = quiz.submissions.filter((item) => item.studentId !== student.id);
+    db.transactions = db.transactions.filter((transaction) => !(transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === student.id));
+    addAuditLog(db, req.user, "quiz.score_only.clear", {
+      entityType: "quiz",
+      entityId: quiz.id,
+      targetStudentId: student.id,
+      amount: -previousAwarded,
+      summary: `Cleared score-only quiz score for ${student.name}.`,
+      meta: { quizId: quiz.id }
+    });
+    await writeDb(db);
+    return res.json({ ok: true, cleared: true, student: { id: student.id, name: student.name } });
+  }
+
+  const numericScore = Number(req.body.score);
+  if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > quiz.totalItems) {
+    return res.status(400).json({ error: `Score must be between 0 and ${quiz.totalItems}.` });
+  }
+  const result = scoreManualQuiz(quiz, numericScore, quiz.totalItems);
+  let submission = previousSubmission;
+  if (!submission) {
+    submission = { studentId: student.id, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
+    quiz.submissions.push(submission);
+  }
+  const submittedAt = now();
+  const attempt = {
+    id: submission.attempts.find((item) => item.source === "score_only")?.id || randomUUID(),
+    attemptNumber: 1,
+    answers: {},
+    correct: result.correct,
+    total: result.total,
+    passingScore: result.passingScore,
+    difficulty: quiz.difficulty,
+    rewardValue: result.rewardValue,
+    quizVersionId: quiz.currentVersionId || "",
+    awarded: result.awarded,
+    startedAt: submittedAt,
+    dueAt: "",
+    timedOut: false,
+    submittedAt,
+    source: "score_only",
+    checkedBy: req.user.id
+  };
+  submission.attempts = [attempt];
+  submission.activeAttempt = null;
+  submission.bestScore = result.correct;
+  submission.bestAwarded = result.awarded;
+
+  const existingTransaction = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === student.id);
+  const note = `${quiz.title} quiz reward`;
+  const meta = { kind: "quiz", quizId: quiz.id, subjectId: quiz.subjectId, section: quiz.section, difficulty: quiz.difficulty, passingScore: result.passingScore, bestScore: result.correct, source: "score_only" };
+  if (result.awarded > 0 && existingTransaction) {
+    existingTransaction.amount = result.awarded;
+    existingTransaction.note = note;
+    existingTransaction.meta = { ...(existingTransaction.meta || {}), ...meta };
+  } else if (result.awarded > 0) {
+    db.transactions.push(tx(student.id, "quiz", result.awarded, note, submittedAt, req.user.id, meta));
+  } else if (existingTransaction) {
+    db.transactions = db.transactions.filter((transaction) => transaction.id !== existingTransaction.id);
+  }
+  addAuditLog(db, req.user, "quiz.score_only.save", {
+    entityType: "quiz",
+    entityId: quiz.id,
+    targetStudentId: student.id,
+    amount: result.awarded - previousAwarded,
+    summary: `Recorded score-only quiz score for ${student.name}: ${result.correct}/${result.total}.`,
+    meta: { quizId: quiz.id, score: result.correct, total: result.total }
+  });
+  await writeDb(db);
+  res.json({
+    attempt: publicCompletedQuizAttempt(attempt),
+    student: { id: student.id, name: student.name, quizCode: student.quizCode },
+    submission: { attempts: 1, bestScore: submission.bestScore, bestAwarded: submission.bestAwarded }
+  });
+});
+
 function quizMutationResponse(status, body, mutated = false, request = null) {
   return { status, body, mutated, request };
 }
@@ -6744,6 +6856,7 @@ function startStudentQuiz(db, req) {
   const quiz = db.quizzes.find((item) => item.id === req.params.id);
   if (!quiz) return quizMutationResponse(404, { error: "Quiz not found." });
   normalizeQuiz(quiz, db);
+  if (quiz.scoreOnly) return quizMutationResponse(400, { error: "This quiz is recorded by your teacher and cannot be answered online." });
   if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return quizMutationResponse(403, { error: "This quiz is not assigned to you." });
   if (quiz.status !== "published") return quizMutationResponse(400, { error: "This quiz is not open." });
   if (!isQuizDeadlineOpen(quiz, req.receivedAt)) return quizMutationResponse(400, { error: "The deadline has passed." });
@@ -6771,6 +6884,7 @@ function submitStudentQuiz(db, req) {
   const quiz = db.quizzes.find((item) => item.id === req.params.id);
   if (!quiz) return quizMutationResponse(404, { error: "Quiz not found." });
   normalizeQuiz(quiz, db);
+  if (quiz.scoreOnly) return quizMutationResponse(400, { error: "This quiz is recorded by your teacher and cannot be answered online." });
   if (!canStudentSeeQuiz(db, quiz, req.user.studentId)) return quizMutationResponse(403, { error: "This quiz is not assigned to you." });
   let submission = quiz.submissions.find((item) => item.studentId === req.user.studentId);
   const requestedAttemptId = String(req.body.attemptId || "").trim();

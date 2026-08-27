@@ -52,6 +52,7 @@ export default function Quizzes({ data, run, role }) {
   if (role === "student") return <StudentQuizzes data={data} run={run} />;
   return <div className="dashboard-grid">
     <QuizFormModal data={data} run={run} onCreated={(quiz) => setSelectedClassKey(`${quiz.subjectId}::${quiz.section || "__none"}`)} />
+    <ScoreOnlyQuizForm data={data} run={run} onCreated={(quiz) => setSelectedClassKey(`${quiz.subjectId}::${quiz.section || "__none"}`)} />
     <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Quiz Classes" itemLabel="quizzes" />
     {activeClass && <Panel title={`${activeClass.subjectName} · ${activeClass.sectionLabel}`} wide defaultOpen>
       <div className="filter-bar">
@@ -64,13 +65,15 @@ export default function Quizzes({ data, run, role }) {
         quiz.section,
         statusLabel(quiz.status),
         `${quiz.difficulty} (${quiz.rewardValue} JC) | ${quizTypesLabel(quiz)}`,
-        `${quiz.timeLimitMinutes} min`,
+        quiz.scoreOnly ? "-" : `${quiz.timeLimitMinutes} min`,
         quiz.deadline,
         quiz.tracker,
         <QuizActions quiz={quiz} data={data} run={run} />
       ])} />
     </Panel>}
-    {activeClass && quizzes.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
+    {activeClass && quizzes.map((quiz) => quiz.scoreOnly
+      ? <ScoreOnlyQuizCard key={quiz.id} quiz={quiz} data={data} run={run} />
+      : <QuizCard key={quiz.id} quiz={quiz} data={data} run={run} />)}
     {!activeClass && <section className="panel wide attendance-empty">Choose a subject and section above to view its quizzes.</section>}
   </div>;
 }
@@ -214,6 +217,75 @@ function QuizFormModal({ data, run, quiz = null, onCreated }) {
   </ActionModal>;
 }
 
+function ScoreOnlyQuizForm({ data, run, quiz = null, onCreated }) {
+  const [form, setForm] = useState(() => scoreOnlyQuizFormValues(data, quiz));
+  const hasScores = !!quiz?.rows?.some((row) => row.recordedScore !== "" && row.recordedScore != null);
+  useEffect(() => setForm(scoreOnlyQuizFormValues(data, quiz)), [quiz?.id, quiz?.updatedAt]);
+
+  async function submit(event) {
+    event.preventDefault();
+    const payload = {
+      ...form,
+      scoreOnly: true,
+      totalItems: Number(form.totalItems),
+      passingScore: Number(form.passingScore),
+      timeLimitMinutes: 0,
+      questions: [],
+      quizTypes: [],
+      answerVisibility: "never"
+    };
+    const result = await run(() => quiz
+      ? put(`/admin/quizzes/${quiz.id}`, payload)
+      : post("/admin/quizzes", payload), quiz ? "Score-only quiz updated" : "Score-only quiz created");
+    if (!quiz && result?.quiz) onCreated?.(result.quiz);
+  }
+
+  const sectionOptions = hasScores ? [form.section] : quizSectionsForSubject(data, form.subjectId);
+  return <ActionModal title={quiz ? `Edit ${quiz.title}` : "Add Score-Only Quiz"} buttonLabel={quiz ? "Edit" : "Add Score-Only Quiz"} icon={Pencil}>
+    <form onSubmit={submit}>
+      <div className="notice">Use this for a quiz completed outside JCoins. Set the number of items, then record each student's score.</div>
+      <div className="form-grid two">
+        <Field label="Quiz Title" required value={form.title} onChange={(title) => setForm({ ...form, title })} />
+        <Select label="Subject" value={form.subjectId} onChange={(subjectId) => setForm({ ...form, subjectId, section: preferredQuizSection(data, subjectId, form.section) })} options={hasScores ? data.subjects.filter((subject) => subject.id === form.subjectId) : data.subjects} />
+        <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section })} options={sectionOptions.map((section) => ({ value: section, label: section }))} />
+        <Field label="Quiz Date" type="date" required value={form.deadline} onChange={(deadline) => setForm({ ...form, deadline })} />
+        <Field label="Total Items" type="number" min="1" max="500" step="1" required disabled={hasScores} value={form.totalItems} onChange={(totalItems) => {
+          const total = Math.max(1, Math.min(500, Number(totalItems || 1)));
+          const passingScore = Math.ceil(total * Number(data.settings.quizzes?.defaultPassingPercent || 75) / 100);
+          setForm({ ...form, totalItems, passingScore });
+        }} />
+        <Field label="Passing Score" type="number" min="1" max={form.totalItems} step="1" required value={form.passingScore} onChange={(passingScore) => setForm({ ...form, passingScore })} />
+        <Select label="JCoin Difficulty" value={form.difficulty} onChange={(difficulty) => setForm({ ...form, difficulty })} options={(data.settings.quizzes?.difficulties || []).map((item) => ({ value: item.name, label: `${item.name} (${item.points} JC)` }))} />
+      </div>
+      {hasScores && <p className="muted-line">Subject, section, and total items are locked after a score is recorded.</p>}
+      <button>{quiz ? "Save Changes" : "Create Score-Only Quiz"}</button>
+    </form>
+  </ActionModal>;
+}
+
+function scoreOnlyQuizFormValues(data, quiz = null) {
+  if (quiz) return {
+    title: quiz.title,
+    subjectId: quiz.subjectId,
+    section: quiz.section || "",
+    deadline: quiz.deadline || today(),
+    totalItems: quiz.totalItems || 20,
+    passingScore: quiz.passingScore || Math.ceil(Number(quiz.totalItems || 20) * Number(data.settings.quizzes?.defaultPassingPercent || 75) / 100),
+    difficulty: quiz.difficulty || "Easy"
+  };
+  const subjectId = data.subjects.find((subject) => quizSectionsForSubject(data, subject.id).length)?.id || data.subjects[0]?.id || "";
+  const totalItems = 20;
+  return {
+    title: "New Score-Only Quiz",
+    subjectId,
+    section: preferredQuizSection(data, subjectId),
+    deadline: today(),
+    totalItems,
+    passingScore: Math.ceil(totalItems * Number(data.settings.quizzes?.defaultPassingPercent || 75) / 100),
+    difficulty: "Easy"
+  };
+}
+
 function mergeAiReferenceFiles(current, added) {
   const files = [...current];
   added.forEach((file) => {
@@ -306,6 +378,10 @@ function deleteQuiz(quiz, run) {
 }
 
 function QuizActions({ quiz, data, run }) {
+  if (quiz.scoreOnly) return <div className="inline">
+    <ScoreOnlyQuizForm data={data} run={run} quiz={quiz} />
+    <button type="button" className="danger" onClick={() => deleteQuiz(quiz, run)}>Delete</button>
+  </div>;
   return <div className="inline">
     <QuizFormModal data={data} run={run} quiz={quiz} />
     <button type="button" className="soft" onClick={() => printQuizPaper(quiz)}><Printer size={16} />Print / Save PDF</button>
@@ -497,6 +573,37 @@ function QuizCard({ quiz, data, run }) {
   </Panel>;
 }
 
+function ScoreOnlyQuizCard({ quiz, data, run }) {
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const rows = (quiz.rows || []).filter((row) => !q || [row.studentName, row.studentCode, row.recordedScore].some((value) => String(value || "").toLowerCase().includes(q)));
+  return <Panel title={`${quiz.title} Scores`} wide defaultOpen={false} actions={<div className="inline"><strong>{quiz.tracker} recorded</strong><ScoreOnlyQuizForm data={data} run={run} quiz={quiz} /></div>}>
+    <p className="muted-line">{quiz.subjectName} | {quiz.section} | {quiz.deadline} | {quiz.totalItems} items | passing {quiz.passingScore}/{quiz.totalItems} | reward up to {quiz.rewardValue} JC</p>
+    <div className="filter-bar">
+      <Field label="Search Students" value={search} onChange={setSearch} />
+      <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
+    </div>
+    <Table columns={["Student", "Code", "Score", "Percent", "JCoins"]} rows={rows.map((row) => [
+      row.studentName,
+      row.studentCode || "-",
+      <ScoreOnlyQuizInput quiz={quiz} row={row} run={run} />,
+      row.recordedScore === "" || row.recordedScore == null ? "-" : `${Math.round(Number(row.recordedScore) / Number(quiz.totalItems || 1) * 100)}%`,
+      row.recordedScore === "" || row.recordedScore == null ? "-" : row.bestAwarded
+    ])} pageSize={30} />
+  </Panel>;
+}
+
+function ScoreOnlyQuizInput({ quiz, row, run }) {
+  const [score, setScore] = useState(row.recordedScore ?? "");
+  useEffect(() => setScore(row.recordedScore ?? ""), [row.recordedScore, quiz.id]);
+  const changed = String(score ?? "") !== String(row.recordedScore ?? "");
+  const clearing = score === "" && row.recordedScore !== "" && row.recordedScore != null;
+  return <div className="major-exam-score-cell">
+    <input className="score-input" aria-label={`${row.studentName} score out of ${quiz.totalItems}`} type="number" min="0" max={quiz.totalItems} step="1" value={score} onChange={(event) => setScore(event.target.value)} placeholder={`/${quiz.totalItems}`} />
+    <button type="button" className={clearing ? "danger" : "soft"} disabled={!changed} onClick={() => run(() => put(`/admin/quizzes/${quiz.id}/score-only-scores`, { studentId: row.studentId, score }), clearing ? "Quiz score cleared" : "Quiz score saved")}>{clearing ? "Clear" : "Save"}</button>
+  </div>;
+}
+
 function StudentQuizzes({ data, run }) {
   const [activeQuizId, setActiveQuizId] = useState("");
   const [activeAttempt, setActiveAttempt] = useState(null);
@@ -517,12 +624,12 @@ function StudentQuizzes({ data, run }) {
       <Table columns={["Quiz", "Subject", "Status", "Time", "Deadline", "Score", "JCoins", "Action"]} rows={(data.quizzes || []).map((quiz) => [
         quiz.title,
         quiz.subjectName,
-        statusLabel(quiz.status),
-        quiz.timeLimitMinutes ? `${quiz.timeLimitMinutes} min` : "Untimed",
+        quiz.scoreOnly ? "Recorded by teacher" : statusLabel(quiz.status),
+        quiz.scoreOnly ? "Score only" : quiz.timeLimitMinutes ? `${quiz.timeLimitMinutes} min` : "Untimed",
         quiz.deadline,
-        quiz.submission?.latest ? `${quiz.submission.latest.correct}/${quiz.submission.latest.total}` : "Not taken",
+        quiz.submission?.latest ? `${quiz.submission.latest.correct}/${quiz.submission.latest.total}` : quiz.scoreOnly ? "Not recorded" : "Not taken",
         quiz.submission?.bestAwarded ?? 0,
-        <button type="button" className="soft" onClick={() => openQuiz(quiz)}>{quiz.canSubmit ? quiz.submission?.activeAttempt ? "Continue" : "Answer" : "View"}</button>
+        quiz.scoreOnly ? "-" : <button type="button" className="soft" onClick={() => openQuiz(quiz)}>{quiz.canSubmit ? quiz.submission?.activeAttempt ? "Continue" : "Answer" : "View"}</button>
       ])} />
     </Panel>
     {activeQuiz && <StudentQuizPanel quiz={activeQuiz} attempt={activeAttempt || activeQuiz.submission?.activeAttempt} studentId={data.student?.id} run={run} onFinished={() => setActiveAttempt(null)} />}
@@ -791,6 +898,7 @@ function quizTypesForQuiz(quiz) {
 }
 
 function quizTypesLabel(quiz) {
+  if (quiz.scoreOnly) return "Score Only";
   return quizTypesForQuiz(quiz).map((type) => quizTypeLabel(type)).join(", ");
 }
 
@@ -885,7 +993,7 @@ function parsePaperAnswers(text) {
 }
 
 function paperQuizPassingScore(quiz, total) {
-  const questionCount = Math.max(1, (quiz.questions || []).length);
+  const questionCount = Math.max(1, quiz.scoreOnly ? Number(quiz.totalItems || total || 1) : (quiz.questions || []).length);
   const ratio = Number(quiz.passingScore || questionCount) / questionCount;
   return Math.max(1, Math.min(total, Math.round(total * ratio)));
 }
@@ -908,7 +1016,7 @@ function scorePaperQuizPreview(quiz, variant, answers = {}) {
 }
 
 function scoreManualQuizPreview(quiz, scoreInput, totalInput) {
-  const defaultTotal = Math.max(1, paperQuizRows(quiz, "A").length || quiz.questions?.length || 1);
+  const defaultTotal = Math.max(1, Number(quiz.totalItems || 0) || paperQuizRows(quiz, "A").length || quiz.questions?.length || 1);
   const total = Math.max(1, Math.min(500, Math.round(Number(totalInput || defaultTotal))));
   const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0))));
   const passingScore = paperQuizPassingScore(quiz, total);

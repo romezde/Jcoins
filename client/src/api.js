@@ -24,7 +24,7 @@ export function request(path, options = {}) {
   const controller = new AbortController();
   const { timeoutMs = 90000, ...fetchOptions } = options;
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(`${JSON_API}${path}`, {
+  const requestOptions = {
     ...fetchOptions,
     signal: controller.signal,
     headers: {
@@ -32,7 +32,8 @@ export function request(path, options = {}) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
-  }).then(async (res) => {
+  };
+  return fetchJsonWithProxyRecovery(path, requestOptions).then(async (res) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
@@ -42,6 +43,22 @@ export function request(path, options = {}) {
   }).finally(() => {
     window.clearTimeout(timeout);
   });
+}
+
+async function fetchJsonWithProxyRecovery(path, requestOptions) {
+  let response;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetch(`${JSON_API}${path}`, requestOptions);
+    if (!proxyDnsFailed(response) || JSON_API === API) return response;
+    await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  return fetch(`${API}${path}`, requestOptions);
+}
+
+function proxyDnsFailed(response) {
+  return import.meta.env.PROD
+    && response.status === 502
+    && response.headers.get("x-vercel-error") === "DNS_HOSTNAME_EMPTY";
 }
 
 export const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
