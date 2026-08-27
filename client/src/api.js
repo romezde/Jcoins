@@ -47,10 +47,11 @@ export function request(path, options = {}) {
 
 async function fetchJsonWithProxyRecovery(path, requestOptions) {
   let response;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  const proxyAttempts = 5;
+  for (let attempt = 0; attempt < proxyAttempts; attempt += 1) {
     response = await fetch(`${JSON_API}${path}`, requestOptions);
     if (!proxyDnsFailed(response) || JSON_API === API) return response;
-    await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+    if (attempt < proxyAttempts - 1) await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
   }
   return fetch(`${API}${path}`, requestOptions);
 }
