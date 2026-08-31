@@ -13,6 +13,7 @@ import Activities from "./screens/Activities.jsx";
 import Quizzes from "./screens/Quizzes.jsx";
 import MajorExams from "./screens/MajorExams.jsx";
 import Grades from "./screens/Grades.jsx";
+import MissingWork from "./screens/MissingWork.jsx";
 import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
@@ -620,7 +621,7 @@ function navGroupsForRole(role) {
     ];
   }
   return [
-    { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Grades"] },
+    { id: "academic", label: "Academic Management", icon: BookOpenCheck, tabs: ["Attendance", "Recitation", "Activities", "Quizzes", "Major Exams", "Grades", "Missing Work"] },
     { id: "people", label: "People Management", icon: UsersRound, tabs: ["Students", "Teachers", "Student Assistants", "Sections", "Subjects"] },
     { id: "economy", label: "Economy", icon: Coins, tabs: ["Transactions", "Shop", "Appearance Shop", "Approvals"] },
     { id: "experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Name Wheel", "Profile"] },
@@ -928,6 +929,7 @@ function requiredModulesForTab(tab, role) {
     Quizzes: ["quizzes"],
     "Major Exams": ["majorExams"],
     Grades: ["grades", "activities", "attendance", "quizzes", "majorExams", "recitations", "guild"],
+    "Missing Work": ["grades"],
     Transactions: ["transactions"],
     Shop: ["shop"],
     "Trade Requests": ["shop"],
@@ -959,6 +961,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
   if (tab === "Major Exams") return <MajorExams data={data} run={run} />;
   if (tab === "Grades") return <Grades data={data} run={run} />;
+  if (tab === "Missing Work") return <MissingWork data={data} />;
   if (tab === "Transactions") return <Transactions data={assistantData} run={run} role={role} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
@@ -985,6 +988,7 @@ function ModuleHeader({ tab, data }) {
     Quizzes: data.quizzes?.length,
     "Major Exams": data.majorExams?.length,
     Grades: data.gradeSummaries?.length,
+    "Missing Work": data.gradeSummaries?.filter((row) => (row.missingItems || []).length > 0).length,
     Transactions: data.transactions?.length,
     History: data.auditLogs?.length ?? data.transactions?.length,
     Approvals: data.requests?.filter((request) => request.status === "pending").length,
