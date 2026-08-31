@@ -3174,6 +3174,16 @@ td button {
   padding: 4px 10px;
   font-weight: 900;
 }
+
+.grade-category-button {
+  min-width: 58px;
+  padding: 6px 10px;
+  font-weight: 900;
+}
+
+.grade-activity-modal {
+  width: min(1040px, 100%);
+}
 .grade-score.risk-outstanding,
 .grade-risk.risk-outstanding {
   color: #9ff7ff;

@@ -74,7 +74,7 @@ export default function Grades({ data, run }) {
       <Table columns={["Student", "Current", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
         <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>,
-        categoryPercent(row, "activities"),
+        <ActivityGradeDetails summary={row} data={data} activeClass={activeClass} />,
         categoryPercent(row, "attendance"),
         categoryPercent(row, "quizzes"),
         categoryPercent(row, "majorExams"),
@@ -466,6 +466,77 @@ function riskClass(status = "") {
 function categoryPercent(row, key) {
   const value = row.categories?.[key]?.percent;
   return value == null ? "-" : `${Math.round(Number(value || 0))}%`;
+}
+
+function ActivityGradeDetails({ summary, data, activeClass }) {
+  const [open, setOpen] = useState(false);
+  const details = activityDetailsForStudent(data, activeClass, summary.studentId);
+  return <>
+    <button type="button" className="soft grade-category-button" onClick={() => setOpen(true)} title={`View ${summary.studentName}'s activities`}>
+      {categoryPercent(summary, "activities")}
+    </button>
+    {open && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`${summary.studentName} activity grades`}>
+      <section className="modal-card modal-card-wide grade-activity-modal">
+        <div className="section-head">
+          <div>
+            <div className="section-title">{summary.studentName}</div>
+            <p className="muted-line">{activeClass.subjectName} - {activeClass.sectionLabel} · Activities {categoryPercent(summary, "activities")}</p>
+          </div>
+          <button type="button" className="soft" onClick={() => setOpen(false)}>Close</button>
+        </div>
+        <Table columns={["Activity", "Type", "Status", "Submitted", "Days Late", "Score", "Deadline"]} rows={details.map((item) => [
+          item.title,
+          item.type,
+          item.status,
+          item.submittedAt,
+          item.daysLate,
+          item.score,
+          item.deadline
+        ])} pageSize={10} />
+        {!details.length && <div className="attendance-empty">No activities are recorded for this subject and section.</div>}
+      </section>
+    </div>}
+  </>;
+}
+
+function activityDetailsForStudent(data, activeClass, studentId) {
+  const details = [];
+  (data.activities || []).filter((activity) => (
+    activity.subjectId === activeClass.subjectId
+      && (!String(activity.section || "").trim() || String(activity.section || "").trim() === activeClass.section)
+  )).forEach((activity) => {
+    const row = (activity.rows || []).find((item) => item.studentId === studentId);
+    const deadline = row?.effectiveDeadline || activity.deadline;
+    const counted = activityDeadlinePassed(deadline);
+    const submitted = !!row?.submitted;
+    details.push({
+      title: activity.title,
+      type: "Individual",
+      status: counted ? submitted ? row.status || (Number(row.daysLate || 0) ? "Late" : "Submitted") : "Missing" : "Upcoming",
+      submittedAt: submitted && row.submittedAt ? formatGradeDateTime(row.submittedAt) : "-",
+      daysLate: submitted ? Number(row.daysLate || 0) : "-",
+      score: counted ? submitted && row.score !== "" && row.score != null ? `${Number(row.score)}%` : "0%" : "Not counted",
+      deadline: formatGradeDateTime(deadline)
+    });
+  });
+  (data.groupActivities || []).filter((activity) => (
+    activity.subjectId === activeClass.subjectId
+      && String(activity.section || "").trim() === activeClass.section
+  )).forEach((activity) => {
+    const guild = (activity.guildRows || []).find((row) => (row.members || []).some((member) => member.studentId === studentId));
+    const grade = guild?.memberGrades?.[studentId];
+    const counted = activityDeadlinePassed(activity.deadline);
+    details.push({
+      title: activity.title,
+      type: "Guild",
+      status: counted ? grade == null || grade === "" ? "Missing grade" : "Graded" : "Upcoming",
+      submittedAt: "-",
+      daysLate: "-",
+      score: counted ? grade == null || grade === "" ? "0%" : `${Number(grade)}%` : "Not counted",
+      deadline: formatGradeDateTime(activity.deadline)
+    });
+  });
+  return details.sort((a, b) => String(a.deadline).localeCompare(String(b.deadline), undefined, { numeric: true }));
 }
 
 function formatCurrentGrade(value) {
