@@ -13,7 +13,7 @@ import Activities from "./screens/Activities.jsx";
 import Quizzes from "./screens/Quizzes.jsx";
 import MajorExams from "./screens/MajorExams.jsx";
 import Grades from "./screens/Grades.jsx";
-import MissingWork from "./screens/MissingWork.jsx";
+import MissingWork, { StudentMissingWork, studentMissingWorkItems } from "./screens/MissingWork.jsx";
 import Transactions from "./screens/Transactions.jsx";
 import Shop, { StudentShop, StudentTradeRequests } from "./screens/Shop.jsx";
 import AppearanceShop, { StudentAppearanceShop } from "./screens/AppearanceShop.jsx";
@@ -233,7 +233,7 @@ function RoleApp({ session, logout }) {
   const loadedModulesRef = useRef(new Set(initialCacheRef.current?.modules || []));
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
-  const missingWork = session.user.role === "student" && normalized ? studentMissingWork(normalized) : [];
+  const missingWork = session.user.role === "student" && normalized ? studentMissingWorkItems(normalized) : [];
   const activeRequiredModules = requiredModulesForTab(active, session.user.role);
   const activeModuleLoading = !!normalized && activeRequiredModules.some((module) => !loadedModulesRef.current.has(module));
 
@@ -479,7 +479,7 @@ function RoleApp({ session, logout }) {
           <ModuleHeader tab={active} data={normalized} />
           {activeModuleLoading
             ? <DataLoadingState label={loadError ? `Could not load ${active} data` : `Loading ${active} data`} error={loadError} onRetry={() => load(activeRequiredModules)} />
-            : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
+            : <Screen role={session.user.role} tab={active} data={normalized} run={run} navigate={navigate} />}
         </>}
       </main>
     </div>
@@ -498,56 +498,6 @@ function RoleApp({ session, logout }) {
 
 function missingWorkSeenKey(user) {
   return `jcoins_missing_work_seen_${user?.id || "student"}_${new Date().toISOString().slice(0, 10)}`;
-}
-
-function studentMissingWork(data) {
-  const studentId = data.student?.id;
-  const items = [];
-  (data.activities || []).forEach((activity) => {
-    const row = (activity.rows || []).find((item) => item.studentId === studentId);
-    if (row && !row.submitted) {
-      items.push({
-        type: "Activity",
-        title: activity.title,
-        subject: activity.subjectName,
-        detail: row.effectiveDeadline || activity.deadline ? `Due ${formatShortDateTime(row.effectiveDeadline || activity.deadline)}` : "Not submitted",
-        tab: "Activities"
-      });
-    }
-  });
-  (data.quizzes || []).forEach((quiz) => {
-    if (quiz.status === "draft") return;
-    const latest = quiz.submission?.latest;
-    const total = Number(latest?.total || quiz.questions?.length || 0);
-    const passed = latest && Number(latest.correct || 0) >= Number(quiz.passingScore || total || 0);
-    if (!latest || !passed) {
-      items.push({
-        type: "Quiz",
-        title: quiz.title,
-        subject: quiz.subjectName,
-        detail: latest ? `Latest ${latest.correct}/${latest.total}; passing ${quiz.passingScore}/${total || quiz.questions?.length || "?"}` : "Not answered yet",
-        tab: "Quizzes"
-      });
-    }
-  });
-  (data.gradeSummaries || []).forEach((summary) => {
-    (summary.missingItems || []).forEach((item) => {
-      items.push({
-        type: "Grade",
-        title: item,
-        subject: summary.subjectName,
-        detail: summary.section ? `Needed for ${summary.section}` : "Needed for grades",
-        tab: "Profile"
-      });
-    });
-  });
-  const seen = new Set();
-  return items.filter((item) => {
-    const key = `${item.type}|${item.subject}|${item.title}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, 20);
 }
 
 function StudentMissingWorkModal({ items, navigate, onClose }) {
@@ -579,11 +529,6 @@ function StudentMissingWorkModal({ items, navigate, onClose }) {
       <button type="button" onClick={onClose}>OK, I'll check it</button>
     </section>
   </div>;
-}
-
-function formatShortDateTime(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value || "") : date.toLocaleString();
 }
 
 function SaveQueueStatus({ state }) {
@@ -641,7 +586,7 @@ function navGroupsForRole(role) {
   if (role === "student" || role === "display") {
     return [
       { id: "student-experience", label: "Student Experience", icon: Gamepad2, tabs: ["Leaderboard", "Guild Affinity", "Profile", "History"] },
-      { id: "student-work", label: "Class Work", icon: BookOpenCheck, tabs: ["Activities", "Quizzes", "Schedule"] },
+      { id: "student-work", label: "Class Work", icon: BookOpenCheck, tabs: ["Missing Work", "Activities", "Quizzes", "Schedule"] },
       { id: "student-economy", label: "Economy", icon: Coins, tabs: ["Shop", "Trade Requests", "Appearance Shop"] },
       { id: "student-admin", label: "Account", icon: Settings2, tabs: ["Feedback", "Account"] }
     ];
@@ -981,7 +926,7 @@ function requiredModulesForTab(tab, role) {
     Quizzes: ["quizzes"],
     "Major Exams": ["majorExams"],
     Grades: ["grades", "activities", "attendance", "quizzes", "majorExams", "recitations", "guild"],
-    "Missing Work": ["grades"],
+    "Missing Work": role === "student" ? ["grades", "activities", "quizzes"] : ["grades"],
     Transactions: ["transactions"],
     Shop: ["shop"],
     "Trade Requests": ["shop"],
@@ -996,7 +941,7 @@ function requiredModulesForTab(tab, role) {
   return map[tab] || [];
 }
 
-function Screen({ role, tab, data, run }) {
+function Screen({ role, tab, data, run, navigate }) {
   const assistantData = role === "student" && studentAssistantTabs.includes(tab) ? studentAssistantData(data) : data;
   if (tab === "Leaderboard") return <Leaderboard students={data.students || []} currentStudentId={data.student?.id} role={role} />;
   if (tab === "Dashboard") return <Dashboard data={data} />;
@@ -1013,7 +958,7 @@ function Screen({ role, tab, data, run }) {
   if (tab === "Quizzes") return <Quizzes data={data} run={run} role={role} />;
   if (tab === "Major Exams") return <MajorExams data={data} run={run} />;
   if (tab === "Grades") return <Grades data={data} run={run} />;
-  if (tab === "Missing Work") return <MissingWork data={data} />;
+  if (tab === "Missing Work") return role === "student" ? <StudentMissingWork data={data} onOpen={navigate} /> : <MissingWork data={data} />;
   if (tab === "Transactions") return <Transactions data={assistantData} run={run} role={role} />;
   if (tab === "Shop") return role === "student" ? <StudentShop data={data} run={run} /> : <Shop data={data} run={run} />;
   if (tab === "Trade Requests") return <StudentTradeRequests data={data} run={run} />;
@@ -1040,7 +985,7 @@ function ModuleHeader({ tab, data }) {
     Quizzes: data.quizzes?.length,
     "Major Exams": data.majorExams?.length,
     Grades: data.gradeSummaries?.length,
-    "Missing Work": data.gradeSummaries?.filter((row) => (row.missingItems || []).length > 0).length,
+    "Missing Work": data.student ? studentMissingWorkItems(data).length : data.gradeSummaries?.filter((row) => (row.missingItems || []).length > 0).length,
     Transactions: data.transactions?.length,
     History: data.auditLogs?.length ?? data.transactions?.length,
     Approvals: data.requests?.filter((request) => request.status === "pending").length,

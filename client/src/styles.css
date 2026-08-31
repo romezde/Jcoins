@@ -1100,6 +1100,38 @@ input::placeholder {
   font-size: 12px;
   text-transform: uppercase;
 }
+.student-missing-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.student-missing-summary p,
+.student-missing-clear p {
+  margin: 5px 0 0;
+}
+.student-missing-summary > strong {
+  display: grid;
+  place-items: center;
+  min-width: 54px;
+  height: 44px;
+  border: 1px solid rgba(251, 191, 36, .45);
+  border-radius: 8px;
+  color: #fde68a;
+  background: rgba(251, 191, 36, .1);
+  font-size: 22px;
+}
+.student-missing-clear {
+  border-color: rgba(34, 197, 94, .35);
+}
+@media (max-width: 640px) {
+  .student-missing-work .missing-work-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .student-missing-work .missing-work-item b {
+    justify-self: start;
+  }
+}
 .success-modal {
   display: grid;
   justify-items: center;
