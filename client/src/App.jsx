@@ -189,8 +189,23 @@ function PublicLeaderboard({ onLogin }) {
       <div className="brand-mark"><JCoinLogo size={34} /> <span>JCoin</span></div>
       <button type="button" onClick={onLogin}>Login</button>
     </div>
-    {error ? <section className="panel"><div className="section-title">Could not load leaderboard</div><p className="error">{error}</p></section> : data ? <Leaderboard students={data.students || []} /> : <section className="panel">Loading leaderboard...</section>}
+    {error ? <DataLoadingState label="Could not load leaderboard" error={error} onRetry={() => window.location.reload()} /> : data ? <Leaderboard students={data.students || []} /> : <DataLoadingState label="Loading leaderboard data" />}
   </main>;
+}
+
+function DataLoadingState({ label = "Loading JCoins data", error = "", onRetry }) {
+  if (error) return <section className="panel data-loading-error" role="alert">
+    <div className="section-title">{label}</div>
+    <p className="error">{error}</p>
+    {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+  </section>;
+  return <section className="panel loading-card data-loading-state" role="status" aria-live="polite" aria-busy="true">
+    <span className="loading-spinner" aria-hidden="true" />
+    <div>
+      <div className="section-title">{label}</div>
+      <p>Please wait while the latest information is loaded.</p>
+    </div>
+  </section>;
 }
 
 function RoleApp({ session, logout }) {
@@ -219,6 +234,8 @@ function RoleApp({ session, logout }) {
   const normalized = session.user.role === "display" ? { students: data?.students || [], subjects: data?.subjects || [] } : data;
   const tabs = buildTabs(baseTabs, normalized, session.user.role);
   const missingWork = session.user.role === "student" && normalized ? studentMissingWork(normalized) : [];
+  const activeRequiredModules = requiredModulesForTab(active, session.user.role);
+  const activeModuleLoading = !!normalized && activeRequiredModules.some((module) => !loadedModulesRef.current.has(module));
 
   async function load(modules = []) {
     if (loadInFlightRef.current) {
@@ -458,9 +475,11 @@ function RoleApp({ session, logout }) {
       {navOpen && <button className="scrim" onClick={() => setNavOpen(false)} aria-label="Close navigation" />}
       <main className="admin-shell">
         {message && <div className="notice">{message}</div>}
-        {!normalized ? <section className="panel">{loadError ? <><div className="section-title">Could not load data</div><p className="error">{loadError}</p><button onClick={logout}>Back to Login</button></> : "Loading..."}</section> : <>
+        {!normalized ? <DataLoadingState label={loadError ? "Could not load data" : "Loading JCoins data"} error={loadError} onRetry={() => load(activeRequiredModules)} /> : <>
           <ModuleHeader tab={active} data={normalized} />
-          <Screen role={session.user.role} tab={active} data={normalized} run={run} />
+          {activeModuleLoading
+            ? <DataLoadingState label={loadError ? `Could not load ${active} data` : `Loading ${active} data`} error={loadError} onRetry={() => load(activeRequiredModules)} />
+            : <Screen role={session.user.role} tab={active} data={normalized} run={run} />}
         </>}
       </main>
     </div>

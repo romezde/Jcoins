@@ -1126,6 +1126,19 @@ input::placeholder {
   gap: 16px;
   width: min(420px, 100%);
 }
+.data-loading-state,
+.data-loading-error {
+  margin: clamp(16px, 4vw, 36px) auto;
+}
+.data-loading-state {
+  min-height: 112px;
+}
+.data-loading-error {
+  width: min(520px, 100%);
+}
+.data-loading-error p {
+  margin: 8px 0 16px;
+}
 .loading-card p {
   margin: 4px 0 0;
   color: var(--muted);
