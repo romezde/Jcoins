@@ -108,16 +108,16 @@ export function studentMissingWorkItems(data) {
   });
   (data.quizzes || []).forEach((quiz) => {
     if (quiz.status === "draft") return;
-    const latest = quiz.submission?.latest;
-    const total = Number(latest?.total || quiz.questions?.length || quiz.totalItems || 0);
-    const passing = Number(quiz.passingScore || total || 0);
-    const passed = latest && Number(latest.correct || 0) >= passing;
-    if (!latest || !passed) {
+    const submission = quiz.submission;
+    const latest = submission?.latest;
+    const hasRecordedScore = submission && submission.bestScore !== "" && submission.bestScore != null;
+    const completed = !!latest || Number(submission?.attempts || 0) > 0 || hasRecordedScore;
+    if (!completed) {
       items.push({
         type: "Quiz",
         title: quiz.title,
         subject: quiz.subjectName,
-        detail: latest ? `Latest ${latest.correct}/${latest.total}; passing ${passing}/${total || "?"}` : "Not answered yet",
+        detail: "No attempt or score recorded yet",
         tab: "Quizzes"
       });
     }
