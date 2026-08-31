@@ -57,9 +57,10 @@ async function fetchJsonWithProxyRecovery(path, requestOptions) {
 }
 
 function proxyDnsFailed(response) {
+  const vercelError = response.headers.get("x-vercel-error") || "";
   return import.meta.env.PROD
     && response.status === 502
-    && response.headers.get("x-vercel-error") === "DNS_HOSTNAME_EMPTY";
+    && vercelError.startsWith("DNS_HOSTNAME_");
 }
 
 export const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
