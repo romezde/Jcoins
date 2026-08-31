@@ -3770,6 +3770,8 @@ function normalizeMajorExam(exam, db) {
   exam.date = String(exam.date || today()).slice(0, 10);
   const rawMaxScore = Number(exam.maxScore || 100);
   exam.maxScore = Number.isFinite(rawMaxScore) ? Math.max(1, Math.min(1000, rawMaxScore)) : 100;
+  const rawMinimumPercent = Number(exam.minimumPercent ?? 0);
+  exam.minimumPercent = Number.isFinite(rawMinimumPercent) ? Math.max(0, Math.min(100, rawMinimumPercent)) : 0;
   exam.remarks = String(exam.remarks || "").trim().slice(0, 500);
   exam.scores = exam.scores && typeof exam.scores === "object" && !Array.isArray(exam.scores) ? exam.scores : {};
   const studentIds = new Set(studentsForClass(db, exam.subjectId, exam.section).map((student) => student.id));
@@ -3791,14 +3793,25 @@ function majorExamInput(db, body, user, existing = {}) {
   const rawMaxScore = Number(body.maxScore ?? existing.maxScore ?? 100);
   if (!Number.isFinite(rawMaxScore)) throw new Error("Maximum score must be a number.");
   const maxScore = Math.max(1, Math.min(1000, rawMaxScore));
+  const rawMinimumPercent = Number(body.minimumPercent ?? existing.minimumPercent ?? 50);
+  if (!Number.isFinite(rawMinimumPercent) || rawMinimumPercent < 0 || rawMinimumPercent > 100) {
+    throw new Error("Minimum percentage must be from 0 to 100.");
+  }
   return {
     title: String(body.title ?? existing.title ?? "Major Exam").trim().slice(0, 140) || "Major Exam",
     subjectId,
     section,
     date: String(body.date ?? existing.date ?? today()).slice(0, 10),
     maxScore,
+    minimumPercent: rawMinimumPercent,
     remarks: String(body.remarks ?? existing.remarks ?? "").trim().slice(0, 500)
   };
+}
+
+function majorExamPercentage(exam, score) {
+  const minimum = Math.max(0, Math.min(100, Number(exam.minimumPercent ?? 0)));
+  const rawPercent = Math.max(0, Math.min(100, Number(score || 0) / Number(exam.maxScore || 1) * 100));
+  return Math.round((minimum + rawPercent * (100 - minimum) / 100) * 100) / 100;
 }
 
 function publicMajorExam(db, exam) {
@@ -3812,7 +3825,7 @@ function publicMajorExam(db, exam) {
       studentName: student.name,
       section: student.section || "",
       score,
-      percent: hasScore ? Math.round(Number(score || 0) / Number(exam.maxScore || 1) * 100) : "",
+      percent: hasScore ? majorExamPercentage(exam, score) : "",
       recorded: hasScore
     };
   });
@@ -4139,7 +4152,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const majorExams = (db.majorExams || []).filter((exam) => exam.subjectId === subjectId && exam.section === section);
   majorExams.forEach((exam) => {
     const recorded = Object.prototype.hasOwnProperty.call(exam.scores || {}, student.id);
-    if (recorded) majorPercents.push(Number(exam.scores[student.id] || 0) / Number(exam.maxScore || 1) * 100);
+    if (recorded) majorPercents.push(majorExamPercentage(exam, exam.scores[student.id]));
     else {
       majorPercents.push(0);
       missingItems.push(exam.title);

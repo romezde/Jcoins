@@ -194,7 +194,7 @@ function RoleApp({ session, logout }) {
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
-  const [liveStatus, setLiveStatus] = useState("connecting");
+  const [liveStatus, setLiveStatus] = useState("polling");
   const [saveState, setSaveState] = useState({ status: "idle", pending: 0, label: "" });
   const [navOpen, setNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState(() => readNavGroups(session.user.role));
@@ -267,6 +267,7 @@ function RoleApp({ session, logout }) {
     let midnightTimer = null;
     let source = null;
     let reconnectTimer = null;
+    let connectionTimer = null;
     let cancelled = false;
     const scheduleMidnightRefresh = () => {
       window.clearTimeout(midnightTimer);
@@ -275,26 +276,40 @@ function RoleApp({ session, logout }) {
         scheduleMidnightRefresh();
       }, msUntilNextMidnight());
     };
-    const connectRealtime = () => {
+    const connectRealtime = (useDirect = false) => {
       request("/events/token").then(({ token }) => {
         if (cancelled || !token) return;
         if (source) source.close();
-        source = new EventSource(eventUrl(token));
-        source.addEventListener("ready", () => setLiveStatus("live"));
-        source.addEventListener("open", () => setLiveStatus("live"));
-        source.addEventListener("change", () => {
+        const currentSource = new EventSource(eventUrl(token, useDirect));
+        source = currentSource;
+        let failed = false;
+        const markLive = () => {
+          if (failed || cancelled) return;
+          window.clearTimeout(connectionTimer);
           setLiveStatus("live");
+        };
+        const handleFailure = () => {
+          if (failed || cancelled) return;
+          failed = true;
+          window.clearTimeout(connectionTimer);
+          currentSource.close();
+          window.clearTimeout(reconnectTimer);
+          const canTryDirect = !useDirect && eventUrl(token, true) !== eventUrl(token, false);
+          setLiveStatus("polling");
+          reconnectTimer = window.setTimeout(() => {
+            if (!cancelled) connectRealtime(canTryDirect);
+          }, canTryDirect ? 250 : 15000);
+        };
+        currentSource.addEventListener("ready", markLive);
+        currentSource.addEventListener("open", markLive);
+        currentSource.addEventListener("change", () => {
+          markLive();
           // Spread simultaneous classroom refreshes so one update does not create a request spike.
           scheduleRefresh(700 + Math.floor(Math.random() * 2800));
         });
-        source.addEventListener("error", () => {
-          setLiveStatus("reconnecting");
-          if (source) source.close();
-          window.clearTimeout(reconnectTimer);
-          reconnectTimer = window.setTimeout(() => {
-            if (!cancelled) connectRealtime();
-          }, 5000);
-        });
+        currentSource.addEventListener("error", handleFailure);
+        window.clearTimeout(connectionTimer);
+        connectionTimer = window.setTimeout(handleFailure, 7000);
       }).catch(() => {
         setLiveStatus("polling");
         window.clearTimeout(reconnectTimer);
@@ -320,6 +335,7 @@ function RoleApp({ session, logout }) {
       window.clearTimeout(realtimeTimerRef.current);
       window.clearTimeout(midnightTimer);
       window.clearTimeout(reconnectTimer);
+      window.clearTimeout(connectionTimer);
       window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);

@@ -24,12 +24,13 @@ export default function MajorExams({ data, run }) {
         <Field label="Search Exams" value={search} onChange={setSearch} />
         <div className="filter-count">{exams.length} exam{exams.length === 1 ? "" : "s"}</div>
       </div>
-      <Table columns={["Exam", "Subject", "Section", "Date", "Max Score", "Recorded", "Remarks", "Action"]} rows={exams.map((exam) => [
+      <Table columns={["Exam", "Subject", "Section", "Date", "Max Score", "Minimum %", "Recorded", "Remarks", "Action"]} rows={exams.map((exam) => [
         exam.title,
         exam.subjectName,
         activeClass.sectionLabel,
         exam.date,
         exam.maxScore,
+        `${exam.minimumPercent ?? 0}%`,
         exam.tracker,
         exam.remarks,
         <div className="inline"><MajorExamForm data={data} run={run} exam={exam} /><button type="button" className="soft" onClick={() => exportExam(exam)}>Export</button><button type="button" className="danger" onClick={() => deleteExam(exam, run)}>Delete</button></div>
@@ -60,6 +61,8 @@ function MajorExamForm({ data, run, exam = null, presetClass = null, buttonLabel
       {hasScores && <p className="muted-line">Subject and section are locked after scores are recorded.</p>}
       <Field label="Date" type="date" value={form.date} onChange={(date) => setForm({ ...form, date })} />
       <Field label="Maximum Score" type="number" min="1" max="1000" step="0.01" value={form.maxScore} onChange={(maxScore) => setForm({ ...form, maxScore })} />
+      <Field label="Minimum Percentage (Score of 0)" type="number" min="0" max="100" step="0.01" value={form.minimumPercent} onChange={(minimumPercent) => setForm({ ...form, minimumPercent })} />
+      <p className="muted-line">A score of 0 becomes {form.minimumPercent || 0}%. Scores between 0 and {form.maxScore || 0} are scaled up to 100%.</p>
       <Field label="Remarks" value={form.remarks} onChange={(remarks) => setForm({ ...form, remarks })} />
       <button>{exam ? "Save Exam" : "Add Exam"}</button>
     </form>
@@ -71,7 +74,7 @@ function MajorExamCard({ exam, run }) {
   const q = search.trim().toLowerCase();
   const rows = (exam.rows || []).filter((row) => !q || [row.studentName, row.score, row.percent].some((value) => String(value || "").toLowerCase().includes(q)));
   return <Panel title={`${exam.title} Scores`} wide defaultOpen={false} actions={<div className="inline"><strong>{exam.tracker} recorded</strong><button type="button" className="soft" onClick={() => exportExam(exam)}>Export Scores</button></div>}>
-    <p className="muted-line">{exam.subjectName} | {exam.section} | {exam.date} | maximum score {exam.maxScore}</p>
+    <p className="muted-line">{exam.subjectName} | {exam.section} | {exam.date} | maximum score {exam.maxScore} | minimum {exam.minimumPercent ?? 0}%</p>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
@@ -101,6 +104,7 @@ function examFormValues(exam) {
     section: exam.section || "",
     date: exam.date || today(),
     maxScore: exam.maxScore ?? 100,
+    minimumPercent: exam.minimumPercent ?? 0,
     remarks: exam.remarks || ""
   };
 }
@@ -112,6 +116,7 @@ function newExamForm(data, presetClass = null) {
     section: presetClass?.section || data.sections?.[0] || "",
     date: today(),
     maxScore: 100,
+    minimumPercent: 50,
     remarks: ""
   };
 }
@@ -129,6 +134,7 @@ function exportExam(exam) {
     "Section",
     "Date",
     "Max Score",
+    "Minimum Percentage",
     "Score",
     "Percent",
     "Remarks"
@@ -139,6 +145,7 @@ function exportExam(exam) {
     exam.section,
     exam.date,
     exam.maxScore,
+    `${exam.minimumPercent ?? 0}%`,
     row.score ?? "",
     row.percent === "" ? "" : `${row.percent}%`,
     exam.remarks || ""
