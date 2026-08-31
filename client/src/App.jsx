@@ -29,7 +29,7 @@ import FloatingAssistant from "./components/FloatingAssistant.jsx";
 import PushNotificationToggle from "./components/PushNotificationToggle.jsx";
 
 function useSession() {
-  const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("jcoins_session") || "null"));
+  const [session, setSession] = useState(readStoredSession);
   function save(next) {
     localStorage.setItem("jcoins_token", next.token);
     localStorage.setItem("jcoins_session", JSON.stringify(next));
@@ -152,6 +152,13 @@ function ChangePassword({ onDone, onReturn }) {
 export default function App() {
   const { session, save, logout } = useSession();
   const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      sessionStorage.removeItem("jcoins_boot_recovery");
+      sessionStorage.removeItem("jcoins_runtime_recovery");
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, []);
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);
     window.addEventListener("popstate", onPop);
@@ -645,6 +652,32 @@ function readNavGroups(role) {
   return role === "student" ? { "student-experience": true } : { academic: true, economy: true };
 }
 
+function readStoredSession() {
+  try {
+    const raw = localStorage.getItem("jcoins_session");
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    const validRoles = ["admin", "teacher", "student", "display"];
+    if (!session?.token || !session?.user?.id || !validRoles.includes(session.user.role)) throw new Error("Invalid stored session");
+    return session;
+  } catch {
+    localStorage.removeItem("jcoins_session");
+    localStorage.removeItem("jcoins_token");
+    clearOverviewCaches();
+    return null;
+  }
+}
+
+function readStoredArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    localStorage.removeItem(key);
+    return [];
+  }
+}
+
 function saveNavGroups(role, groups) {
   localStorage.setItem(navGroupsKey(role), JSON.stringify(groups));
   return groups;
@@ -783,7 +816,7 @@ function GlobalSearch({ tabs, data, navigate }) {
 function NotificationBell({ role, userId, data, navigate }) {
   const [open, setOpen] = useState(false);
   const readKey = `jcoins_notifications_read_${userId || role}`;
-  const [readIds, setReadIds] = useState(() => JSON.parse(localStorage.getItem(readKey) || "[]"));
+  const [readIds, setReadIds] = useState(() => readStoredArray(readKey));
   const items = notificationItems(role, data);
   const unreadItems = items.filter((item) => !readIds.includes(item.id));
   const hasDot = unreadItems.length > 0;

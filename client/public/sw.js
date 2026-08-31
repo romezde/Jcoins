@@ -1,4 +1,4 @@
-const CACHE_NAME = "jcoins-shell-v3";
+const CACHE_NAME = "jcoins-shell-v4";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/jcoin.svg", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -15,7 +15,7 @@ self.addEventListener("message", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("jcoins-shell-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -62,6 +62,21 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => caches.match("/index.html"))
+    );
+    return;
+  }
+
+  if (event.request.destination === "script" || event.request.destination === "style") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }

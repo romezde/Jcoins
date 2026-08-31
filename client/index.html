@@ -18,6 +18,54 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (() => {
+        const recoveryKey = "jcoins_boot_recovery";
+        const showRecovery = () => {
+          const root = document.getElementById("root");
+          if (!root) return;
+          root.innerHTML = `
+            <main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#0f172a;color:#f8fafc;font-family:system-ui,sans-serif">
+              <section style="width:min(100%,460px);padding:24px;border:1px solid #334155;border-radius:8px;background:#111c33">
+                <h1 style="margin:0 0 12px;font-size:24px">JCoins needs to reload</h1>
+                <p style="margin:0 0 20px;line-height:1.5;color:#cbd5e1">An outdated app file stopped the page from loading. Your JCoins data is safe.</p>
+                <button id="jcoins-repair-button" type="button" style="width:100%;padding:12px;border:0;border-radius:6px;background:#fbbf24;color:#111827;font-weight:700">Repair and Reload</button>
+              </section>
+            </main>`;
+          document.getElementById("jcoins-repair-button")?.addEventListener("click", () => {
+            sessionStorage.removeItem(recoveryKey);
+            repair();
+          });
+        };
+        const repair = async () => {
+          if (sessionStorage.getItem(recoveryKey) === "1") {
+            showRecovery();
+            return;
+          }
+          sessionStorage.setItem(recoveryKey, "1");
+          try {
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.filter((key) => key.startsWith("jcoins-shell-")).map((key) => caches.delete(key)));
+            }
+            if ("serviceWorker" in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map((registration) => registration.unregister()));
+            }
+          } catch {}
+          const url = new URL(window.location.href);
+          url.searchParams.set("recovered", Date.now());
+          window.location.replace(url);
+        };
+        window.addEventListener("error", (event) => {
+          const message = String(event.message || "");
+          if (event.target?.tagName === "SCRIPT" || /module script|loading chunk|dynamically imported module/i.test(message)) repair();
+        }, true);
+        window.addEventListener("unhandledrejection", (event) => {
+          if (/failed to fetch|loading chunk|dynamically imported module/i.test(String(event.reason?.message || event.reason || ""))) repair();
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
