@@ -547,11 +547,20 @@ function classMembershipFor(db, studentId, subjectId, section = "") {
   );
 }
 
+function studentClassSections(db, student, subjectId) {
+  if (!student) return [];
+  const memberships = (db.guildSystem?.classMemberships || []).filter((membership) =>
+    membership.studentId === student.id && membership.subjectId === subjectId
+  );
+  if (memberships.length) return [...new Set(memberships.map((membership) => String(membership.section || "").trim()))];
+  return (student.subjectIds || []).includes(subjectId) ? [String(student.section || "").trim()] : [];
+}
+
 function studentIsInClass(db, student, subjectId, section = "") {
   if (!student) return false;
   const normalizedSection = String(section || "").trim();
-  const regular = (student.subjectIds || []).includes(subjectId) && (!normalizedSection || student.section === normalizedSection);
-  return regular || !!classMembershipFor(db, student.id, subjectId, normalizedSection);
+  const sections = studentClassSections(db, student, subjectId);
+  return !!sections.length && (!normalizedSection || sections.includes(normalizedSection));
 }
 
 function studentsForClass(db, subjectId, section = "") {
@@ -4230,10 +4239,13 @@ function hydrateGradeSummaries(db, user) {
   const rows = [];
   const classPairs = new Map();
   students.forEach((student) => {
-    (student.subjectIds || []).forEach((subjectId) => classPairs.set(gradeClassKeyParts(subjectId, student.section || ""), { subjectId, section: String(student.section || "").trim() }));
-    (db.guildSystem?.classMemberships || [])
-      .filter((membership) => membership.studentId === student.id)
-      .forEach((membership) => classPairs.set(gradeClassKeyParts(membership.subjectId, membership.section), { subjectId: membership.subjectId, section: String(membership.section || "").trim() }));
+    const subjectIds = new Set([
+      ...(student.subjectIds || []),
+      ...(db.guildSystem?.classMemberships || []).filter((membership) => membership.studentId === student.id).map((membership) => membership.subjectId)
+    ]);
+    subjectIds.forEach((subjectId) => studentClassSections(db, student, subjectId).forEach((section) => {
+      classPairs.set(gradeClassKeyParts(subjectId, section), { subjectId, section });
+    }));
   });
   gradeClassRecordPairs(db).forEach((pair) => classPairs.set(gradeClassKeyParts(pair.subjectId, pair.section), pair));
   classPairs.forEach(({ subjectId, section }) => {
@@ -4243,7 +4255,14 @@ function hydrateGradeSummaries(db, user) {
     const classStudentMap = new Map();
     if (hasRecords && section) {
       students
-        .filter((student) => String(student.section || "").trim() === section)
+        .filter((student) => {
+          if (String(student.section || "").trim() !== section) return false;
+          const assignedSections = studentClassSections(db, student, subjectId);
+          const hasClassOverride = (db.guildSystem?.classMemberships || []).some((membership) =>
+            membership.studentId === student.id && membership.subjectId === subjectId
+          );
+          return !hasClassOverride || assignedSections.includes(section);
+        })
         .forEach((student) => classStudentMap.set(student.id, student));
     }
     students
@@ -4262,9 +4281,7 @@ function gradeSettingsForUser(db, user) {
   const classes = new Map();
   scopeStudents(db, user).forEach((student) => {
     (db.subjects || []).forEach((subject) => {
-      const sections = new Set();
-      if ((student.subjectIds || []).includes(subject.id)) sections.add(student.section || "");
-      (db.guildSystem?.classMemberships || []).filter((membership) => membership.studentId === student.id && membership.subjectId === subject.id).forEach((membership) => sections.add(String(membership.section || "").trim()));
+      const sections = new Set(studentClassSections(db, student, subject.id));
       sections.forEach((section) => {
         if (canUseSubject(user, subject.id) && canUseSection(user, section)) classes.set(gradeClassKey(subject.id, section), { subjectId: subject.id, section });
       });
@@ -4654,6 +4671,17 @@ function filteredOverview(db, user, modules = null) {
     subjects: user.role === "teacher" ? db.subjects.filter((subject) => subjectIds.has(subject.id)) : db.subjects,
     sections: db.sections,
     students,
+    classMemberships: (db.guildSystem?.classMemberships || [])
+      .filter((membership) => studentIds.has(membership.studentId)
+        && (!subjectIds || subjectIds.has(membership.subjectId))
+        && (!sectionIds?.size || sectionIds.has(String(membership.section || "").trim())))
+      .map((membership) => ({
+        id: membership.id,
+        studentId: membership.studentId,
+        subjectId: membership.subjectId,
+        section: String(membership.section || "").trim(),
+        type: membership.type || "irregular"
+      })),
     users: includePeople && user.role === "admin" ? db.users.map((u) => userWithStudent(u, db)) : [],
     transactions,
     attendanceWeeks: includeAttendance ? db.attendanceWeeks.filter((w) =>

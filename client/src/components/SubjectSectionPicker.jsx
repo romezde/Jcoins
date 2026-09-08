@@ -2,6 +2,16 @@ import React, { useState } from "react";
 import { BookOpenCheck, Users } from "lucide-react";
 import { Field } from "./ui.jsx";
 
+export function studentIsInSubjectSection(data, student, subjectId, section = "") {
+  if (!student) return false;
+  const cleanSection = String(section || "").trim();
+  const memberships = (data.classMemberships || []).filter((membership) =>
+    membership.studentId === student.id && membership.subjectId === subjectId
+  );
+  if (memberships.length) return !cleanSection || memberships.some((membership) => String(membership.section || "").trim() === cleanSection);
+  return (student.subjectIds || []).includes(subjectId) && (!cleanSection || String(student.section || "").trim() === cleanSection);
+}
+
 export function buildSubjectSectionClasses(data, itemCount = () => 0) {
   const classPairs = new Map();
   const add = (subjectId, section = "") => {
@@ -10,12 +20,13 @@ export function buildSubjectSectionClasses(data, itemCount = () => 0) {
     if (cleanSubjectId && cleanSection) classPairs.set(`${cleanSubjectId}::${cleanSection}`, { subjectId: cleanSubjectId, section: cleanSection });
   };
   (data.students || []).forEach((student) => (student.subjectIds || []).forEach((subjectId) => add(subjectId, student.section)));
+  (data.classMemberships || []).forEach((membership) => add(membership.subjectId, membership.section));
   ["activities", "groupActivities", "quizzes", "attendanceWeeks", "writtenWorks", "majorExams", "gradeSettings", "gradeSummaries"].forEach((key) => {
     (data[key] || []).forEach((item) => add(item.subjectId, item.section));
   });
   return [...classPairs.values()].map(({ subjectId, section }) => {
     const subject = (data.subjects || []).find((item) => item.id === subjectId);
-    const enrolledStudents = (data.students || []).filter((student) => (student.subjectIds || []).includes(subjectId) && String(student.section || "") === section);
+    const enrolledStudents = (data.students || []).filter((student) => studentIsInSubjectSection(data, student, subjectId, section));
     const sectionStudents = (data.students || []).filter((student) => String(student.section || "") === section);
     return subject ? {
       key: `${subject.id}::${section || "__none"}`,

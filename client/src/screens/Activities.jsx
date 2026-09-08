@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import { del, post, postFormWithProgress, put, today } from "../api.js";
 import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
-import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
+import SubjectSectionPicker, { buildSubjectSectionClasses, studentIsInSubjectSection } from "../components/SubjectSectionPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 
@@ -286,7 +286,7 @@ function newActivityForm(data, presetClass = null) {
 function activityRowsForSection(activity, data, section) {
   if (activity.section && activity.section !== section) return [];
   if (activity.section) return activity.rows || [];
-  const studentIds = new Set((data.students || []).filter((student) => String(student.section || "") === section && (student.subjectIds || []).includes(activity.subjectId)).map((student) => student.id));
+  const studentIds = new Set((data.students || []).filter((student) => studentIsInSubjectSection(data, student, activity.subjectId, section)).map((student) => student.id));
   return (activity.rows || []).filter((row) => studentIds.has(row.studentId));
 }
 
