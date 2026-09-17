@@ -3144,6 +3144,26 @@ td button {
   gap: 4px;
   min-width: 120px;
 }
+.activity-score-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.activity-score-pending .score-input {
+  border-color: #fb7185;
+  background: rgba(190, 24, 49, .16);
+}
+.activity-grade-pending {
+  color: #fda4af;
+  font-size: 12px;
+  font-weight: 800;
+}
+.activity-grade-perfect {
+  width: auto;
+  padding: 6px 8px;
+  font-size: 12px;
+}
 .activity-materials-box {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) minmax(180px, auto) auto;

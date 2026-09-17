@@ -85,43 +85,48 @@ function ActivityCard({ activity, section, sectionLabel, data, run }) {
       <ActivityScoreCell activity={activity} row={r} run={run} />,
       <ActivitySubmissionFileCell activity={activity} row={r} run={run} />,
       r.earned,
-      <input defaultValue={r.remarks} onBlur={(e) => run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: activityActualScore(r), remarks: e.target.value }), "Remarks saved")} />
+      <input defaultValue={r.remarks} onBlur={(e) => e.target.value !== r.remarks && run(() => put(`/admin/activities/${activity.id}/submissions`, { studentId: r.studentId, submitted: r.submitted, submittedAt: r.submittedAt, score: activityActualScore(r), remarks: e.target.value }), "Remarks saved")} />
     ])} />
   </Panel>;
 }
 
 function activityActualScore(row) {
-  if (row.score !== "" && row.score != null) return row.score;
-  return row.submitted ? row.maxScoreAllowed ?? 100 : "";
+  return row.score ?? "";
 }
 
 function ActivityScoreCell({ activity, row, run }) {
-  return <div className="activity-score-cell">
+  return <div className={`activity-score-cell ${row.awaitingGrade ? "activity-score-pending" : ""}`}>
     <ActivityScoreInput activity={activity} row={row} run={run} />
+    {row.awaitingGrade && <span className="activity-grade-pending">Awaiting grade</span>}
     <span className="muted-line">Max {row.maxScoreAllowed} | Late {row.daysLate}</span>
   </div>;
 }
 
 function ActivityScoreInput({ activity, row, run }) {
   const rowScore = activityActualScore(row);
-  const [score, setScore] = useState(rowScore);
-  useEffect(() => setScore(rowScore), [rowScore, row.studentId, activity.id]);
+  const suggestedScore = row.awaitingGrade ? row.maxScoreAllowed : rowScore;
+  const [score, setScore] = useState(suggestedScore);
+  const [edited, setEdited] = useState(false);
+  useEffect(() => { setScore(suggestedScore); setEdited(false); }, [suggestedScore, row.studentId, activity.id]);
   const changed = String(score ?? "") !== String(rowScore ?? "");
-  return <input
+  const valid = score !== "" && Number.isFinite(Number(score)) && Number(score) >= 0 && Number(score) <= row.maxScoreAllowed;
+  const save = () => valid && changed && run(() => put(`/admin/activities/${activity.id}/submissions`, {
+    studentId: row.studentId,
+    submitted: row.submitted,
+    submittedAt: row.submittedAt,
+    score,
+    remarks: row.remarks
+  }), "Score saved");
+  return <div className="activity-score-entry"><input
     className="score-input"
     type="number"
     min="0"
     max={row.maxScoreAllowed}
     value={score}
-    onChange={(event) => setScore(event.target.value)}
-    onBlur={() => changed && run(() => put(`/admin/activities/${activity.id}/submissions`, {
-      studentId: row.studentId,
-      submitted: row.submitted,
-      submittedAt: row.submittedAt,
-      score,
-      remarks: row.remarks
-    }), "Score saved")}
-  />;
+    onChange={(event) => { setScore(event.target.value); setEdited(true); }}
+    onBlur={() => edited && save()}
+    aria-label={`Activity score for ${row.studentName}`}
+  />{row.awaitingGrade && !edited && <button type="button" className="soft activity-grade-perfect" onClick={save} disabled={!valid}>Grade {row.maxScoreAllowed}</button>}</div>;
 }
 
 function ActivitySubmissionFileCell({ activity, row, run }) {

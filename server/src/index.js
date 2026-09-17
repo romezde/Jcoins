@@ -3150,6 +3150,7 @@ function activityScoreReleased(activity, submission = {}, at = Date.now()) {
 
 function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
   if (!submission.submitted) return "";
+  if (submission.scoreMode === "pending") return "";
   const autoScore = Math.max(0, Math.min(100, Number(maxScoreAllowed || 0)));
   if (submission.scoreMode !== "manual") return autoScore;
   const manualScore = Number(submission.score);
@@ -3165,6 +3166,7 @@ function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
     }
     return;
   }
+  if (submission.scoreMode === "pending") return;
   const manualScore = Number(submission.score);
   const hasManualScore = submission.scoreMode === "manual" && String(submission.score ?? "").trim() !== "" && Number.isFinite(manualScore);
   if (!hasManualScore) {
@@ -4140,6 +4142,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (user.role === "student" && row && !row.scoreReleased) return;
     if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
+    if (row?.awaitingGrade) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
       activityPercents.push(0);
@@ -4331,7 +4334,8 @@ function hydrateActivities(db) {
       const maxScoreAllowed = activityMaxScoreAllowed(late);
       const score = activitySubmissionScore(sub, maxScoreAllowed);
       const scoreVisibleAt = activityScoreVisibleAt(a, sub);
-      const scoreReleased = activityScoreReleased(a, sub);
+      const awaitingGrade = !!sub.submitted && sub.scoreMode === "pending";
+      const scoreReleased = !awaitingGrade && activityScoreReleased(a, sub);
       const files = activitySubmissionFiles(sub);
       const publicFiles = files.map(publicActivityFile);
       const file = files[0] || null;
@@ -4350,6 +4354,7 @@ function hydrateActivities(db) {
         maxScoreAllowed,
         earned,
         score,
+        awaitingGrade,
         scoreVisibleAt,
         scoreReleased,
         remarks: sub.remarks || "",
@@ -6287,9 +6292,9 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   const late = sub.submitted ? activityDaysLate(activityDeadlineForSubmission(activity, sub), sub.submittedAt) : 0;
   const maxScoreAllowed = activityMaxScoreAllowed(late);
   if (req.body.score === "" || req.body.score == null) {
-    delete sub.scoreMode;
     delete sub.score;
-    syncActivityAutoScore(sub, maxScoreAllowed);
+    if (sub.submitted) sub.scoreMode = "pending";
+    else delete sub.scoreMode;
   } else {
     const score = Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
     sub.score = Number.isFinite(score) ? score : activitySubmissionScore(sub, maxScoreAllowed);
@@ -6383,6 +6388,7 @@ app.post("/api/admin/activities/:id/submissions/:studentId/files", auth, require
       sub = { studentId: student.id };
       activity.submissions.push(sub);
     }
+    const newlySubmitted = !sub.submitted;
     const previousFileCount = activitySubmissionFiles(sub).length;
     const submittedAt = now();
     const storedFiles = await persistMultipartActivityFiles(activity.id, student.id, files, submittedAt);
@@ -6394,6 +6400,10 @@ app.post("/api/admin/activities/:id/submissions/:studentId/files", auth, require
     sub.dateSubmitted = submittedAt;
     sub.submissionMethod = "upload";
     sub.remarks = String(req.body.remarks ?? sub.remarks ?? "");
+    if (newlySubmitted) {
+      delete sub.score;
+      sub.scoreMode = "pending";
+    }
     syncActivityAutoScore(sub, activityMaxScoreAllowed(activityDaysLate(activityDeadlineForSubmission(activity, sub), submittedAt)));
     syncActivityRewards(db, activity, req.user.id);
     activity.updatedAt = now();
@@ -6479,6 +6489,7 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), act
       sub = { studentId: req.user.studentId };
       activity.submissions.push(sub);
     }
+    const newlySubmitted = !sub.submitted;
     const previousFileCount = activitySubmissionFiles(sub).length;
     const submittedAt = now();
     const storedFiles = temporaryFiles.length
@@ -6492,6 +6503,10 @@ app.post("/api/student/activities/:id/submit", auth, requireRole("student"), act
     sub.studentNote = String(req.body?.studentNote || "").slice(0, 500);
     sub.files = storedFiles;
     sub.file = sub.files[0] || null;
+    if (newlySubmitted) {
+      delete sub.score;
+      sub.scoreMode = "pending";
+    }
     syncActivityAutoScore(sub, activityMaxScoreAllowed(activityDaysLate(activityDeadlineForSubmission(activity, sub), submittedAt)));
     const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
     const row = hydrated.rows.find((item) => item.studentId === req.user.studentId);

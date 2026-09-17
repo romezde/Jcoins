@@ -180,6 +180,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   records.activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
+    if (row?.awaitingGrade) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
       activityPercents.push(0);
