@@ -179,7 +179,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const activityPercents = [];
   records.activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
-    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
+    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline) && !row?.manuallyGraded) return;
     if (row?.awaitingGrade) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
@@ -188,8 +188,8 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     }
   });
   (records.groupActivities || []).forEach((activity) => {
-    if (!activityDeadlinePassed(activity.deadline)) return;
     const percent = localGroupActivityPercent(activity, student.id);
+    if (!activityDeadlinePassed(activity.deadline) && percent == null) return;
     if (percent != null) activityPercents.push(percent);
     else {
       activityPercents.push(0);
@@ -508,7 +508,7 @@ function activityDetailsForStudent(data, activeClass, studentId) {
   )).forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === studentId);
     const deadline = row?.effectiveDeadline || activity.deadline;
-    const counted = activityDeadlinePassed(deadline);
+    const counted = activityDeadlinePassed(deadline) || !!row?.manuallyGraded;
     const submitted = !!row?.submitted;
     details.push({
       title: activity.title,
@@ -526,7 +526,7 @@ function activityDetailsForStudent(data, activeClass, studentId) {
   )).forEach((activity) => {
     const guild = (activity.guildRows || []).find((row) => (row.members || []).some((member) => member.studentId === studentId));
     const grade = guild?.memberGrades?.[studentId];
-    const counted = activityDeadlinePassed(activity.deadline);
+    const counted = activityDeadlinePassed(activity.deadline) || (grade != null && grade !== "");
     details.push({
       title: activity.title,
       type: "Guild",

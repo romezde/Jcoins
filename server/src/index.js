@@ -4141,7 +4141,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   activities.forEach((activity) => {
     const row = (activity.rows || []).find((item) => item.studentId === student.id);
     if (user.role === "student" && row && !row.scoreReleased) return;
-    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline)) return;
+    if (!activityDeadlinePassed(row?.effectiveDeadline || activity.deadline) && !row?.manuallyGraded) return;
     if (row?.awaitingGrade) return;
     if (row?.submitted && row.score !== "" && row.score != null) activityPercents.push(Number(row.score || 0));
     else {
@@ -4151,8 +4151,8 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   });
   const groupActivities = (db.groupActivities || []).filter((activity) => activity.subjectId === subjectId && String(activity.section || "").trim() === section);
   groupActivities.forEach((activity) => {
-    if (!activityDeadlinePassed(activity.deadline)) return;
     const percent = groupActivityPercentForStudent(db, activity, student);
+    if (!activityDeadlinePassed(activity.deadline) && percent == null) return;
     if (percent != null) activityPercents.push(percent);
     else {
       activityPercents.push(0);
@@ -4335,6 +4335,7 @@ function hydrateActivities(db) {
       const score = activitySubmissionScore(sub, maxScoreAllowed);
       const scoreVisibleAt = activityScoreVisibleAt(a, sub);
       const awaitingGrade = !!sub.submitted && sub.scoreMode === "pending";
+      const manuallyGraded = !!sub.submitted && sub.scoreMode === "manual" && String(sub.score ?? "").trim() !== "";
       const scoreReleased = !awaitingGrade && activityScoreReleased(a, sub);
       const files = activitySubmissionFiles(sub);
       const publicFiles = files.map(publicActivityFile);
@@ -4355,6 +4356,7 @@ function hydrateActivities(db) {
         earned,
         score,
         awaitingGrade,
+        manuallyGraded,
         scoreVisibleAt,
         scoreReleased,
         remarks: sub.remarks || "",
