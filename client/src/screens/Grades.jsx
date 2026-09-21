@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Calculator, Pencil, RotateCcw } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
@@ -50,13 +50,13 @@ export default function Grades({ data, run }) {
   const summaries = classSummaries.filter((row) => {
     if (!activeClass || row.subjectId !== activeClass.subjectId || row.section !== activeClass.section) return false;
     const q = search.trim().toLowerCase();
-    return !q || [row.studentName, row.currentGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
+    return !q || [row.studentName, row.rawGrade, row.currentGrade, row.finalGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
   });
   const writtenWorks = (data.writtenWorks || []).filter((work) => activeClass && work.subjectId === activeClass.subjectId && work.section === activeClass.section);
   const setting = activeClass ? gradeSettingForClass(data, activeClass) : null;
 
   return <div className="dashboard-grid">
-    <GlobalRecitationBonusSetting data={data} run={run} />
+    <GlobalGradeSetting data={data} run={run} />
     <WrittenWorkForm data={data} run={run} />
     <SubjectSectionPicker classes={classes} selectedKey={selectedClassKey} onSelect={setSelectedClassKey} title="Grade Classes" itemLabel="students" />
     {activeClass && <Panel title={`${activeClass.subjectName} - ${activeClass.sectionLabel}`} wide defaultOpen>
@@ -71,16 +71,19 @@ export default function Grades({ data, run }) {
         {setting?.releasedAt ? "Release Updated Grades" : "Release Grades to Students"}
       </button>
       <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
-      <Table columns={["Student", "Current", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
+      {isGrade11Section(activeClass.section) && <GradeTransmutationControls data={data} activeClass={activeClass} summaries={classSummaries} run={run} />}
+      <Table columns={["Student", ...(isGrade11Section(activeClass.section) ? ["Raw Grade", "Final Grade"] : ["Current"]), "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
-        <strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>,
+        ...(isGrade11Section(activeClass.section)
+          ? [<strong className="grade-score">{formatCurrentGrade(row.rawGrade ?? row.currentGrade)}</strong>, <GradeFinalCell summary={row} />]
+          : [<strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>]),
         <ActivityGradeDetails summary={row} data={data} activeClass={activeClass} />,
         categoryPercent(row, "attendance"),
         categoryPercent(row, "quizzes"),
         categoryPercent(row, "majorExams"),
         <span className={`grade-risk ${riskClass(row.riskStatus)}`}>{row.riskStatus}</span>,
         row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
-        <div className="inline"><GradeAdviceModal summary={row} run={run} /></div>
+        <div className="inline"><GradeAdviceModal summary={row} run={run} />{row.transmutation?.active && <button type="button" className="soft" onClick={() => returnStudentToRaw(row, activeClass, run)}><RotateCcw size={15} /> Raw</button>}</div>
       ])} pageSize={25} />
       <button type="button" className="soft" onClick={() => exportGrades(activeClass, summaries)}>Export Grade Summary</button>
     </Panel>}
@@ -225,7 +228,8 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const activeWeight = Object.values(categories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
   const weightedPercent = activeWeight ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
   const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId);
-  const currentGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
+  const rawGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
+  const currentGrade = rawGrade;
   const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
   return {
     studentId: student.id,
@@ -233,7 +237,10 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     subjectId: activeClass.subjectId,
     subjectName: activeClass.subjectName,
     section: activeClass.section,
+    rawGrade,
     currentGrade,
+    finalGrade: null,
+    transmutation: null,
     passingGrade: setting.passingGrade,
     riskStatus,
     priority: ["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low",
@@ -284,26 +291,114 @@ function GradeSettingsForm({ activeClass, setting, run }) {
   </form>;
 }
 
-function GlobalRecitationBonusSetting({ data, run }) {
+function GlobalGradeSetting({ data, run }) {
   const savedValue = data.settings?.grades?.recitationBonusMax ?? 5;
-  const [value, setValue] = useState(savedValue);
-  useEffect(() => setValue(savedValue), [savedValue]);
+  const savedTransmutation = transmutationSettings(data);
+  const [form, setForm] = useState({ recitationBonusMax: savedValue, transmutation: savedTransmutation });
+  useEffect(() => setForm({ recitationBonusMax: savedValue, transmutation: savedTransmutation }), [savedValue, JSON.stringify(savedTransmutation)]);
   const canEdit = data.user?.role === "admin";
   function submit(event) {
     event.preventDefault();
-    run(() => put("/admin/grades/global-settings", { recitationBonusMax: value }), "Global recitation bonus saved");
+    run(() => put("/admin/grades/global-settings", form), "Global grade settings saved");
   }
   return <Panel title="Global Grade Setting" wide defaultOpen>
-    <p className="muted-line">This one Recitation Bonus Max applies to every subject and section. All other grade settings remain individual per class.</p>
+    <p className="muted-line">The recitation bonus applies to every class. Grade transmutation applies only to Grade 11 and never changes the saved raw grade.</p>
     {canEdit
       ? <form className="grade-settings-form" onSubmit={submit}>
         <div className="form-grid two">
-          <Field label="Recitation Bonus Max (All Subjects)" type="number" min="0" max="20" step="0.01" value={value} onChange={setValue} />
+          <Field label="Recitation Bonus Max (All Subjects)" type="number" min="0" max="20" step="0.01" value={form.recitationBonusMax} onChange={(recitationBonusMax) => setForm({ ...form, recitationBonusMax })} />
+          <Field label="Required Raw Grade" type="number" min="0" max="99" step="0.01" value={form.transmutation.requiredRawGrade} onChange={(requiredRawGrade) => setForm({ ...form, transmutation: { ...form.transmutation, requiredRawGrade } })} />
+          <Field label="Equivalent Final Grade" type="number" min="0" max="100" step="0.01" value={form.transmutation.equivalentFinalGrade} onChange={(equivalentFinalGrade) => setForm({ ...form, transmutation: { ...form.transmutation, equivalentFinalGrade } })} />
+          <Field label="Maximum Final Grade" type="number" min="1" max="100" step="0.01" value={form.transmutation.maximumFinalGrade} onChange={(maximumFinalGrade) => setForm({ ...form, transmutation: { ...form.transmutation, maximumFinalGrade } })} />
+          <Select label="Rounding" value={form.transmutation.rounding} onChange={(rounding) => setForm({ ...form, transmutation: { ...form.transmutation, rounding } })} options={[
+            { value: "nearest", label: "Nearest whole number" },
+            { value: "up", label: "Always round up" },
+            { value: "two_decimals", label: "Keep two decimals" }
+          ]} />
         </div>
-        <button>Save Global Recitation Bonus</button>
+        <div className="notice">Example: raw {form.transmutation.requiredRawGrade || 0} becomes {form.transmutation.equivalentFinalGrade || 0}, while raw 100 becomes {form.transmutation.maximumFinalGrade || 100}.</div>
+        <button>Save Global Grade Settings</button>
       </form>
-      : <div className="notice">Current global maximum: {Number(savedValue || 0).toFixed(2)} grade points. Only an admin can change it.</div>}
+      : <div className="notice">Recitation maximum: {Number(savedValue || 0).toFixed(2)}. Grade 11 transmutation: raw {savedTransmutation.requiredRawGrade} becomes {savedTransmutation.equivalentFinalGrade}, up to {savedTransmutation.maximumFinalGrade}. Only an admin can change this formula.</div>}
   </Panel>;
+}
+
+function GradeTransmutationControls({ data, activeClass, summaries, run }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const settings = transmutationSettings(data);
+  const preview = summaries.map((summary) => {
+    const rawGrade = Number(summary.rawGrade ?? summary.currentGrade ?? 0);
+    return { ...summary, rawGrade, previewFinalGrade: calculateTransmutedGrade(rawGrade, settings) };
+  });
+  const eligibleCount = preview.filter((row) => row.previewFinalGrade != null).length;
+  const activeCount = summaries.filter((row) => row.transmutation?.active).length;
+
+  async function applyTransmutation() {
+    if (busy || !eligibleCount) return;
+    setBusy(true);
+    const result = await run(() => post("/admin/grades/transmute", {
+      subjectId: activeClass.subjectId,
+      section: activeClass.section
+    }), `${eligibleCount} grade${eligibleCount === 1 ? "" : "s"} transmuted`);
+    setBusy(false);
+    if (result) setOpen(false);
+  }
+
+  async function returnAllToRaw() {
+    if (busy || !activeCount || !confirm(`Return all ${activeCount} transmuted grades in ${activeClass.subjectName} - ${activeClass.sectionLabel} to their raw grades?`)) return;
+    setBusy(true);
+    await run(() => post("/admin/grades/return-to-raw", {
+      subjectId: activeClass.subjectId,
+      section: activeClass.section
+    }), "Grades returned to raw");
+    setBusy(false);
+  }
+
+  return <section className="grade-transmutation-bar">
+    <div>
+      <strong>Grade 11 Transmutation</strong>
+      <p>Raw {settings.requiredRawGrade} becomes {settings.equivalentFinalGrade}. Raw grades below {settings.requiredRawGrade} remain unchanged.</p>
+    </div>
+    <div className="inline">
+      <button type="button" disabled={busy || !summaries.length} onClick={() => setOpen(true)}><Calculator size={16} /> Preview Transmutation</button>
+      {activeCount > 0 && <button type="button" className="soft" disabled={busy} onClick={returnAllToRaw}><RotateCcw size={16} /> Return All to Raw</button>}
+    </div>
+    {open && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Grade transmutation preview">
+      <section className="modal-card modal-card-wide grade-transmutation-modal">
+        <div className="section-head">
+          <div>
+            <div className="section-title">Transmutation Preview</div>
+            <p className="muted-line">{activeClass.subjectName} - {activeClass.sectionLabel}</p>
+          </div>
+          <button type="button" className="soft" disabled={busy} onClick={() => setOpen(false)}>Close</button>
+        </div>
+        <div className="account-grid grade-transmutation-summary">
+          <div className="account-item"><span>Eligible</span><strong>{eligibleCount}</strong></div>
+          <div className="account-item"><span>Not Eligible</span><strong>{preview.length - eligibleCount}</strong></div>
+          <div className="account-item"><span>Rule</span><strong>{settings.requiredRawGrade} to {settings.equivalentFinalGrade}</strong></div>
+        </div>
+        <Table columns={["Student", "Raw Grade", "Preview Final", "Status"]} rows={preview.map((row) => [
+          row.studentName,
+          formatCurrentGrade(row.rawGrade),
+          row.previewFinalGrade == null ? "-" : formatCurrentGrade(row.previewFinalGrade),
+          row.previewFinalGrade == null
+            ? <span className="grade-ineligible">Not Eligible</span>
+            : <span className="grade-eligible">Ready</span>
+        ])} pageSize={20} />
+        {preview.some((row) => row.previewFinalGrade == null) && <div className="error">Cannot transmute grade. The raw grade did not reach the required minimum of {settings.requiredRawGrade}. Those students will remain on their raw grade; eligible students can still be transmuted.</div>}
+        <button type="button" disabled={busy || !eligibleCount} onClick={applyTransmutation}>{busy ? "Saving..." : `Confirm Transmutation for ${eligibleCount} Student${eligibleCount === 1 ? "" : "s"}`}</button>
+      </section>
+    </div>}
+  </section>;
+}
+
+function GradeFinalCell({ summary }) {
+  if (!summary.transmutation?.active) return <span className="muted-line">Not transmuted</span>;
+  return <div className="grade-final-cell">
+    <strong className={`grade-score ${riskClass(summary.riskStatus)}`}>{formatCurrentGrade(summary.finalGrade ?? summary.currentGrade)}</strong>
+    <span>Transmuted{summary.transmutation.rawGradeChanged ? " · raw changed" : ""}</span>
+  </div>;
 }
 
 function WrittenWorkForm({ data, run, work = null, presetClass = null, buttonLabel = null }) {
@@ -460,6 +555,40 @@ function splitMissingItems(value) {
   return String(value || "").split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
 }
 
+function transmutationSettings(data) {
+  const settings = data.settings?.grades?.transmutation || {};
+  return {
+    requiredRawGrade: Number(settings.requiredRawGrade ?? 60),
+    equivalentFinalGrade: Number(settings.equivalentFinalGrade ?? 75),
+    maximumFinalGrade: Number(settings.maximumFinalGrade ?? 100),
+    rounding: ["nearest", "up", "two_decimals"].includes(settings.rounding) ? settings.rounding : "nearest"
+  };
+}
+
+function calculateTransmutedGrade(rawGrade, settings) {
+  const raw = Math.max(0, Math.min(100, Number(rawGrade || 0)));
+  if (raw < settings.requiredRawGrade) return null;
+  const ratio = (raw - settings.requiredRawGrade) / (100 - settings.requiredRawGrade);
+  const value = settings.equivalentFinalGrade + ratio * (settings.maximumFinalGrade - settings.equivalentFinalGrade);
+  if (settings.rounding === "up") return Math.min(settings.maximumFinalGrade, Math.ceil(value));
+  if (settings.rounding === "two_decimals") return Math.min(settings.maximumFinalGrade, Math.round(value * 100) / 100);
+  return Math.min(settings.maximumFinalGrade, Math.round(value));
+}
+
+function isGrade11Section(section = "") {
+  const value = String(section || "").trim().toLowerCase();
+  return /(?:^|\b)(?:grade|g)\s*[- ]?\s*11(?:\b|\s)|\b11(?:th)?\s*(?:grade|year)\b/.test(value);
+}
+
+function returnStudentToRaw(summary, activeClass, run) {
+  return confirm(`Return ${summary.studentName}'s final grade to the current raw grade of ${formatCurrentGrade(summary.rawGrade ?? summary.currentGrade)}?`)
+    && run(() => post("/admin/grades/return-to-raw", {
+      subjectId: activeClass.subjectId,
+      section: activeClass.section,
+      studentIds: [summary.studentId]
+    }), `${summary.studentName}'s grade returned to raw`);
+}
+
 function riskClass(status = "") {
   return `risk-${status.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "watch"}`;
 }
@@ -559,8 +688,8 @@ function exportWrittenWork(work) {
 
 function exportGrades(activeClass, rows) {
   exportSpreadsheet(`grades-${safeFilePart(activeClass.subjectName)}-${safeFilePart(activeClass.sectionLabel)}.xls`, [
-    "Student", "Subject", "Section", "Current Grade", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Priority", "Missing", "Advice"
+    "Student", "Subject", "Section", "Raw Grade", "Final Grade", "Grade Status", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Priority", "Missing", "Advice"
   ], rows.map((row) => [
-    row.studentName, row.subjectName, row.section, formatCurrentGrade(row.currentGrade), categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
+    row.studentName, row.subjectName, row.section, formatCurrentGrade(row.rawGrade ?? row.currentGrade), row.transmutation?.active ? formatCurrentGrade(row.finalGrade ?? row.currentGrade) : "", row.transmutation?.active ? "Transmuted" : "Raw", categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
   ]), "Grades");
 }

@@ -55,6 +55,7 @@ const MAJOR_EXAM_ROW_PREFIX = "major-exam:";
 const WRITTEN_WORK_ROW_PREFIX = "written-work:";
 const GRADE_SETTING_ROW_PREFIX = "grade-setting:";
 const GRADE_NOTE_ROW_PREFIX = "grade-note:";
+const GRADE_TRANSMUTATION_ROW_PREFIX = "grade-transmutation:";
 const REQUEST_ROW_PREFIX = "request:";
 const FEEDBACK_ROW_PREFIX = "feedback:";
 const SCHEDULE_ROW_PREFIX = "schedule:";
@@ -87,6 +88,7 @@ const STORAGE_ROW_TYPES = [
   { key: "writtenWorks", label: "Written works", prefix: WRITTEN_WORK_ROW_PREFIX },
   { key: "gradeSettings", label: "Grade settings", prefix: GRADE_SETTING_ROW_PREFIX },
   { key: "gradeNotes", label: "Grade notes and advice", prefix: GRADE_NOTE_ROW_PREFIX },
+  { key: "gradeTransmutations", label: "Grade transmutations", prefix: GRADE_TRANSMUTATION_ROW_PREFIX },
   { key: "requests", label: "Requests", prefix: REQUEST_ROW_PREFIX },
   { key: "feedback", label: "Feedback", prefix: FEEDBACK_ROW_PREFIX },
   { key: "schedules", label: "Schedules", prefix: SCHEDULE_ROW_PREFIX },
@@ -275,6 +277,7 @@ const persistedMajorExamHashes = new Map();
 const persistedWrittenWorkHashes = new Map();
 const persistedGradeSettingHashes = new Map();
 const persistedGradeNoteHashes = new Map();
+const persistedGradeTransmutationHashes = new Map();
 const persistedRequestHashes = new Map();
 const persistedFeedbackHashes = new Map();
 const persistedScheduleHashes = new Map();
@@ -1017,7 +1020,13 @@ function defaults() {
         includeWrittenWorks: true,
         recitationBonusMax: 5,
         recitationBonusGlobalized: true,
-        passingGrade: 75
+        passingGrade: 75,
+        transmutation: {
+          requiredRawGrade: 60,
+          equivalentFinalGrade: 75,
+          maximumFinalGrade: 100,
+          rounding: "nearest"
+        }
       },
       wheel: { spinSeconds: 3.3 },
       guild: { revealSeconds: 10 },
@@ -1057,6 +1066,7 @@ async function createInitialDb() {
     writtenWorks: [],
     gradeSettings: [],
     gradeNotes: [],
+    gradeTransmutations: [],
     shopItems: defaultShopItems,
     sales: [],
     requests: [],
@@ -1352,6 +1362,7 @@ async function readDb() {
   db.settings.grades.includeWrittenWorks = db.settings.grades.includeWrittenWorks !== false;
   db.settings.grades.recitationBonusMax = Math.max(0, Math.min(20, Number(db.settings.grades.recitationBonusMax ?? d.settings.grades.recitationBonusMax)));
   db.settings.grades.passingGrade = Math.max(1, Math.min(100, Number(db.settings.grades.passingGrade || d.settings.grades.passingGrade)));
+  db.settings.grades.transmutation = normalizeTransmutationSettings(db.settings.grades.transmutation || d.settings.grades.transmutation);
   db.settings.wheel = { ...d.settings.wheel, ...(db.settings.wheel || {}) };
   db.settings.guild = { ...d.settings.guild, ...(db.settings.guild || {}) };
   db.settings.registration = { ...d.settings.registration, ...(db.settings.registration || {}) };
@@ -1415,6 +1426,8 @@ async function readDb() {
   });
   db.gradeNotes ||= [];
   db.gradeNotes.forEach((note) => normalizeGradeNote(note, db));
+  db.gradeTransmutations ||= [];
+  db.gradeTransmutations.forEach((record) => normalizeGradeTransmutation(record));
   db.shopItems ||= [];
   defaultShopItems.forEach((item) => {
     if (!db.shopItems.some((existing) => existing.id === item.id)) {
@@ -1516,6 +1529,7 @@ async function persistDb(db) {
     const writtenWorks = extractEntityRows(dbToStore, "writtenWorks", WRITTEN_WORK_ROW_PREFIX);
     const gradeSettings = extractEntityRows(dbToStore, "gradeSettings", GRADE_SETTING_ROW_PREFIX);
     const gradeNotes = extractEntityRows(dbToStore, "gradeNotes", GRADE_NOTE_ROW_PREFIX);
+    const gradeTransmutations = extractEntityRows(dbToStore, "gradeTransmutations", GRADE_TRANSMUTATION_ROW_PREFIX);
     const requests = extractEntityRows(dbToStore, "requests", REQUEST_ROW_PREFIX);
     const feedback = extractEntityRows(dbToStore, "feedback", FEEDBACK_ROW_PREFIX);
     const schedules = extractEntityRows(dbToStore, "schedules", SCHEDULE_ROW_PREFIX);
@@ -1546,6 +1560,7 @@ async function persistDb(db) {
       syncEntityRows(writtenWorks.items, writtenWorks.rowIds, WRITTEN_WORK_ROW_PREFIX, persistedWrittenWorkHashes),
       syncEntityRows(gradeSettings.items, gradeSettings.rowIds, GRADE_SETTING_ROW_PREFIX, persistedGradeSettingHashes),
       syncEntityRows(gradeNotes.items, gradeNotes.rowIds, GRADE_NOTE_ROW_PREFIX, persistedGradeNoteHashes),
+      syncEntityRows(gradeTransmutations.items, gradeTransmutations.rowIds, GRADE_TRANSMUTATION_ROW_PREFIX, persistedGradeTransmutationHashes),
       syncEntityRows(requests.items, requests.rowIds, REQUEST_ROW_PREFIX, persistedRequestHashes),
       syncEntityRows(feedback.items, feedback.rowIds, FEEDBACK_ROW_PREFIX, persistedFeedbackHashes),
       syncEntityRows(schedules.items, schedules.rowIds, SCHEDULE_ROW_PREFIX, persistedScheduleHashes),
@@ -1600,6 +1615,7 @@ async function readSupabaseDb() {
     db.writtenWorks,
     db.gradeSettings,
     db.gradeNotes,
+    db.gradeTransmutations,
     db.requests,
     db.feedback,
     db.schedules,
@@ -1629,6 +1645,7 @@ async function readSupabaseDb() {
     readEntityRows(WRITTEN_WORK_ROW_PREFIX, db.writtenWorks || [], persistedWrittenWorkHashes),
     readEntityRows(GRADE_SETTING_ROW_PREFIX, db.gradeSettings || [], persistedGradeSettingHashes),
     readEntityRows(GRADE_NOTE_ROW_PREFIX, db.gradeNotes || [], persistedGradeNoteHashes),
+    readEntityRows(GRADE_TRANSMUTATION_ROW_PREFIX, db.gradeTransmutations || [], persistedGradeTransmutationHashes),
     readEntityRows(REQUEST_ROW_PREFIX, db.requests || [], persistedRequestHashes),
     readEntityRows(FEEDBACK_ROW_PREFIX, db.feedback || [], persistedFeedbackHashes),
     readEntityRows(SCHEDULE_ROW_PREFIX, db.schedules || [], persistedScheduleHashes),
@@ -3858,6 +3875,70 @@ function hydrateMajorExams(db, user) {
 }
 
 const gradeCategories = ["writtenWorks", "quizzes", "activities", "attendance", "majorExams"];
+const gradeTransmutationRoundingOptions = ["nearest", "up", "two_decimals"];
+
+function normalizeTransmutationSettings(settings = {}) {
+  const requiredRawGrade = Number(settings.requiredRawGrade ?? 60);
+  const maximumFinalGrade = Number(settings.maximumFinalGrade ?? 100);
+  const normalizedMaximum = Number.isFinite(maximumFinalGrade) ? Math.max(1, Math.min(100, maximumFinalGrade)) : 100;
+  const equivalentFinalGrade = Number(settings.equivalentFinalGrade ?? 75);
+  return {
+    requiredRawGrade: Number.isFinite(requiredRawGrade) ? Math.max(0, Math.min(99, requiredRawGrade)) : 60,
+    equivalentFinalGrade: Number.isFinite(equivalentFinalGrade) ? Math.max(0, Math.min(normalizedMaximum, equivalentFinalGrade)) : 75,
+    maximumFinalGrade: normalizedMaximum,
+    rounding: gradeTransmutationRoundingOptions.includes(settings.rounding) ? settings.rounding : "nearest"
+  };
+}
+
+function transmutationSettingsInput(input = {}, current = {}) {
+  const merged = { ...current, ...input };
+  const requiredRawGrade = Number(merged.requiredRawGrade);
+  const equivalentFinalGrade = Number(merged.equivalentFinalGrade);
+  const maximumFinalGrade = Number(merged.maximumFinalGrade);
+  if (!Number.isFinite(requiredRawGrade) || requiredRawGrade < 0 || requiredRawGrade >= 100) throw new Error("Required raw grade must be from 0 to 99.");
+  if (!Number.isFinite(equivalentFinalGrade) || equivalentFinalGrade < 0 || equivalentFinalGrade > 100) throw new Error("Equivalent final grade must be from 0 to 100.");
+  if (!Number.isFinite(maximumFinalGrade) || maximumFinalGrade < 1 || maximumFinalGrade > 100) throw new Error("Maximum final grade must be from 1 to 100.");
+  if (equivalentFinalGrade > maximumFinalGrade) throw new Error("Equivalent final grade cannot be higher than the maximum final grade.");
+  if (!gradeTransmutationRoundingOptions.includes(merged.rounding)) throw new Error("Choose a valid transmutation rounding rule.");
+  return normalizeTransmutationSettings(merged);
+}
+
+function isGrade11Section(section = "") {
+  const value = String(section || "").trim().toLowerCase();
+  return /(?:^|\b)(?:grade|g)\s*[- ]?\s*11(?:\b|\s)|\b11(?:th)?\s*(?:grade|year)\b/.test(value);
+}
+
+function calculateTransmutedGrade(rawGrade, settings = {}) {
+  const normalized = normalizeTransmutationSettings(settings);
+  const raw = Math.max(0, Math.min(100, Number(rawGrade || 0)));
+  if (raw < normalized.requiredRawGrade) return null;
+  const ratio = (raw - normalized.requiredRawGrade) / (100 - normalized.requiredRawGrade);
+  const value = normalized.equivalentFinalGrade + ratio * (normalized.maximumFinalGrade - normalized.equivalentFinalGrade);
+  if (normalized.rounding === "up") return Math.min(normalized.maximumFinalGrade, Math.ceil(value));
+  if (normalized.rounding === "two_decimals") return Math.min(normalized.maximumFinalGrade, Math.round(value * 100) / 100);
+  return Math.min(normalized.maximumFinalGrade, Math.round(value));
+}
+
+function normalizeGradeTransmutation(record) {
+  record.id ||= randomUUID();
+  record.studentId = String(record.studentId || "");
+  record.subjectId = String(record.subjectId || "");
+  record.section = String(record.section || "").trim();
+  record.rawGrade = Math.max(0, Math.min(100, Number(record.rawGrade || 0)));
+  record.finalGrade = Math.max(0, Math.min(100, Number(record.finalGrade || 0)));
+  record.settings = normalizeTransmutationSettings(record.settings || {});
+  record.active = record.returnedAt ? false : record.active !== false;
+  return record;
+}
+
+function activeGradeTransmutationFor(db, studentId, subjectId, section = "") {
+  return (db.gradeTransmutations || [])
+    .filter((record) => record.active !== false
+      && record.studentId === studentId
+      && record.subjectId === subjectId
+      && String(record.section || "").trim() === String(section || "").trim())
+    .sort((a, b) => String(b.transmutedAt || b.createdAt || "").localeCompare(String(a.transmutedAt || a.createdAt || "")))[0] || null;
+}
 
 function normalizeGradeWeights(weights = {}) {
   const fallback = defaults().settings.grades.weights;
@@ -4184,8 +4265,10 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const weightedPercent = activeWeight
     ? Object.values(categories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100
     : 100;
-  const rawGrade = weightedPercent + recitationBonus;
-  const currentGrade = Math.max(0, Math.min(100, Math.round(rawGrade * 100) / 100));
+  const computedRawGrade = weightedPercent + recitationBonus;
+  const rawGrade = Math.max(0, Math.min(100, Math.round(computedRawGrade * 100) / 100));
+  const transmutation = activeGradeTransmutationFor(db, student.id, subjectId, section);
+  const currentGrade = transmutation ? Number(transmutation.finalGrade) : rawGrade;
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
   const summary = {
@@ -4194,7 +4277,17 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     subjectId,
     subjectName: subjectName(db, subjectId),
     section,
+    rawGrade,
     currentGrade,
+    finalGrade: transmutation ? Number(transmutation.finalGrade) : null,
+    transmutation: transmutation ? {
+      id: transmutation.id,
+      active: true,
+      rawGradeAtTransmutation: Number(transmutation.rawGrade),
+      finalGrade: Number(transmutation.finalGrade),
+      transmutedAt: transmutation.transmutedAt || transmutation.createdAt || "",
+      rawGradeChanged: Math.abs(Number(transmutation.rawGrade) - rawGrade) > 0.001
+    } : null,
     passingGrade: setting.passingGrade,
     releasedAt: setting.releasedAt,
     gradesReleased: !!setting.releasedAt,
@@ -6068,19 +6161,70 @@ app.put("/api/admin/major-exams/:id/scores", auth, requireRole("admin", "teacher
   res.json({ exam: publicMajorExam(db, exam) });
 });
 
+app.put("/api/admin/major-exams/:id/scores/bulk", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const exam = (db.majorExams || []).find((item) => item.id === req.params.id);
+  if (!exam) return res.status(404).json({ error: "Major exam not found." });
+  if (!canUseMajorExam(req.user, exam)) return res.status(403).json({ error: "This exam is outside your assigned class scope." });
+  normalizeMajorExam(exam, db);
+  const rows = Array.isArray(req.body.scores) ? req.body.scores : [];
+  if (!rows.length) return res.status(400).json({ error: "Upload at least one exam score." });
+  if (rows.length > 500) return res.status(400).json({ error: "Import up to 500 exam scores at a time." });
+
+  const scopedIds = scopedStudentIds(db, req.user);
+  const eligibleStudents = new Map(studentsForClass(db, exam.subjectId, exam.section)
+    .filter((student) => scopedIds.has(student.id))
+    .map((student) => [student.id, student]));
+  const seen = new Set();
+  const scores = [];
+  for (const row of rows) {
+    const studentId = String(row?.studentId || "");
+    const student = eligibleStudents.get(studentId);
+    if (!student) return res.status(403).json({ error: "An imported student is outside the exam class scope." });
+    if (seen.has(studentId)) return res.status(400).json({ error: `${student.name} appears more than once in the import.` });
+    if (row.score === "" || row.score == null) return res.status(400).json({ error: `Score is missing for ${student.name}.` });
+    const score = Number(row.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(exam.maxScore)) {
+      return res.status(400).json({ error: `Score for ${student.name} must be from 0 to ${exam.maxScore}.` });
+    }
+    seen.add(studentId);
+    scores.push({ studentId, score });
+  }
+
+  exam.scores ||= {};
+  scores.forEach(({ studentId, score }) => { exam.scores[studentId] = score; });
+  exam.updatedAt = now();
+  exam.updatedBy = req.user.id;
+  addAuditLog(db, req.user, "major-exam.score.bulk", {
+    entityType: "majorExam",
+    entityId: exam.id,
+    summary: `Imported ${scores.length} score${scores.length === 1 ? "" : "s"} for ${exam.title}.`,
+    meta: { subjectId: exam.subjectId, section: exam.section, targetStudentIds: scores.map((row) => row.studentId) }
+  });
+  await writeDb(db);
+  res.json({ exam: publicMajorExam(db, exam), importedCount: scores.length });
+});
+
 app.put("/api/admin/grades/global-settings", auth, requireRole("admin"), async (req, res) => {
   const db = await readDb();
   const recitationBonusMax = Number(req.body.recitationBonusMax);
   if (!Number.isFinite(recitationBonusMax) || recitationBonusMax < 0 || recitationBonusMax > 20) {
     return res.status(400).json({ error: "Recitation Bonus Max must be from 0 to 20." });
   }
+  let transmutation;
+  try {
+    transmutation = transmutationSettingsInput(req.body.transmutation || {}, db.settings.grades.transmutation);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
   db.settings.grades.recitationBonusMax = Math.round(recitationBonusMax * 100) / 100;
   db.settings.grades.recitationBonusGlobalized = true;
+  db.settings.grades.transmutation = transmutation;
   addAuditLog(db, req.user, "settings.update", {
     entityType: "settings",
-    entityId: "grades.recitationBonusMax",
-    summary: `Set the global grade recitation bonus maximum to ${db.settings.grades.recitationBonusMax}.`,
-    meta: { recitationBonusMax: db.settings.grades.recitationBonusMax }
+    entityId: "grades",
+    summary: `Updated global grade settings and Grade 11 transmutation rules.`,
+    meta: { recitationBonusMax: db.settings.grades.recitationBonusMax, transmutation }
   });
   req.auditRecorded = true;
   await writeDb(db);
@@ -6089,6 +6233,114 @@ app.put("/api/admin/grades/global-settings", auth, requireRole("admin"), async (
     gradeSettings: gradeSettingsForUser(db, req.user),
     gradeSummaries: hydrateGradeSummaries(db, req.user)
   });
+});
+
+app.post("/api/admin/grades/transmute", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const subjectId = String(req.body.subjectId || "").trim();
+  const section = String(req.body.section || "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
+  if (!section || !db.sections.includes(section) || !canUseSection(req.user, section)) return res.status(400).json({ error: "Choose an available section." });
+  if (!isGrade11Section(section)) return res.status(400).json({ error: "Grade transmutation is available only for Grade 11 classes." });
+
+  const scopedIds = scopedStudentIds(db, req.user);
+  const classStudents = studentsForClass(db, subjectId, section).filter((student) => scopedIds.has(student.id));
+  const classStudentMap = new Map(classStudents.map((student) => [student.id, student]));
+  const requestedIds = Array.isArray(req.body.studentIds) && req.body.studentIds.length
+    ? new Set(req.body.studentIds.map((studentId) => String(studentId || "")))
+    : null;
+  if (requestedIds && [...requestedIds].some((studentId) => !classStudentMap.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+  const targets = requestedIds ? classStudents.filter((student) => requestedIds.has(student.id)) : classStudents;
+  const settings = normalizeTransmutationSettings(db.settings.grades.transmutation);
+  const transmutedAt = now();
+  const results = [];
+  db.gradeTransmutations ||= [];
+
+  targets.forEach((student) => {
+    const summary = gradeSummaryForStudent(db, student, subjectId, section, req.user);
+    const rawGrade = Number(summary?.rawGrade ?? summary?.currentGrade ?? 0);
+    const finalGrade = calculateTransmutedGrade(rawGrade, settings);
+    if (finalGrade == null) {
+      results.push({ studentId: student.id, studentName: student.name, rawGrade, eligible: false });
+      return;
+    }
+    (db.gradeTransmutations || []).forEach((record) => {
+      if (record.active !== false && record.studentId === student.id && record.subjectId === subjectId && String(record.section || "").trim() === section) {
+        record.active = false;
+        record.replacedAt = transmutedAt;
+        record.replacedBy = req.user.id;
+      }
+    });
+    const record = normalizeGradeTransmutation({
+      id: randomUUID(),
+      studentId: student.id,
+      subjectId,
+      section,
+      rawGrade,
+      finalGrade,
+      settings: { ...settings },
+      active: true,
+      transmutedAt,
+      transmutedBy: req.user.id,
+      createdAt: transmutedAt,
+      createdBy: req.user.id
+    });
+    db.gradeTransmutations.push(record);
+    results.push({ studentId: student.id, studentName: student.name, rawGrade, finalGrade, eligible: true });
+  });
+
+  const eligibleCount = results.filter((result) => result.eligible).length;
+  if (!eligibleCount) return res.status(400).json({ error: `Cannot transmute grade. The raw grade did not reach the required minimum of ${settings.requiredRawGrade}.` });
+  addAuditLog(db, req.user, "grade.transmute", {
+    entityType: "gradeClass",
+    entityId: gradeClassKey(subjectId, section),
+    summary: `Transmuted ${eligibleCount} Grade 11 grade${eligibleCount === 1 ? "" : "s"} for ${subjectName(db, subjectId)} - ${section}.`,
+    meta: { subjectId, section, settings, targetStudentIds: results.filter((result) => result.eligible).map((result) => result.studentId) }
+  });
+  req.auditRecorded = true;
+  await writeDb(db);
+  res.json({
+    results,
+    transmutedCount: eligibleCount,
+    ineligibleCount: results.length - eligibleCount,
+    gradeSummaries: hydrateGradeSummaries(db, req.user)
+  });
+});
+
+app.post("/api/admin/grades/return-to-raw", auth, requireRole("admin", "teacher"), async (req, res) => {
+  const db = await readDb();
+  const subjectId = String(req.body.subjectId || "").trim();
+  const section = String(req.body.section || "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
+  if (!section || !db.sections.includes(section) || !canUseSection(req.user, section)) return res.status(400).json({ error: "Choose an available section." });
+  if (!isGrade11Section(section)) return res.status(400).json({ error: "Grade transmutation is available only for Grade 11 classes." });
+
+  const scopedIds = scopedStudentIds(db, req.user);
+  const classStudentIds = new Set(studentsForClass(db, subjectId, section).filter((student) => scopedIds.has(student.id)).map((student) => student.id));
+  const requestedIds = Array.isArray(req.body.studentIds) && req.body.studentIds.length
+    ? new Set(req.body.studentIds.map((studentId) => String(studentId || "")))
+    : null;
+  if (requestedIds && [...requestedIds].some((studentId) => !classStudentIds.has(studentId))) return res.status(403).json({ error: "One or more students are outside your assigned class scope." });
+  const returnedAt = now();
+  const returnedStudentIds = new Set();
+  (db.gradeTransmutations || []).forEach((record) => {
+    if (record.active === false || record.subjectId !== subjectId || String(record.section || "").trim() !== section) return;
+    if (!classStudentIds.has(record.studentId) || (requestedIds && !requestedIds.has(record.studentId))) return;
+    record.active = false;
+    record.returnedAt = returnedAt;
+    record.returnedBy = req.user.id;
+    returnedStudentIds.add(record.studentId);
+  });
+  if (!returnedStudentIds.size) return res.status(400).json({ error: "No active transmuted grades were found for the selected students." });
+  addAuditLog(db, req.user, "grade.return_to_raw", {
+    entityType: "gradeClass",
+    entityId: gradeClassKey(subjectId, section),
+    summary: `Returned ${returnedStudentIds.size} grade${returnedStudentIds.size === 1 ? "" : "s"} to raw for ${subjectName(db, subjectId)} - ${section}.`,
+    meta: { subjectId, section, targetStudentIds: [...returnedStudentIds] }
+  });
+  req.auditRecorded = true;
+  await writeDb(db);
+  res.json({ returnedCount: returnedStudentIds.size, gradeSummaries: hydrateGradeSummaries(db, req.user) });
 });
 
 app.put("/api/admin/grades/settings", auth, requireRole("admin", "teacher"), async (req, res) => {
