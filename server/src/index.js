@@ -7110,6 +7110,8 @@ app.put("/api/admin/quizzes/:id/score-only-scores", auth, requireRole("admin", "
     return res.status(400).json({ error: `Score must be between 0 and ${quiz.totalItems}.` });
   }
   const result = scoreManualQuiz(quiz, numericScore, quiz.totalItems);
+  const suppressReward = req.user.role === "admin" && req.body.suppressReward === true;
+  const awarded = suppressReward ? 0 : result.awarded;
   let submission = previousSubmission;
   if (!submission) {
     submission = { studentId: student.id, attempts: [], bestScore: 0, bestAwarded: 0, activeAttempt: null };
@@ -7126,7 +7128,7 @@ app.put("/api/admin/quizzes/:id/score-only-scores", auth, requireRole("admin", "
     difficulty: quiz.difficulty,
     rewardValue: result.rewardValue,
     quizVersionId: quiz.currentVersionId || "",
-    awarded: result.awarded,
+    awarded,
     startedAt: submittedAt,
     dueAt: "",
     timedOut: false,
@@ -7137,17 +7139,17 @@ app.put("/api/admin/quizzes/:id/score-only-scores", auth, requireRole("admin", "
   submission.attempts = [attempt];
   submission.activeAttempt = null;
   submission.bestScore = result.correct;
-  submission.bestAwarded = result.awarded;
+  submission.bestAwarded = awarded;
 
   const existingTransaction = db.transactions.find((transaction) => transaction.meta?.kind === "quiz" && transaction.meta.quizId === quiz.id && transaction.studentId === student.id);
   const note = `${quiz.title} quiz reward`;
   const meta = { kind: "quiz", quizId: quiz.id, subjectId: quiz.subjectId, section: quiz.section, difficulty: quiz.difficulty, passingScore: result.passingScore, bestScore: result.correct, source: "score_only" };
-  if (result.awarded > 0 && existingTransaction) {
-    existingTransaction.amount = result.awarded;
+  if (awarded > 0 && existingTransaction) {
+    existingTransaction.amount = awarded;
     existingTransaction.note = note;
     existingTransaction.meta = { ...(existingTransaction.meta || {}), ...meta };
-  } else if (result.awarded > 0) {
-    db.transactions.push(tx(student.id, "quiz", result.awarded, note, submittedAt, req.user.id, meta));
+  } else if (awarded > 0) {
+    db.transactions.push(tx(student.id, "quiz", awarded, note, submittedAt, req.user.id, meta));
   } else if (existingTransaction) {
     db.transactions = db.transactions.filter((transaction) => transaction.id !== existingTransaction.id);
   }
@@ -7155,9 +7157,9 @@ app.put("/api/admin/quizzes/:id/score-only-scores", auth, requireRole("admin", "
     entityType: "quiz",
     entityId: quiz.id,
     targetStudentId: student.id,
-    amount: result.awarded - previousAwarded,
+    amount: awarded - previousAwarded,
     summary: `Recorded score-only quiz score for ${student.name}: ${result.correct}/${result.total}.`,
-    meta: { quizId: quiz.id, score: result.correct, total: result.total }
+    meta: { quizId: quiz.id, score: result.correct, total: result.total, rewardSuppressed: suppressReward }
   });
   await writeDb(db);
   res.json({
