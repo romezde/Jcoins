@@ -3604,7 +3604,7 @@ function scorePaperQuiz(quiz, variant, answers = {}) {
 function scoreManualQuiz(quiz, scoreInput, totalInput) {
   const defaultTotal = Math.max(1, Number(quiz.totalItems || 0) || paperQuizRows(quiz, "A").length || (quiz.questions || []).length || 1);
   const total = Math.max(1, Math.min(500, Math.round(Number(totalInput || defaultTotal))));
-  const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0))));
+  const correct = Math.max(0, Math.min(total, Math.round(Number(scoreInput || 0) * 100) / 100));
   const passingScore = paperQuizPassingScore(quiz, total);
   const rewardValue = Number(quiz.rewardValue || 0);
   const awarded = total ? Math.round(rewardValue * Math.min(correct / passingScore, 1)) : 0;
