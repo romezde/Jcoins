@@ -3172,7 +3172,8 @@ function activitySubmissionScore(submission = {}, maxScoreAllowed = 100) {
   if (submission.scoreMode !== "manual") return autoScore;
   const manualScore = Number(submission.score);
   const hasManualScore = String(submission.score ?? "").trim() !== "" && Number.isFinite(manualScore);
-  return hasManualScore ? Math.max(0, Math.min(autoScore, manualScore)) : autoScore;
+  const manualScoreLimit = submission.scoreCapOverride === true ? 100 : autoScore;
+  return hasManualScore ? Math.max(0, Math.min(manualScoreLimit, manualScore)) : autoScore;
 }
 
 function syncActivityAutoScore(submission = {}, maxScoreAllowed = 100) {
@@ -4476,7 +4477,10 @@ function syncActivityRewards(db, activity, createdBy) {
     const earned = submission.submitted ? Math.max(0, basePoints - daysLate * Number(db.settings.activities.latePenaltyPerDay || 0)) : 0;
     const maxScoreAllowed = activityMaxScoreAllowed(daysLate);
     syncActivityAutoScore(submission, maxScoreAllowed);
-    if (submission.score !== "" && submission.score != null && submission.scoreMode !== "auto") submission.score = Math.max(0, Math.min(Number(submission.score || 0), maxScoreAllowed));
+    if (submission.score !== "" && submission.score != null && submission.scoreMode !== "auto") {
+      const manualScoreLimit = submission.scoreCapOverride === true ? 100 : maxScoreAllowed;
+      submission.score = Math.max(0, Math.min(Number(submission.score || 0), manualScoreLimit));
+    }
     submission.snapshot = {
       type: activity.type,
       basePoints,
@@ -6547,12 +6551,17 @@ app.put("/api/admin/activities/:id/submissions", auth, requireRole("admin", "tea
   const maxScoreAllowed = activityMaxScoreAllowed(late);
   if (req.body.score === "" || req.body.score == null) {
     delete sub.score;
+    delete sub.scoreCapOverride;
     if (sub.submitted) sub.scoreMode = "pending";
     else delete sub.scoreMode;
   } else {
-    const score = Math.max(0, Math.min(Number(req.body.score || 0), maxScoreAllowed));
+    const overrideLateCap = req.user.role === "admin" && req.body.overrideLateCap === true;
+    const scoreLimit = overrideLateCap ? 100 : maxScoreAllowed;
+    const score = Math.max(0, Math.min(Number(req.body.score || 0), scoreLimit));
     sub.score = Number.isFinite(score) ? score : activitySubmissionScore(sub, maxScoreAllowed);
     sub.scoreMode = "manual";
+    if (overrideLateCap && sub.score > maxScoreAllowed) sub.scoreCapOverride = true;
+    else delete sub.scoreCapOverride;
   }
   sub.remarks = req.body.remarks || "";
   const hydrated = hydrateActivities(db).find((a) => a.id === activity.id);
