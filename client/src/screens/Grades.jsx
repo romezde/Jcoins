@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calculator, Pencil, RotateCcw } from "lucide-react";
+import { Calculator, CloudUpload, Download, Pencil, RotateCcw } from "lucide-react";
 import { del, post, put, today } from "../api.js";
 import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/SubjectSectionPicker.jsx";
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
+import { buildGradeWorkbookModel, downloadGradeWorkbook, isGrade12SectionName } from "../utils/gradeWorkbook.js";
 
 const gradeCategoryLabels = {
   writtenWorks: "Written Works",
@@ -50,7 +51,7 @@ export default function Grades({ data, run }) {
   const summaries = classSummaries.filter((row) => {
     if (!activeClass || row.subjectId !== activeClass.subjectId || row.section !== activeClass.section) return false;
     const q = search.trim().toLowerCase();
-    return !q || [row.studentName, row.rawGrade, row.currentGrade, row.finalGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
+    return !q || [row.studentName, row.rawGrade, row.currentGrade, row.finalGrade, row.grade12Grades?.first?.currentGrade, row.grade12Grades?.second?.currentGrade, row.riskStatus, row.priority, row.visibleAdvice, row.missingItems?.join(" ")].some((value) => String(value || "").toLowerCase().includes(q));
   });
   const writtenWorks = (data.writtenWorks || []).filter((work) => activeClass && work.subjectId === activeClass.subjectId && work.section === activeClass.section);
   const setting = activeClass ? gradeSettingForClass(data, activeClass) : null;
@@ -72,20 +73,24 @@ export default function Grades({ data, run }) {
       </button>
       <GradeSettingsForm activeClass={activeClass} setting={setting} run={run} />
       {isGrade11Section(activeClass.section) && <GradeTransmutationControls data={data} activeClass={activeClass} summaries={classSummaries} run={run} />}
-      <Table columns={["Student", ...(isGrade11Section(activeClass.section) ? ["Raw Grade", "Final Grade"] : ["Current"]), "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
+      <Table columns={["Student", ...(isGrade11Section(activeClass.section) ? ["Raw Grade", "Final Grade"] : isGrade12SectionName(activeClass.section) ? ["Grade 1", "Grade 2"] : ["Current"]), "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Missing", "Actions"]} rows={summaries.map((row) => [
         row.studentName,
         ...(isGrade11Section(activeClass.section)
           ? [<strong className="grade-score">{formatCurrentGrade(row.rawGrade ?? row.currentGrade)}</strong>, <GradeFinalCell summary={row} />]
-          : [<strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>]),
+          : isGrade12SectionName(activeClass.section)
+            ? [<Grade12Cell value={row.grade12Grades?.first} label="Prelim + Midterm" />, <Grade12Cell value={row.grade12Grades?.second} label="Pre-Finals + Finals" />]
+            : [<strong className={`grade-score ${riskClass(row.riskStatus)}`}>{formatCurrentGrade(row.currentGrade)}</strong>]),
         <ActivityGradeDetails summary={row} data={data} activeClass={activeClass} />,
         categoryPercent(row, "attendance"),
         categoryPercent(row, "quizzes"),
-        categoryPercent(row, "majorExams"),
-        <span className={`grade-risk ${riskClass(row.riskStatus)}`}>{row.riskStatus}</span>,
+        isGrade12SectionName(activeClass.section) ? grade12ExamPercent(row) : categoryPercent(row, "majorExams"),
+        isGrade12SectionName(activeClass.section)
+          ? <span className="grade-risk">{grade12RiskSummary(row)}</span>
+          : <span className={`grade-risk ${riskClass(row.riskStatus)}`}>{row.riskStatus}</span>,
         row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
         <div className="inline"><GradeAdviceModal summary={row} run={run} />{row.transmutation?.active && <button type="button" className="soft" onClick={() => returnStudentToRaw(row, activeClass, run)}><RotateCcw size={15} /> Raw</button>}</div>
       ])} pageSize={25} />
-      <button type="button" className="soft" onClick={() => exportGrades(activeClass, summaries)}>Export Grade Summary</button>
+      <GradeExportActions data={data} activeClass={activeClass} summaries={classSummaries} setting={setting} run={run} />
     </Panel>}
     {activeClass && <Panel title="Written Works" wide defaultOpen={false} actions={<WrittenWorkForm data={data} run={run} presetClass={activeClass} buttonLabel="Add Written Work for This Class" />}>
       <Table columns={["Written Work", "Date", "Max Score", "Recorded", "Remarks", "Action"]} rows={writtenWorks.map((work) => [
@@ -230,6 +235,10 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
   const recitationBonus = recitationGradeBonus(data, student.id, activeClass.subjectId);
   const rawGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
   const currentGrade = rawGrade;
+  const grade12Grades = isGrade12SectionName(activeClass.section) ? {
+    first: localGrade12PeriodResult(categories, records.majorExams, student.id, recitationBonus, ["prelim", "midterm"], setting.passingGrade),
+    second: localGrade12PeriodResult(categories, records.majorExams, student.id, recitationBonus, ["prefinals", "finals"], setting.passingGrade)
+  } : null;
   const riskStatus = gradeRiskLabel(currentGrade, setting.passingGrade);
   return {
     studentId: student.id,
@@ -245,6 +254,7 @@ function localGradeSummaryForStudent(data, activeClass, setting, records, studen
     riskStatus,
     priority: ["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low",
     recitationBonus,
+    grade12Grades,
     categories,
     missingItems: [...new Set(missingItems)].slice(0, 20),
     visibleAdvice: "Local grade preview from loaded attendance, activities, quizzes, and exams.",
@@ -256,6 +266,33 @@ function localCategory(label, weight, values, active) {
   const categoryWeight = active ? Number(weight || 0) : 0;
   const percent = active && values.length ? Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length) : null;
   return { label, weight: categoryWeight, configuredWeight: Number(weight || 0), percent, contribution: percent == null ? 0 : Math.round(percent * categoryWeight) / 100, active };
+}
+
+function localGrade12PeriodResult(categories, exams, studentId, recitationBonus, allowedPeriods, passingGrade) {
+  const scopedExams = exams.filter((exam) => {
+    const period = localExamPeriod(exam);
+    return period === "unassigned" || allowedPeriods.includes(period);
+  });
+  if (!scopedExams.length) return null;
+  const percents = scopedExams.map((exam) => {
+    const row = (exam.rows || []).find((item) => item.studentId === studentId);
+    return row?.recorded ? Number(row.percent || 0) : 0;
+  });
+  const majorExams = localCategory("Major Exams", categories.majorExams?.configuredWeight ?? categories.majorExams?.weight ?? 0, percents, true);
+  const scopedCategories = { ...categories, majorExams };
+  const activeWeight = Object.values(scopedCategories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
+  const weightedPercent = activeWeight ? Object.values(scopedCategories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100 : 100;
+  const rawGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
+  return { rawGrade, currentGrade: rawGrade, examPercent: majorExams.percent, examCount: scopedExams.length, riskStatus: gradeRiskLabel(rawGrade, passingGrade) };
+}
+
+function localExamPeriod(exam) {
+  const value = String(exam.gradingPeriod || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["prelim", "preliminary"].includes(value)) return "prelim";
+  if (["midterm", "midterms"].includes(value)) return "midterm";
+  if (["prefinal", "prefinals"].includes(value)) return "prefinals";
+  if (["final", "finals"].includes(value)) return "finals";
+  return "unassigned";
 }
 
 function quizQuestionTotal(quiz, row) {
@@ -401,6 +438,49 @@ function GradeFinalCell({ summary }) {
   </div>;
 }
 
+function Grade12Cell({ value, label }) {
+  if (!value) return <div className="grade-final-cell"><strong className="grade-score">-</strong><span>{label} not ready</span></div>;
+  return <div className="grade-final-cell">
+    <strong className={`grade-score ${riskClass(value.riskStatus)}`}>{formatCurrentGrade(value.currentGrade)}</strong>
+    <span>{label}</span>
+  </div>;
+}
+
+function GradeExportActions({ data, activeClass, summaries, setting, run }) {
+  const [downloading, setDownloading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  async function download() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadGradeWorkbook(data, activeClass, summaries);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function sync() {
+    if (syncing) return;
+    setSyncing(true);
+    const driveTab = window.open("about:blank", "_blank");
+    try {
+      const model = buildGradeWorkbookModel(data, activeClass, summaries);
+      const result = await run(() => post("/admin/grades/drive-export", model), setting?.driveSpreadsheetId ? "Google Drive grade sheet updated" : "Google Drive grade sheet created");
+      if (result?.spreadsheetUrl && driveTab) driveTab.location.href = result.spreadsheetUrl;
+      else driveTab?.close();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return <div className="grade-export-actions">
+    <button type="button" className="soft" disabled={downloading || syncing} onClick={download}><Download size={16} />{downloading ? "Preparing Excel..." : "Download Excel"}</button>
+    <button type="button" className="soft" disabled={downloading || syncing} onClick={sync}><CloudUpload size={16} />{syncing ? "Syncing..." : setting?.driveSpreadsheetId ? "Update Google Drive" : "Sync to Google Drive"}</button>
+    {setting?.lastDriveSyncAt && <span className="muted-line">Last Drive sync: {formatGradeDateTime(setting.lastDriveSyncAt)}</span>}
+  </div>;
+}
+
 function WrittenWorkForm({ data, run, work = null, presetClass = null, buttonLabel = null }) {
   const [form, setForm] = useState(() => work ? writtenWorkFormValues(work) : newWrittenWorkForm(data, presetClass));
   const hasScores = !!work?.rows?.some((row) => row.recorded);
@@ -470,7 +550,7 @@ function GradeAdviceModal({ summary, run }) {
   return <ActionModal title={`Advice for ${summary.studentName}`} buttonLabel="Advice" icon={Pencil}>
     <form onSubmit={submit}>
       <div className="account-grid">
-        <div className="account-item"><span>Current Grade</span><strong>{formatCurrentGrade(summary.currentGrade)}</strong></div>
+        <div className="account-item"><span>{isGrade12SectionName(summary.section) ? "Grade 1 / Grade 2" : "Current Grade"}</span><strong>{isGrade12SectionName(summary.section) ? `${summary.grade12Grades?.first ? formatCurrentGrade(summary.grade12Grades.first.currentGrade) : "-"} / ${summary.grade12Grades?.second ? formatCurrentGrade(summary.grade12Grades.second.currentGrade) : "-"}` : formatCurrentGrade(summary.currentGrade)}</strong></div>
         <div className="account-item"><span>Class</span><strong>{summary.subjectName} - {summary.section}</strong></div>
       </div>
       <Select label="Risk Status" value={form.riskStatus} onChange={(riskStatus) => setForm({ ...form, riskStatus })} options={["", "Outstanding", "Safe", "Watch", "At Risk", "Critical"].map((value) => ({ value, label: value || "Auto" }))} />
@@ -598,6 +678,16 @@ function categoryPercent(row, key) {
   return value == null ? "-" : `${Math.round(Number(value || 0))}%`;
 }
 
+function grade12ExamPercent(row) {
+  const first = row.grade12Grades?.first?.examPercent;
+  const second = row.grade12Grades?.second?.examPercent;
+  return `G1 ${first == null ? "-" : `${Math.round(Number(first))}%`} / G2 ${second == null ? "-" : `${Math.round(Number(second))}%`}`;
+}
+
+function grade12RiskSummary(row) {
+  return `G1 ${row.grade12Grades?.first?.riskStatus || "Not ready"} / G2 ${row.grade12Grades?.second?.riskStatus || "Not ready"}`;
+}
+
 function ActivityGradeDetails({ summary, data, activeClass }) {
   const [open, setOpen] = useState(false);
   const details = activityDetailsForStudent(data, activeClass, summary.studentId);
@@ -684,12 +774,4 @@ function exportWrittenWork(work) {
   ], [...(work.rows || [])].sort((a, b) => String(a.studentName).localeCompare(String(b.studentName))).map((row) => [
     row.studentName, work.title, work.subjectName, work.section, work.date, work.maxScore, row.score ?? "", row.percent === "" ? "" : `${row.percent}%`, work.remarks || ""
   ]), work.title);
-}
-
-function exportGrades(activeClass, rows) {
-  exportSpreadsheet(`grades-${safeFilePart(activeClass.subjectName)}-${safeFilePart(activeClass.sectionLabel)}.xls`, [
-    "Student", "Subject", "Section", "Raw Grade", "Final Grade", "Grade Status", "Activities", "Attendance", "Quizzes", "Exams", "Risk", "Priority", "Missing", "Advice"
-  ], rows.map((row) => [
-    row.studentName, row.subjectName, row.section, formatCurrentGrade(row.rawGrade ?? row.currentGrade), row.transmutation?.active ? formatCurrentGrade(row.finalGrade ?? row.currentGrade) : "", row.transmutation?.active ? "Transmuted" : "Raw", categoryPercent(row, "activities"), categoryPercent(row, "attendance"), categoryPercent(row, "quizzes"), categoryPercent(row, "majorExams"), row.riskStatus, row.priority, (row.missingItems || []).join(", "), row.visibleAdvice
-  ]), "Grades");
 }

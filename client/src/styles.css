@@ -3259,6 +3259,16 @@ td button {
   color: var(--muted);
   font-size: 11px;
 }
+.grade-export-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.grade-export-actions .muted-line {
+  margin: 0;
+}
 .grade-eligible,
 .grade-ineligible {
   display: inline-flex;

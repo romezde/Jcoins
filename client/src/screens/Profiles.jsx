@@ -5,6 +5,7 @@ import ActivityFileViewer from "../components/ActivityFileViewer.jsx";
 import CosmeticFx from "../components/CosmeticFx.jsx";
 import { fileToProfilePhoto, ProfilePhotoFrame } from "../components/ProfilePhoto.jsx";
 import { DataTable, Field, Panel, Stat, Table } from "../components/ui.jsx";
+import { isGrade12SectionName } from "../utils/gradeWorkbook.js";
 
 export function StudentProfile({ data, run }) {
   const needed = Math.max(0, Number(data.student.nextTarget || 0) - Number(data.student.currentJCoins || 0));
@@ -47,16 +48,27 @@ function StudentGradeAdvice({ data }) {
   if (!rows.length) return <Panel title="Grade Advice" defaultOpen>
     <p className="muted-line">Grades are not released yet. Submit requirements on time and review returned quizzes and activities.</p>
   </Panel>;
+  const hasGrade12 = rows.some((row) => isGrade12SectionName(row.section));
   return <Panel title="Grade Advice" wide defaultOpen>
-    <Table columns={["Subject", "Section", "Current", "Status", "Missing", "Advice"]} rows={rows.map((row) => [
+    <Table columns={["Subject", "Section", ...(hasGrade12 ? ["Grade 1", "Grade 2"] : ["Current"]), "Status", "Missing", "Advice"]} rows={rows.map((row) => [
       row.subjectName,
       row.section || "-",
-      `${Number(row.currentGrade || 0).toFixed(2)}%`,
-      row.riskStatus,
+      ...(hasGrade12
+        ? isGrade12SectionName(row.section)
+          ? [formatStudentGrade(row.grade12Grades?.first), formatStudentGrade(row.grade12Grades?.second)]
+          : [`${Number(row.currentGrade || 0).toFixed(2)}%`, "-"]
+        : [`${Number(row.currentGrade || 0).toFixed(2)}%`]),
+      isGrade12SectionName(row.section)
+        ? `G1 ${row.grade12Grades?.first?.riskStatus || "Not ready"} / G2 ${row.grade12Grades?.second?.riskStatus || "Not ready"}`
+        : row.riskStatus,
       row.missingItems?.length ? row.missingItems.slice(0, 4).join(", ") : "None",
       row.visibleAdvice || "Keep submitting requirements and ask your teacher which topic to review next."
     ])} />
   </Panel>;
+}
+
+function formatStudentGrade(value) {
+  return value?.currentGrade == null ? "Not ready" : `${Number(value.currentGrade).toFixed(2)}%`;
 }
 
 export function StudentActivities({ data, run }) {

@@ -92,3 +92,23 @@ password: admin123!
 ```
 
 The admin must change password on first login.
+
+## Google Drive Grade Sync
+
+The Grades screen always supports a local `.xlsx` download. Direct Google Drive sync is optional and uses backend-only Google credentials.
+
+1. Enable the Google Sheets API and Google Drive API in Google Cloud.
+2. For a normal personal My Drive, create OAuth credentials and a refresh token authorized for Google Drive and Google Sheets.
+3. Create a Drive folder for JCoins grade sheets and copy its folder ID.
+4. Add these values to `server/.env` locally and to the Render environment in production:
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REFRESH_TOKEN=
+GOOGLE_GRADE_FOLDER_ID=the-shared-folder-id
+```
+
+For a Google Workspace Shared Drive, service-account credentials may be used instead. Share that folder with the service-account email as Editor and set `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`.
+
+The first sync creates one native Google Sheet for the selected subject and section. Later syncs update that same file instead of creating duplicates.

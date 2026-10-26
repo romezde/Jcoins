@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createSign, randomBytes, randomUUID } from "node:crypto";
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,6 +112,12 @@ const BACKUP_MIRROR_DIR = String(process.env.JCOINS_BACKUP_MIRROR_DIR || "").tri
 const DB_CACHE_TTL_MS = Math.max(0, Number(process.env.DB_CACHE_TTL_MS || 6 * 60 * 60 * 1000));
 const RUN_SCHEDULED_JOBS = !["0", "false", "no"].includes(String(process.env.RUN_SCHEDULED_JOBS || "true").trim().toLowerCase());
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
+const GOOGLE_SERVICE_ACCOUNT_EMAIL = String(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
+const GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = String(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+const GOOGLE_OAUTH_CLIENT_ID = String(process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
+const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
+const GOOGLE_OAUTH_REFRESH_TOKEN = String(process.env.GOOGLE_OAUTH_REFRESH_TOKEN || "").trim();
+const GOOGLE_GRADE_FOLDER_ID = String(process.env.GOOGLE_GRADE_FOLDER_ID || "").trim();
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
@@ -3792,6 +3798,21 @@ function hydrateQuizzes(db, user) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+function normalizeMajorExamGradingPeriod(value, title = "") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["prelim", "preliminary"].includes(normalized)) return "prelim";
+  if (["midterm", "midterms"].includes(normalized)) return "midterm";
+  if (["prefinal", "prefinals"].includes(normalized)) return "prefinals";
+  if (["final", "finals"].includes(normalized)) return "finals";
+  if (normalized === "unassigned") return "unassigned";
+  const titleText = String(title || "").toLowerCase();
+  if (/pre[\s-]*final/.test(titleText)) return "prefinals";
+  if (/mid[\s-]*term/.test(titleText)) return "midterm";
+  if (/prelim/.test(titleText)) return "prelim";
+  if (/\bfinals?\b/.test(titleText)) return "finals";
+  return "unassigned";
+}
+
 function normalizeMajorExam(exam, db) {
   exam.title = String(exam.title || "Major Exam").trim().slice(0, 140) || "Major Exam";
   exam.subjectId = String(exam.subjectId || "");
@@ -3801,6 +3822,7 @@ function normalizeMajorExam(exam, db) {
   exam.maxScore = Number.isFinite(rawMaxScore) ? Math.max(1, Math.min(1000, rawMaxScore)) : 100;
   const rawMinimumPercent = Number(exam.minimumPercent ?? 0);
   exam.minimumPercent = Number.isFinite(rawMinimumPercent) ? Math.max(0, Math.min(100, rawMinimumPercent)) : 0;
+  exam.gradingPeriod = normalizeMajorExamGradingPeriod(exam.gradingPeriod, exam.title);
   exam.remarks = String(exam.remarks || "").trim().slice(0, 500);
   exam.scores = exam.scores && typeof exam.scores === "object" && !Array.isArray(exam.scores) ? exam.scores : {};
   const studentIds = new Set(studentsForClass(db, exam.subjectId, exam.section).map((student) => student.id));
@@ -3833,6 +3855,7 @@ function majorExamInput(db, body, user, existing = {}) {
     date: String(body.date ?? existing.date ?? today()).slice(0, 10),
     maxScore,
     minimumPercent: rawMinimumPercent,
+    gradingPeriod: normalizeMajorExamGradingPeriod(body.gradingPeriod ?? existing.gradingPeriod, body.title ?? existing.title),
     remarks: String(body.remarks ?? existing.remarks ?? "").trim().slice(0, 500)
   };
 }
@@ -3907,6 +3930,11 @@ function transmutationSettingsInput(input = {}, current = {}) {
 function isGrade11Section(section = "") {
   const value = String(section || "").trim().toLowerCase();
   return /(?:^|\b)(?:grade|g)\s*[- ]?\s*11(?:\b|\s)|\b11(?:th)?\s*(?:grade|year)\b/.test(value);
+}
+
+function isGrade12Section(section = "") {
+  const value = String(section || "").trim().toLowerCase();
+  return /(?:^|\b)(?:grade|g)\s*[- ]?\s*12(?:\b|\s)|\b12(?:th)?\s*(?:grade|year)\b/.test(value);
 }
 
 function calculateTransmutedGrade(rawGrade, settings = {}) {
@@ -4179,6 +4207,37 @@ function gradeRiskStatus(grade, passingGrade = 75) {
   return "Critical";
 }
 
+function grade12PeriodResult(categories, majorExams, studentId, recitationBonus, allowedPeriods, passingGrade) {
+  const exams = majorExams.filter((exam) => {
+    const period = normalizeMajorExamGradingPeriod(exam.gradingPeriod, exam.title);
+    return period === "unassigned" || allowedPeriods.includes(period);
+  });
+  if (!exams.length) return null;
+  const percents = exams.map((exam) => Object.prototype.hasOwnProperty.call(exam.scores || {}, studentId)
+    ? majorExamPercentage(exam, exam.scores[studentId])
+    : 0);
+  const examCategory = categorySummary(
+    "Major Exams",
+    categories.majorExams?.configuredWeight ?? categories.majorExams?.weight ?? 0,
+    percents,
+    percents.filter((value) => value === 0).length,
+    true
+  );
+  const scopedCategories = { ...categories, majorExams: examCategory };
+  const activeWeight = Object.values(scopedCategories).reduce((sum, category) => sum + Number(category.weight || 0), 0);
+  const weightedPercent = activeWeight
+    ? Object.values(scopedCategories).reduce((sum, category) => sum + Number(category.contribution || 0), 0) / activeWeight * 100
+    : 100;
+  const rawGrade = Math.max(0, Math.min(100, Math.round((weightedPercent + recitationBonus) * 100) / 100));
+  return {
+    rawGrade,
+    currentGrade: rawGrade,
+    examPercent: examCategory.percent,
+    examCount: exams.length,
+    riskStatus: gradeRiskStatus(rawGrade, passingGrade)
+  };
+}
+
 function automaticGradeAdvice(summary) {
   const pieces = [];
   if (summary.missingItems.length) pieces.push(`Complete ${summary.missingItems.slice(0, 3).join(", ")}${summary.missingItems.length > 3 ? ", and other missing work" : ""}.`);
@@ -4270,6 +4329,10 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
   const rawGrade = Math.max(0, Math.min(100, Math.round(computedRawGrade * 100) / 100));
   const transmutation = activeGradeTransmutationFor(db, student.id, subjectId, section);
   const currentGrade = transmutation ? Number(transmutation.finalGrade) : rawGrade;
+  const grade12Grades = isGrade12Section(section) ? {
+    first: grade12PeriodResult(categories, majorExams, student.id, recitationBonus, ["prelim", "midterm"], setting.passingGrade),
+    second: grade12PeriodResult(categories, majorExams, student.id, recitationBonus, ["prefinals", "finals"], setting.passingGrade)
+  } : null;
   const note = gradeNoteFor(db, student.id, subjectId, section);
   const riskStatus = note?.riskStatus || gradeRiskStatus(currentGrade, setting.passingGrade);
   const summary = {
@@ -4295,6 +4358,7 @@ function gradeSummaryForStudent(db, student, subjectId, section, user) {
     riskStatus,
     priority: note?.priority || (["At Risk", "Critical"].includes(riskStatus) ? "Urgent" : riskStatus === "Watch" ? "Medium" : "Low"),
     recitationBonus,
+    grade12Grades,
     categories,
     missingItems: [...new Set([...(note?.missingItems || []), ...missingItems])].slice(0, 20),
     privateNote: user.role === "student" ? "" : note?.privateNote || "",
@@ -4845,6 +4909,188 @@ function assistantAssignmentRows(db, user) {
     status: assistantAssignmentIsActive(assignment) ? "Active" : new Date(assignment.startAt).getTime() > Date.now() ? "Scheduled" : "Completed",
     dailyReward: STUDENT_ASSISTANT_DAILY_REWARD
   })).sort((a, b) => String(b.startAt).localeCompare(String(a.startAt)) || String(a.section).localeCompare(String(b.section)));
+}
+
+let googleAccessTokenCache = null;
+
+function googleDriveSyncConfigured() {
+  return !!(
+    (GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET && GOOGLE_OAUTH_REFRESH_TOKEN)
+    || (GOOGLE_SERVICE_ACCOUNT_EMAIL && GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
+  );
+}
+
+function base64UrlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+async function googleServiceAccountAccessToken() {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (googleAccessTokenCache?.token && googleAccessTokenCache.expiresAt > nowSeconds + 60) return googleAccessTokenCache.token;
+  if (!googleDriveSyncConfigured()) {
+    throw new Error("Google Drive sync is not configured. Add Google OAuth credentials or Google service-account credentials to the server environment.");
+  }
+  if (GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET && GOOGLE_OAUTH_REFRESH_TOKEN) {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: GOOGLE_OAUTH_CLIENT_ID,
+        client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+        refresh_token: GOOGLE_OAUTH_REFRESH_TOKEN,
+        grant_type: "refresh_token"
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.access_token) throw new Error(result.error_description || result.error || "Google authorization failed.");
+    googleAccessTokenCache = { token: result.access_token, expiresAt: nowSeconds + Number(result.expires_in || 3600) };
+    return result.access_token;
+  }
+  const header = base64UrlJson({ alg: "RS256", typ: "JWT" });
+  const claim = base64UrlJson({
+    iss: GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: nowSeconds,
+    exp: nowSeconds + 3600
+  });
+  const unsigned = `${header}.${claim}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(unsigned);
+  signer.end();
+  const assertion = `${unsigned}.${signer.sign(GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY).toString("base64url")}`;
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.access_token) throw new Error(result.error_description || result.error || "Google authorization failed.");
+  googleAccessTokenCache = { token: result.access_token, expiresAt: nowSeconds + Number(result.expires_in || 3600) };
+  return result.access_token;
+}
+
+async function googleApi(url, options = {}) {
+  const token = await googleServiceAccountAccessToken();
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = result.error?.message || result.error_description || result.error || `Google request failed (${response.status}).`;
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+
+function sanitizeGradeDriveSheet(sheet, index) {
+  const rows = Array.isArray(sheet?.rows) ? sheet.rows.slice(0, 500) : [];
+  const width = Math.min(200, Math.max(1, ...rows.map((row) => Array.isArray(row) ? row.length : 0)));
+  const safeRows = rows.map((row) => Array.from({ length: width }, (_, columnIndex) => {
+    const value = Array.isArray(row) ? row[columnIndex] : "";
+    if (typeof value === "number" || typeof value === "boolean") return value;
+    return String(value ?? "").slice(0, 1000);
+  }));
+  const rawName = String(sheet?.name || `Grades ${index + 1}`).replace(/[\\/?*\[\]:]/g, " ").trim();
+  return {
+    name: (rawName || `Grades ${index + 1}`).slice(0, 90),
+    rows: safeRows,
+    rowCount: Math.max(100, safeRows.length + 10),
+    columnCount: Math.max(12, width + 2),
+    freezeRows: Math.max(0, Math.min(10, Number(sheet?.freezeRows || 0))),
+    freezeColumns: Math.max(0, Math.min(5, Number(sheet?.freezeColumns || 0))),
+    headerRows: (Array.isArray(sheet?.headerRows) ? sheet.headerRows : []).map(Number).filter((row) => row >= 1 && row <= safeRows.length).slice(0, 10),
+    gradeColumns: (Array.isArray(sheet?.gradeColumns) ? sheet.gradeColumns : []).map(Number).filter((column) => column >= 1 && column <= width).slice(0, 10),
+    merges: (Array.isArray(sheet?.merges) ? sheet.merges : []).filter((merge) => merge && Number(merge.startRow) >= 1 && Number(merge.endRow) <= safeRows.length && Number(merge.startColumn) >= 1 && Number(merge.endColumn) <= width).slice(0, 100)
+  };
+}
+
+async function prepareGradeSpreadsheet(existingId, title, sheets) {
+  let spreadsheet = null;
+  if (existingId) {
+    try {
+      spreadsheet = await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(existingId)}?fields=spreadsheetId,sheets(properties,conditionalFormats)`);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+  }
+  if (!spreadsheet) {
+    spreadsheet = await googleApi("https://sheets.googleapis.com/v4/spreadsheets", {
+      method: "POST",
+      body: JSON.stringify({
+        properties: { title },
+        sheets: sheets.map((sheet) => ({ properties: { title: sheet.name, gridProperties: { rowCount: sheet.rowCount, columnCount: sheet.columnCount } } }))
+      })
+    });
+    if (GOOGLE_GRADE_FOLDER_ID) {
+      const metadata = await googleApi(`https://www.googleapis.com/drive/v3/files/${spreadsheet.spreadsheetId}?fields=parents`);
+      const removeParents = (metadata.parents || []).join(",");
+      const query = new URLSearchParams({ addParents: GOOGLE_GRADE_FOLDER_ID, fields: "id,parents", supportsAllDrives: "true" });
+      if (removeParents) query.set("removeParents", removeParents);
+      await googleApi(`https://www.googleapis.com/drive/v3/files/${spreadsheet.spreadsheetId}?${query}`, { method: "PATCH", body: "{}" });
+    }
+    return spreadsheet;
+  }
+
+  const existingSheets = spreadsheet.sheets || [];
+  const retained = existingSheets[0];
+  const requests = existingSheets.slice(1).map((sheet) => ({ deleteSheet: { sheetId: sheet.properties.sheetId } }));
+  requests.push({ updateSpreadsheetProperties: { properties: { title }, fields: "title" } });
+  requests.push({
+    updateSheetProperties: {
+      properties: { sheetId: retained.properties.sheetId, title: sheets[0].name, gridProperties: { rowCount: sheets[0].rowCount, columnCount: sheets[0].columnCount } },
+      fields: "title,gridProperties.rowCount,gridProperties.columnCount"
+    }
+  });
+  sheets.slice(1).forEach((sheet) => requests.push({ addSheet: { properties: { title: sheet.name, gridProperties: { rowCount: sheet.rowCount, columnCount: sheet.columnCount } } } }));
+  await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet.spreadsheetId}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
+  return googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet.spreadsheetId}?fields=spreadsheetId,sheets(properties,conditionalFormats)`);
+}
+
+function googleSheetRangeName(name) {
+  return `'${String(name).replace(/'/g, "''")}'`;
+}
+
+async function writeGradeSpreadsheet(spreadsheetId, spreadsheet, sheets) {
+  const sheetByName = new Map((spreadsheet.sheets || []).map((sheet) => [sheet.properties.title, sheet]));
+  await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`, {
+    method: "POST",
+    body: JSON.stringify({ ranges: sheets.map((sheet) => `${googleSheetRangeName(sheet.name)}!A1:GR500`) })
+  });
+  await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "RAW",
+      data: sheets.map((sheet) => ({ range: `${googleSheetRangeName(sheet.name)}!A1`, majorDimension: "ROWS", values: sheet.rows }))
+    })
+  });
+  const requests = [];
+  sheets.forEach((sheet) => {
+    const existingSheet = sheetByName.get(sheet.name);
+    if (!existingSheet) return;
+    const properties = existingSheet.properties;
+    const sheetId = properties.sheetId;
+    for (let index = (existingSheet.conditionalFormats || []).length - 1; index >= 0; index -= 1) {
+      requests.push({ deleteConditionalFormatRule: { sheetId, index } });
+    }
+    requests.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: sheet.freezeRows, frozenColumnCount: sheet.freezeColumns } }, fields: "gridProperties.frozenRowCount,gridProperties.frozenColumnCount" } });
+    requests.push({ repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: sheet.rows.length, startColumnIndex: 0, endColumnIndex: sheet.columnCount }, cell: { userEnteredFormat: { verticalAlignment: "MIDDLE", wrapStrategy: "WRAP", borders: { top: { style: "SOLID", color: { red: 0.58, green: 0.64, blue: 0.72 } }, bottom: { style: "SOLID", color: { red: 0.58, green: 0.64, blue: 0.72 } }, left: { style: "SOLID", color: { red: 0.58, green: 0.64, blue: 0.72 } }, right: { style: "SOLID", color: { red: 0.58, green: 0.64, blue: 0.72 } } } } }, fields: "userEnteredFormat(verticalAlignment,wrapStrategy,borders)" } });
+    sheet.headerRows.forEach((row) => requests.push({ repeatCell: { range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: sheet.columnCount }, cell: { userEnteredFormat: { backgroundColor: { red: 0.09, green: 0.13, blue: 0.2 }, textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true }, horizontalAlignment: "CENTER" } }, fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)" } }));
+    sheet.gradeColumns.forEach((column) => {
+      requests.push({ addConditionalFormatRule: { index: 0, rule: { ranges: [{ sheetId, startRowIndex: sheet.freezeRows, endRowIndex: sheet.rows.length, startColumnIndex: column - 1, endColumnIndex: column }], booleanRule: { condition: { type: "NUMBER_LESS", values: [{ userEnteredValue: "75" }] }, format: { backgroundColor: { red: 0.99, green: 0.8, blue: 0.8 }, textFormat: { foregroundColor: { red: 0.6 } } } } } } });
+      requests.push({ addConditionalFormatRule: { index: 0, rule: { ranges: [{ sheetId, startRowIndex: sheet.freezeRows, endRowIndex: sheet.rows.length, startColumnIndex: column - 1, endColumnIndex: column }], booleanRule: { condition: { type: "NUMBER_GREATER_THAN_EQ", values: [{ userEnteredValue: "90" }] }, format: { backgroundColor: { red: 1, green: 0.85, blue: 0.4 }, textFormat: { bold: true } } } } } });
+    });
+    sheet.merges.forEach((merge) => requests.push({ mergeCells: { range: { sheetId, startRowIndex: merge.startRow - 1, endRowIndex: merge.endRow, startColumnIndex: merge.startColumn - 1, endColumnIndex: merge.endColumn }, mergeType: "MERGE_ALL" } }));
+    requests.push({ autoResizeDimensions: { dimensions: { sheetId, dimension: "COLUMNS", startIndex: 0, endIndex: Math.min(sheet.columnCount, 200) } } });
+  });
+  if (requests.length) await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
 }
 
 app.get("/api/health", (req, res) => res.json({ ok: true, storage: supabase ? "supabase" : "file" }));
@@ -6207,6 +6453,46 @@ app.put("/api/admin/major-exams/:id/scores/bulk", auth, requireRole("admin", "te
   });
   await writeDb(db);
   res.json({ exam: publicMajorExam(db, exam), importedCount: scores.length });
+});
+
+app.post("/api/admin/grades/drive-export", auth, requireRole("admin", "teacher"), async (req, res) => {
+  if (!googleDriveSyncConfigured()) {
+    return res.status(503).json({ error: "Google Drive sync is not configured on the server yet. Add Google OAuth credentials for My Drive or service-account credentials for a Shared Drive." });
+  }
+  const db = await readDb();
+  const subjectId = String(req.body.subjectId || "").trim();
+  const section = String(req.body.section || "").trim();
+  if (!subjectId || !db.subjects.some((subject) => subject.id === subjectId) || !canUseSubject(req.user, subjectId)) return res.status(400).json({ error: "Choose an available subject." });
+  if (!section || !db.sections.includes(section) || !canUseSection(req.user, section)) return res.status(400).json({ error: "Choose an available section." });
+  const requestedSheets = Array.isArray(req.body.sheets) ? req.body.sheets : [];
+  if (!requestedSheets.length || requestedSheets.length > 6) return res.status(400).json({ error: "The grade workbook must contain from 1 to 6 sheets." });
+  const sheets = requestedSheets.map(sanitizeGradeDriveSheet);
+  const duplicateNames = sheets.some((sheet, index) => sheets.findIndex((item) => item.name.toLowerCase() === sheet.name.toLowerCase()) !== index);
+  if (duplicateNames) return res.status(400).json({ error: "Each grade sheet needs a unique name." });
+  const title = String(req.body.title || `${subjectName(db, subjectId)} - ${section} Grades`).trim().slice(0, 180);
+  const setting = gradeSettingFor(db, subjectId, section, true);
+  try {
+    let spreadsheet = await prepareGradeSpreadsheet(setting.driveSpreadsheetId, title, sheets);
+    if (!(spreadsheet.sheets || []).length || (spreadsheet.sheets || []).length !== sheets.length) {
+      spreadsheet = await googleApi(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet.spreadsheetId}?fields=spreadsheetId,sheets(properties,conditionalFormats)`);
+    }
+    await writeGradeSpreadsheet(spreadsheet.spreadsheetId, spreadsheet, sheets);
+    setting.driveSpreadsheetId = spreadsheet.spreadsheetId;
+    setting.driveSpreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.spreadsheetId}/edit`;
+    setting.lastDriveSyncAt = now();
+    setting.lastDriveSyncBy = req.user.id;
+    addAuditLog(db, req.user, "grade.drive_sync", {
+      entityType: "gradeClass",
+      entityId: gradeClassKey(subjectId, section),
+      summary: `Synced grades for ${subjectName(db, subjectId)} - ${section} to Google Drive.`,
+      meta: { subjectId, section, spreadsheetId: spreadsheet.spreadsheetId }
+    });
+    req.auditRecorded = true;
+    await writeDb(db);
+    res.json({ spreadsheetUrl: setting.driveSpreadsheetUrl, lastSyncedAt: setting.lastDriveSyncAt });
+  } catch (error) {
+    res.status(502).json({ error: `Google Drive sync failed: ${error.message}` });
+  }
 });
 
 app.put("/api/admin/grades/global-settings", auth, requireRole("admin"), async (req, res) => {

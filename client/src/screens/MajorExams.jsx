@@ -5,6 +5,7 @@ import SubjectSectionPicker, { buildSubjectSectionClasses } from "../components/
 import { ActionModal, Field, Panel, Select, Table } from "../components/ui.jsx";
 import { exportSpreadsheet, safeFilePart } from "../utils/exportSpreadsheet.js";
 import { downloadXlsxTemplate, readImportFile } from "../utils/spreadsheet.js";
+import { isGrade12SectionName } from "../utils/gradeWorkbook.js";
 
 export default function MajorExams({ data, run }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
@@ -25,10 +26,11 @@ export default function MajorExams({ data, run }) {
         <Field label="Search Exams" value={search} onChange={setSearch} />
         <div className="filter-count">{exams.length} exam{exams.length === 1 ? "" : "s"}</div>
       </div>
-      <Table columns={["Exam", "Subject", "Section", "Date", "Max Score", "Minimum %", "Recorded", "Remarks", "Action"]} rows={exams.map((exam) => [
+      <Table columns={["Exam", "Subject", "Section", ...(isGrade12SectionName(activeClass.section) ? ["Period"] : []), "Date", "Max Score", "Minimum %", "Recorded", "Remarks", "Action"]} rows={exams.map((exam) => [
         exam.title,
         exam.subjectName,
         activeClass.sectionLabel,
+        ...(isGrade12SectionName(activeClass.section) ? [gradingPeriodLabel(exam.gradingPeriod)] : []),
         exam.date,
         exam.maxScore,
         `${exam.minimumPercent ?? 0}%`,
@@ -61,6 +63,10 @@ function MajorExamForm({ data, run, exam = null, presetClass = null, buttonLabel
       <Select label="Section" value={form.section} onChange={(section) => setForm({ ...form, section })} options={hasScores ? [{ value: form.section, label: form.section }] : (data.sections || []).map((section) => ({ value: section, label: section }))} />
       {hasScores && <p className="muted-line">Subject and section are locked after scores are recorded.</p>}
       <Field label="Date" type="date" value={form.date} onChange={(date) => setForm({ ...form, date })} />
+      {isGrade12SectionName(form.section) && <>
+        <Select label="Grading Period" value={form.gradingPeriod} onChange={(gradingPeriod) => setForm({ ...form, gradingPeriod })} options={gradingPeriodOptions()} />
+        <p className="muted-line">Grade 12 uses Prelim and Midterm exams for Grade 1, then Pre-Finals and Finals exams for Grade 2. Unassigned exams count in both until you choose a period.</p>
+      </>}
       <Field label="Maximum Score" type="number" min="1" max="1000" step="0.01" value={form.maxScore} onChange={(maxScore) => setForm({ ...form, maxScore })} />
       <Field label="Minimum Percentage (Score of 0)" type="number" min="0" max="100" step="0.01" value={form.minimumPercent} onChange={(minimumPercent) => setForm({ ...form, minimumPercent })} />
       <p className="muted-line">A score of 0 becomes {form.minimumPercent || 0}%. Scores between 0 and {form.maxScore || 0} are scaled up to 100%.</p>
@@ -75,7 +81,7 @@ function MajorExamCard({ exam, run }) {
   const q = search.trim().toLowerCase();
   const rows = (exam.rows || []).filter((row) => !q || [row.studentName, row.score, row.percent].some((value) => String(value || "").toLowerCase().includes(q)));
   return <Panel title={`${exam.title} Scores`} wide defaultOpen={false} actions={<div className="inline"><strong>{exam.tracker} recorded</strong><MajorExamScoreImport exam={exam} run={run} /><button type="button" className="soft" onClick={() => exportExam(exam)}>Export Scores</button></div>}>
-    <p className="muted-line">{exam.subjectName} | {exam.section} | {exam.date} | maximum score {exam.maxScore} | minimum {exam.minimumPercent ?? 0}%</p>
+    <p className="muted-line">{exam.subjectName} | {exam.section} | {isGrade12SectionName(exam.section) ? `${gradingPeriodLabel(exam.gradingPeriod)} | ` : ""}{exam.date} | maximum score {exam.maxScore} | minimum {exam.minimumPercent ?? 0}%</p>
     <div className="filter-bar">
       <Field label="Search Students" value={search} onChange={setSearch} />
       <div className="filter-count">{rows.length} student{rows.length === 1 ? "" : "s"}</div>
@@ -174,6 +180,7 @@ function examFormValues(exam) {
     date: exam.date || today(),
     maxScore: exam.maxScore ?? 100,
     minimumPercent: exam.minimumPercent ?? 0,
+    gradingPeriod: exam.gradingPeriod || "unassigned",
     remarks: exam.remarks || ""
   };
 }
@@ -186,6 +193,7 @@ function newExamForm(data, presetClass = null) {
     date: today(),
     maxScore: 100,
     minimumPercent: 50,
+    gradingPeriod: "unassigned",
     remarks: ""
   };
 }
@@ -247,6 +255,20 @@ function normalizedStudentName(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function gradingPeriodOptions() {
+  return [
+    { value: "unassigned", label: "Unassigned / shared temporarily" },
+    { value: "prelim", label: "Prelim" },
+    { value: "midterm", label: "Midterm" },
+    { value: "prefinals", label: "Pre-Finals" },
+    { value: "finals", label: "Finals" }
+  ];
+}
+
+function gradingPeriodLabel(value) {
+  return gradingPeriodOptions().find((option) => option.value === value)?.label || "Unassigned / shared temporarily";
+}
+
 function exportExam(exam) {
   exportSpreadsheet(`major-exam-${safeFilePart(exam.title)}-${safeFilePart(exam.subjectName)}.xls`, [
     "Student",
@@ -256,6 +278,7 @@ function exportExam(exam) {
     "Date",
     "Max Score",
     "Minimum Percentage",
+    "Grading Period",
     "Score",
     "Percent",
     "Remarks"
@@ -267,6 +290,7 @@ function exportExam(exam) {
     exam.date,
     exam.maxScore,
     `${exam.minimumPercent ?? 0}%`,
+    gradingPeriodLabel(exam.gradingPeriod),
     row.score ?? "",
     row.percent === "" ? "" : `${row.percent}%`,
     exam.remarks || ""
